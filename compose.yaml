@@ -1,0 +1,112 @@
+services:
+  nginx:
+    image: nginx
+    container_name: nginx
+    restart: unless-stopped
+    volumes:
+      - ${NGINX_CONF}:/etc/nginx/templates/default.conf.template:ro
+      - ${NGINX_CERT}:/etc/ssl/cert.pem:ro
+      - ${NGINX_KEY}:/etc/ssl/key.pem:ro
+    environment:
+      - YOUR_DOMAIN=${DOMAIN}
+    ports:
+      - 80:80
+      - 443:443
+  cloudflared:
+    image: cloudflare/cloudflared
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+  mongo:
+    image: mongo
+    container_name: mongo
+    restart: always
+    volumes:
+      - /home/mongo-volume:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+  plugins-api:
+    build: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
+    image: plugins-api
+    container_name: plugins-api
+    restart: always
+    ports:
+      - "8083:8083"
+      - "8003:8003"
+    environment:
+      - server.port=8083
+      - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
+      - server.servlet.context-path=/remote-falcon-plugins-api
+    depends_on:
+      - mongo
+  control-panel:
+    build: https://github.com/Remote-Falcon/remote-falcon-control-panel.git
+    image: control-panel
+    container_name: control-panel
+    restart: always
+    ports:
+      - "8081:8081"
+      - "8001:8001"
+    environment:
+      - server.port=8081
+      - web.url=https://${DOMAIN}
+      - auto-validate-email=${AUTO_VALIDATE_EMAIL}
+      - jwt.user=${VIEWER_JWT_KEY}
+      - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
+      - github.pat=
+      - sendgrid.key=
+    depends_on:
+      - mongo
+  viewer:
+    build: https://github.com/Remote-Falcon/remote-falcon-viewer.git
+    image: viewer
+    container_name: viewer
+    restart: always
+    ports:
+      - "8082:8082"
+      - "8002:8002"
+    environment:
+      - server.port=8082
+      - jwt.viewer=${VIEWER_JWT_KEY}
+      - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
+    depends_on:
+      - mongo
+  gateway:
+    build: https://github.com/Remote-Falcon/remote-falcon-gateway.git
+    image: gateway
+    container_name: gateway
+    restart: always
+    ports:
+      - "8080:8080"
+      - "8000:8000"
+    environment:
+      - server.port=8080
+      - services.control-panel.path=remote-falcon-control-panel
+      - services.control-panel.uri=https://${DOMAIN}/remote-falcon-control-panel
+      - services.viewer.path=remote-falcon-viewer
+      - services.viewer.uri=https://${DOMAIN}/remote-falcon-viewer
+    depends_on:
+      - control-panel
+      - viewer
+  ui:
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-ui.git
+      args:
+        - HOST_ENV=prod
+        - VERSION=1.0.0
+        - REMOTE_FALCON_GATEWAY=https://${DOMAIN}/remote-falcon-gateway
+        - VIEWER_JWT_KEY=${VIEWER_JWT_KEY}
+        - GOOGLE_MAPS_KEY=
+        - PUBLIC_POSTHOG_KEY=
+        - GA_TRACKING_ID=1
+        - HOSTNAME_PARTS=${HOSTNAME_PARTS}
+    image: ui
+    container_name: ui
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway
