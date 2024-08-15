@@ -157,6 +157,8 @@ Download the configuration script, make it executable and run it!
    
    ```./configure-rf.sh```
 
+Be sure to have your origin server certificate, origin private key, and tunnel token available in a notepad. The configuration script will ask for these.
+
 ## Notes
 
 ___This Guide is a work in progress___
@@ -173,7 +175,14 @@ You can also uninstlal nginx, note thah this would remove all files under /etc/n
   
   ```sudo apt autoremove```
 
+Everything should work as you would expect from Remote falcon. The only thing that I could not get to work is the viewer counts. RF will not log the last IP used to log into RF as a viewer, but even with testing from devices that have never logged into the RF dashboard I could not get the viewer count to increment for my show page.
+
 ## Troubleshooting
+
+___Unexpected Error___
+Ensure your web browser is pointing you to https://yourdomain.com and *NOT* https://www.yourdomain.com
+
+There may also may be other causes for this error that I am not aware of.
 
 Below you will find some useful troubleshooting commands.
 
