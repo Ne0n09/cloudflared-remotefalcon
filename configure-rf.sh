@@ -16,7 +16,7 @@ fi
 # Download .env, default.conf, and compose.yaml if they do not exist. Ask if they should be downloaded
 if [ ! -f compose.yaml ]; then
         read -p "The compose.yaml file does not exist, would you like to download it? (y/n) [y]: " downloadcompose
-        downloadcompose=${downloadcopmose:-y}
+        downloadcompose=${downloadcompose:-y}
         echo $downloadcompose
 
         if [[ "$downloadcompose" == "y" ]]; then
@@ -68,7 +68,7 @@ domain=${domain:-$DOMAIN}
 read -p "Enter a random value for viewer JWT key: [$VIEWER_JWT_KEY]: " viewerjwtkey
 viewerjwtkey=${viewerjwtkey:-$VIEWER_JWT_KEY}
 
-read -p "For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com'): [$HOSTNAME_PARTS]: " hostnameparts
+read -p "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com'): [$HOSTNAME_PARTS]: " hostnameparts
 hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
 
 read -p "Enable auto validate email? (true/false): [$AUTO_VALIDATE_EMAIL]: " autovalidateemail
