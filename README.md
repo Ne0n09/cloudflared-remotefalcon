@@ -190,11 +190,11 @@ Below you will find some useful troubleshooting commands.
 
 Test the nginx configuration file: 
 
-```sudo docker exec nginx nginx -t = test conf file```
+```sudo docker exec nginx nginx -t```
 
 Show the nginx configuration file that is being used:
 
-```sudo docker exec nginx nginx -T = show conf file```
+```sudo docker exec nginx nginx -T```
 
 Display logs from the nginx container (Or any other container by changing the 'nginx' name at the end):
 
