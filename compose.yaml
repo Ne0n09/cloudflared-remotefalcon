@@ -95,13 +95,13 @@ services:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-ui.git
       args:
-        - HOST_ENV=prod
-        - VERSION=1.0.0
+        - HOST_ENV=${HOST_ENV}
+        - VERSION=${VERSION}
         - REMOTE_FALCON_GATEWAY=https://${DOMAIN}/remote-falcon-gateway
         - VIEWER_JWT_KEY=${VIEWER_JWT_KEY}
-        - GOOGLE_MAPS_KEY=
-        - PUBLIC_POSTHOG_KEY=
-        - GA_TRACKING_ID=1
+        - GOOGLE_MAPS_KEY=${GOOGLE_MAPS_KEY}
+        - PUBLIC_POSTHOG_KEY=${PUBLIC_POSTHOG_KEY}
+        - GA_TRACKING_ID=${GA_TRACKING_ID}
         - HOSTNAME_PARTS=${HOSTNAME_PARTS}
     image: ui
     container_name: ui
