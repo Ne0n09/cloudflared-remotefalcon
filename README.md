@@ -136,6 +136,7 @@ Click Save
 Now you should have two DNS records pointing to your .cfargotunnel target.
 
 CNAME * 248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com
+
 CNAME yourdomain.com 248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com
 
 Both should be proxied.
