@@ -58,7 +58,7 @@ fi
 echo "Answer the following questions to update your compose .env variables."
 echo "Press enter to accept the existing values that are between the brackets [ ]."
 echo "You will be asked to confirm the changes before the file is modified."
-
+echo
 read -p "Enter your Cloudflare tunnel token: [$TUNNEL_TOKEN]: " tunneltoken
 tunneltoken=${tunneltoken:-$TUNNEL_TOKEN}
 
@@ -79,19 +79,21 @@ updatecerts=${updatecerts:-n}
 echo $updatecerts
 if [[ "$updatecerts" == "y" ]]; then
         read -p "Press any key to open nano to paste the origin certificate. Ctrl+X and y to save."
-        nano origin_cert.pem
+        nano ${domain}_origin_cert.pem
 
         read -p "Press any key to open nano to paste the origin private key. Ctrl+X and y to save."
-        nano origin_key.pem
+        nano ${domain}_origin_key.pem
 fi
 
 echo
-echo "Please confirm the new variables below are correct:"
+echo "Please confirm the variables below are correct:"
 echo "TUNNEL_TOKEN=$tunneltoken"
 echo "DOMAIN=$domain"
 echo "VIEWER_JWT_KEY=$viewerjwtkey"
 echo "HOSTNAME_PARTS=$hostnameparts"
 echo "AUTO_VALIDATE_EMAIL=$autovalidateemail"
+echo "NGINX_CERT=./${domain}_origin_cert.pem"
+echo "NGINX_KEY=./${domain}_origin_key.pem"
 
 read -p "Update the .env file with the above variables? (y/n): " updateenv
 
@@ -107,16 +109,26 @@ if [[ "$updateenv" == "y" ]]; then
         echo "HOSTNAME_PARTS=$hostnameparts" >> .env
         echo "Writing AUTO_VALIDATE_EMAIL=$autovalidateemail"
         echo "AUTO_VALIDATE_EMAIL=$autovalidateemail" >> .env
+        echo "Writing NGINX_CONF=./default.conf"
         echo "NGINX_CONF=./default.conf" >> .env
-        echo "NGINX_CERT=./origin_cert.pem" >> .env
-        echo "NGINX_KEY=./origin_key.pem" >> .env
+        echo "Writing NGINX_CERT=./${domain}_origin_cert.pem"
+        echo "NGINX_CERT=./${domain}_origin_cert.pem" >> .env
+        echo "Writing NGINX_KEY=./${domain}_origin_key.pem"
+        echo "NGINX_KEY=./${domain}_origin_key.pem" >> .env
+        echo "HOST_ENV=prod" >> .env
+        echo "VERSION=1.0.0" >> .env
+        echo "GOOGLE_MAPS_KEY=" >> .env
+        echo "PUBLIC_POSTHOG_KEY=" >> .env
+        echo "GA_TRACKING_ID=1" >> .env
+
         echo "Done!"
+        echo
         echo "If the containers were already running you will need to run 'docker compose down' and 'docker compose up -d' for the new values to take effect."
 
         read -p "Would you like to do this now? (y/n): " restart
         echo $restart
         if [[ "$restart" == "y" ]]; then
-                echo "You may be asked to Eenter your password to run 'sudo' commands"
+                echo "You may be asked to enter your password to run 'sudo' commands"
                 echo "sudo docker compose down"
                 sudo docker compose down
                 echo "sudo docker compose up -d"
