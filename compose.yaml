@@ -9,9 +9,7 @@ services:
       - ${NGINX_KEY}:/etc/ssl/key.pem:ro
     environment:
       - YOUR_DOMAIN=${DOMAIN}
-    ports:
-      - 80:80
-      - 443:443
+    network_mode: host
   cloudflared:
     image: cloudflare/cloudflared
     container_name: cloudflared
@@ -19,6 +17,7 @@ services:
     command: tunnel run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    network_mode: host
   mongo:
     image: mongo
     container_name: mongo
