@@ -176,7 +176,8 @@ You can also uninstlal nginx, note thah this would remove all files under /etc/n
   
   ```sudo apt autoremove```
 
-Everything should work as you would expect from Remote falcon. The only thing that I could not get to work is the viewer counts. RF will not log the last IP used to log into RF as a viewer, but even with testing from devices that have never logged into the RF dashboard I could not get the viewer count to increment for my show page.
+Everything should work as you would expect from Remote falcon. The only thing that I could not get to work is the viewer counts. This seems to be an issue with Cloudflare whether you run RF through a tunnel or directly expose port 443.
+I tested another setup with DNS and SSL provided by the domain registrar with Nginx configured as network_mode: host and the viewer count will update. 
 
 ## Troubleshooting
 
