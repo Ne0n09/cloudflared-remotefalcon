@@ -28,7 +28,10 @@ services:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root
   plugins-api:
-    build: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
+      args:
+        - OTEL_OPTS=
     image: plugins-api
     container_name: plugins-api
     restart: always
@@ -42,7 +45,10 @@ services:
     depends_on:
       - mongo
   control-panel:
-    build: https://github.com/Remote-Falcon/remote-falcon-control-panel.git
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-control-panel.git
+      args:
+        - OTEL_OPTS=
     image: control-panel
     container_name: control-panel
     restart: always
@@ -60,7 +66,10 @@ services:
     depends_on:
       - mongo
   viewer:
-    build: https://github.com/Remote-Falcon/remote-falcon-viewer.git
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-viewer.git
+      args:
+        - OTEL_OPTS=
     image: viewer
     container_name: viewer
     restart: always
@@ -73,23 +82,6 @@ services:
       - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
     depends_on:
       - mongo
-  gateway:
-    build: https://github.com/Remote-Falcon/remote-falcon-gateway.git
-    image: gateway
-    container_name: gateway
-    restart: always
-    ports:
-      - "8080:8080"
-      - "8000:8000"
-    environment:
-      - server.port=8080
-      - services.control-panel.path=remote-falcon-control-panel
-      - services.control-panel.uri=https://${DOMAIN}/remote-falcon-control-panel
-      - services.viewer.path=remote-falcon-viewer
-      - services.viewer.uri=https://${DOMAIN}/remote-falcon-viewer
-    depends_on:
-      - control-panel
-      - viewer
   ui:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-ui.git
@@ -108,4 +100,5 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - gateway
+      - control-panel
+      - viewer
