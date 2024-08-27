@@ -1,7 +1,7 @@
 # cloudflared-remotefalcon
-Self hosted Remote Falcon with easy setup and configuration using Cloudflare Tunnels.
+Self hosted Remote Falcon with easy setup and configuration using Cloudflare Tunnels with a configuration script.
 
-[Remote Falcon](https://remotefalcon.com/) is an awesome project and I thought I would help give back by creating an alternate way to run Remote Falcon for those who would like to self host it beyond just these [ways](https://docs.remotefalcon.com/docs/developer-docs/running-it/methods)
+[Remote Falcon](https://remotefalcon.com/) is an awesome project and I thought I would help give back by creating a simplified way to run Remote Falcon for those who would like to self host it beyond just these [ways](https://docs.remotefalcon.com/docs/developer-docs/running-it/methods)
 
 This guide assumes you already have a domain name and that you are running a fresh installation of Debian or Ubuntu.
 
@@ -9,11 +9,11 @@ The RF configuration script will check if you have Docker installed and install 
 
 It will also guide you step by step to creating and saving the origin server certificates. 
 
-I have modified the compose file to allow for everything to be run from Docker, requiring only Docker be installed on the host. 
+I have modified the compose file to allow for everything to be run from Docker(Nginx and the Cloudflare Tunnel run as Docker containers), requiring only Docker be installed on the host. 
 
 There is no need to open up port 443 when going through the Cloudflare tunnel.
 
-There is no need to manually edit the compose.yaml or default.conf file.
+There is no need to manually edit the compose.yaml or the Nginx default.conf file.
 
 The .env file handles the configuration variables and the configure-rf.sh script walks you through setting these variables and applying them.
 
