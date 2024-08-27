@@ -35,7 +35,7 @@ Click Continue
 
 Select the Free plan and click Continue
 
-Delete and existing A or CNAME records that are pointing at yourdomain.com and click Continue
+Delete and existing A or CNAME records that are pointing to * or yourdomain.com and click Continue
 
 Copy the Cloudflare nameservers and go to your domain name registrar and update the nameservers for your domain to the Cloudflare nameservers.
 
@@ -112,7 +112,7 @@ Click Additional application settings -> TLS
 
 Click Save tunnel
 
-__NOTE:___ You may receive an error if you already have DNS records. You will need to delete any existing A or CNAME records pointing to * or yourdomain.com
+__NOTE:__ You may receive an error if you already have DNS records. You will need to delete any existing A or CNAME records pointing to * or yourdomain.com
 
 **Second public hostname**
 
