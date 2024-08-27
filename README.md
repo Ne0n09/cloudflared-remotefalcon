@@ -118,15 +118,15 @@ __NOTE:__ You may receive an error if you already have DNS records. You will nee
 
 Click the newly created tunnel and click Edit.
 
-Select Public Hostname
+Click Public Hostname
 
 Click + Add a public hostname
 
 Subdomain: *
 
-___NOTE:___ Ignore the warning about 'This domain contains a wildcard." We will manually add the wildcard entry under the DNS settings later.
-
 - Domain: yourdomain.com
+
+ __NOTE:__ Ignore the warning about 'This domain contains a wildcard." We will manually add the wildcard entry under the DNS settings later.
 
 - Service Type: HTTPS
 
@@ -139,7 +139,11 @@ Click Additional application settings -> TLS
 
 Click Save hostname
 
-Catch-all rule: https://nginx
+**Catch-all rule**
+
+Click Edit to the right of the catch-all rule.
+
+Type or paste ```https://nginx``` and cick Save.
 
 ### DNS
 
