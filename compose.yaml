@@ -63,6 +63,7 @@ services:
       - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
       - github.pat=
       - sendgrid.key=
+      - client.header=${CLIENT_HEADER}
     depends_on:
       - mongo
   viewer:
@@ -80,6 +81,7 @@ services:
       - server.port=8082
       - jwt.viewer=${VIEWER_JWT_KEY}
       - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
+      - client.header=${CLIENT_HEADER}
     depends_on:
       - mongo
   ui:
