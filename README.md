@@ -184,13 +184,17 @@ Ensure that you are using these name servers with your domain name registrar/pro
 ## Remote Falcon Installation
 Make a directory for Remote Falcon, download the configuration script, make it executable and run it!
 
-1. Make a directory to host the Remote Falcon files.
+1. Make a directory to host the Remote Falcon files in your current directory
+
+- Verify your current directory with ```pwd```
 
    ```mkdir remotefalcon && cd remotefalcon```
 
 1. Download the script.
    
    ```curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/configure-rf.sh```
+
+   - If curl is not installed install it with: ```sudo apt install curl```
 3. Make it executable.
    
    ```chmod +x configure-rf.sh```
