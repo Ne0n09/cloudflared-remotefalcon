@@ -184,9 +184,7 @@ Ensure that you are using these name servers with your domain name registrar/pro
 ## Remote Falcon Installation
 Make a directory for Remote Falcon, download the configuration script, make it executable and run it!
 
-1. Make a directory to host the Remote Falcon files in your current directory
-
-- Verify your current directory with ```pwd```
+1. Make a directory to host the Remote Falcon files in your current directory. Your current directory can be verified with ```pwd```
 
    ```mkdir remotefalcon && cd remotefalcon```
 
