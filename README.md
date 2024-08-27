@@ -92,7 +92,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 6. Save tunnel
 7. Select Docker under choose your environment
 8. Copy the whole 'docker run cloudflare' command and paste it into a notepad.
-9. Ensure you have the whole token. We will need it later in the configuration script.
+9. Ensure you have the whole token. We will need it later in the configuration script. You do not need to run the docker command.
 10. Click Next
 
 First public hostname
