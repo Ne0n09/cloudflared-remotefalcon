@@ -3,8 +3,6 @@ Self hosted Remote Falcon with easy setup and configuration using Cloudflare Tun
 
 [Remote Falcon](https://remotefalcon.com/) is an awesome project and I thought I would help give back by creating an alternate way to run Remote Falcon for those who would like to self host it beyond just these [ways](https://docs.remotefalcon.com/docs/developer-docs/running-it/methods)
 
-We will start with the Cloudflare configuration.
-
 This guide assumes you already have a domain name and that you are running a fresh installation of Debian or Ubuntu.
 
 The RF configuration script will check if you have Docker installed and install it for you if not. 
@@ -19,23 +17,53 @@ There is no need to manually edit the compose.yaml or default.conf file.
 
 The .env file handles the configuration variables and the configure-rf.sh script walks you through setting these variables and applying them.
 
-__NOTE__ This guide is a working progress
+__NOTE__ This guide is a work in progress.
+
+We will start with the Cloudflare configuration.
 
 ## Cloudflare Configuration
 This configuration will go over the Cloudflare DNS, certificate, and tunnel configuration.
 
-### Certificates
-We'll start with the certificates.
+### Add Domain Name to Cloudflare
+If not already added, you'll have to add your domain name to Cloudflare
 
-This is what I have configured and it works for my setup.
+Go to the [Cloudflare Dashboard](https://dash.cloudflare.com/) and click Add a Domain.
+
+Enter your existing domain name or purchase a new one from Cloudflare.
+
+Click Continue
+
+Select the Free plan and click Continue
+
+Delete and existing A or CNAME records that are pointing at yourdomain.com and click Continue
+
+Copy the Cloudflare nameservers and go to your domain name registrar and update the nameservers for your domain to the Cloudflare nameservers.
+
+Click Continue on Cloudflare
+
+Skip the Quick Start Guide by clicking Finish Later
+
+You will have to wait some time for the new nameservers to take effect. 
+
+Cloudflare will send you an email when your domain is available. You can continue with the additional setup so it will be ready to go.
+
+### Certificates
+Next we'll move on to the certificate configuration.
+
+Click SSL/TLS on the left side of the Cloudflare Dashboard.
 
 Enable the options under each section.
 
+SSL/TLS -> Overview
+
+1. Full(Strict)
+2. Enable SSL/TLS Recommender 
+
 SSL/TLS -> Edge Certificates
 
-1. Always Use HTTPS
-2. Opportunistic Encryption
-3. TLS 1.3
+1. Enable Always Use HTTPS
+2. Enable Opportunistic Encryption
+3. Enable TLS 1.3
 
 SSL/TLS -> Client Certificates
 I have a created certificate here, but I don't think I'm using it at the moment.
