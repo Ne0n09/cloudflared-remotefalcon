@@ -122,7 +122,7 @@ Click Public Hostname
 
 Click + Add a public hostname
 
-Subdomain: *
+- Subdomain: *
 
 - Domain: yourdomain.com
 
