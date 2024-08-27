@@ -82,7 +82,7 @@ Create the certificate such as:
 
 ### Cloudflare Tunnel
 
-Go back to the main Cloudflare dashboard page if not there already.
+Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if not there already.
 
 1. Click Zero Trust
 2. Click Networks
