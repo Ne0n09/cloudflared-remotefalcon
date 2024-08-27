@@ -63,7 +63,9 @@ SSL/TLS -> Edge Certificates
 
 1. Enable Always Use HTTPS
 2. Enable Opportunistic Encryption
-3. Enable TLS 1.3
+3. Minimum TLS Version Select TLS 1.3
+4. Enable TLS 1.3
+5. Enable Automatic HTTPS Rewrites
 
 SSL/TLS -> Client Certificates
 I have a created certificate here, but I don't think I'm using it at the moment.
