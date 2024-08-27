@@ -105,7 +105,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
 - Service Type: HTTPS:
 
-- Service URL: nginx
+- Service URL: localhost
 
 Click Additional application settings -> TLS
 
@@ -132,7 +132,7 @@ Click + Add a public hostname
 
 - Service Type: HTTPS
 
-- Service URL: nginx
+- Service URL: localhost
 
 Click *Additional application settings* -> TLS
 
@@ -145,7 +145,7 @@ Click *Save hostname*
 
 Click *Edit* to the right of the catch-all rule.
 
-Type or paste ```https://nginx``` and click *Save*.
+Type or paste ```https://localhost``` and click *Save*.
 
 ### DNS
 
