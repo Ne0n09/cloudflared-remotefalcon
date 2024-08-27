@@ -132,18 +132,18 @@ Click + Add a public hostname
 
 - Service URL: nginx
 
-Click Additional application settings -> TLS
+Click *Additional application settings* -> TLS
 
 1. Origin Server name: *.yourdomain.com
 2. HTTP2 connection: On
 
-Click Save hostname
+Click *Save hostname*
 
 **Catch-all rule**
 
-Click Edit to the right of the catch-all rule.
+Click *Edit* to the right of the catch-all rule.
 
-Type or paste ```https://nginx``` and cick Save.
+Type or paste ```https://nginx``` and click *Save*.
 
 ### DNS
 
