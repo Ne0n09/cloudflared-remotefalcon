@@ -53,6 +53,7 @@ else
         VIEWER_JWT_KEY="123456"
         HOSTNAME_PARTS="2"
         AUTO_VALIDATE_EMAIL="true"
+        CLIENT_HEADER="CF-Connecting-IP"
 fi
 
 echo "Answer the following questions to update your compose .env variables."
@@ -68,8 +69,10 @@ domain=${domain:-$DOMAIN}
 read -p "Enter a random value for viewer JWT key: [$VIEWER_JWT_KEY]: " viewerjwtkey
 viewerjwtkey=${viewerjwtkey:-$VIEWER_JWT_KEY}
 
-read -p "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com'): [$HOSTNAME_PARTS]: " hostnameparts
-hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
+# Removed since Free CF does not allot multi level subdomains without paying
+#read -p "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com'): [$HOSTNAME_PARTS]: " hostnameparts
+#hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
+hostnameparts=$HOSTNAME_PARTS
 
 read -p "Enable auto validate email? (true/false): [$AUTO_VALIDATE_EMAIL]: " autovalidateemail
 autovalidateemail=${autovalidateemail:-$AUTO_VALIDATE_EMAIL}
@@ -120,6 +123,7 @@ if [[ "$updateenv" == "y" ]]; then
         echo "GOOGLE_MAPS_KEY=" >> .env
         echo "PUBLIC_POSTHOG_KEY=" >> .env
         echo "GA_TRACKING_ID=1" >> .env
+        echo "CLIENT_HEADER=CF-Connecting-IP" >> .env
 
         echo "Done!"
         echo
