@@ -92,29 +92,29 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 6. Save tunnel
 7. Select Docker under choose your environment
 8. Copy the whole 'docker run cloudflare' command and paste it into a notepad.
-9. Ensure you have the whole token. We will need it later in the configuration script. You do not need to run the docker command.
+9. Ensure you have the whole token. We will need it later in the configuration script.
 10. Click Next
 
-First public hostname
+**First public hostname**
 
-Subdomain: blank
+- Subdomain: blank
 
-Domain: your.domain.com
+- Domain: your.domain.com
 
-Service Type: HTTPS:
+- Service Type: HTTPS:
 
-Service URL: nginx
+- Service URL: nginx
 
-Additional application settings -> TLS
+Click Additional application settings -> TLS
 
 1. Origin Server name: *.yourdomain.com
 2. HTTP2 connection: On
 
 Click Save tunnel
 
-__NOTE:___ You may receive an error if you already have DNS records. You will need to delete any existing A records or CNAME records pointing to * or yourdomain.com
+__NOTE:___ You may receive an error if you already have DNS records. You will need to delete any existing A or CNAME records pointing to * or yourdomain.com
 
-Second public hostname
+**Second public hostname**
 
 Click the newly created tunnel and click Edit.
 
@@ -126,11 +126,13 @@ Subdomain: *
 
 ___NOTE:___ Ignore the warning about 'This domain contains a wildcard." We will manually add the wildcard entry under the DNS settings later.
 
-Domain: yourdomain.com
+- Domain: yourdomain.com
 
-Service Type: HTTPS
+- Service Type: HTTPS
 
-Service URL: nginx
+- Service URL: nginx
+
+Click Additional application settings -> TLS
 
 1. Origin Server name: *.yourdomain.com
 2. HTTP2 connection: On
