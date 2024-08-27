@@ -147,7 +147,9 @@ Type or paste ```https://nginx``` and click *Save*.
 
 ### DNS
 
-With the Cloudflare tunnel configuration completed. Go back to the main Cloudflare dashboard.
+With the Cloudflare tunnel configuration completed. Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/).
+
+Click yourdomain.com
 
 Select DNS -> Records
 
@@ -167,7 +169,7 @@ Target: Paste your complete cfargotunnel.com Target
 
 Click Save
 
-Now you should have two DNS records pointing to your .cfargotunnel target.
+Now you should have two DNS records pointing to your .cfargotunnel target. Example:
 
 - CNAME * 248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com
 
@@ -180,7 +182,11 @@ Scroll down and you should see the Cloudflare Nameservers.
 Ensure that you are using these name servers with your domain name registrar/provider.
 
 ## Remote Falcon Installation
-Download the configuration script, make it executable and run it!
+Make a directory for Remote Falcon, download the configuration script, make it executable and run it!
+
+1. Make a directory to host the Remote Falcon files.
+
+   ```mkdir remotefalcon && cd remotefalcon```
 
 1. Download the script.
    
