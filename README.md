@@ -212,14 +212,11 @@ If nginx is running on the host you will need to stop it from running.
 
   ```sudo systemctl stop nginx```
 
-You can also uninstlal nginx, note thah this would remove all files under /etc/nginx!
+You can also uninstall nginx, **note** that this would remove all files under /etc/nginx!
 
   ```sudo apt purge nginx nginx-common nginx-core```
   
   ```sudo apt autoremove```
-
-Everything should work as you would expect from Remote falcon. The only thing that I could not get to work is the viewer counts. This seems to be an issue with Cloudflare whether you run RF through a tunnel or directly expose port 443.
-I tested another setup with DNS and SSL provided by the domain registrar with Nginx configured as network_mode: host and the viewer count will update. 
 
 ## Troubleshooting
 
