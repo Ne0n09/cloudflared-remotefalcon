@@ -138,38 +138,38 @@ if [[ "$updateenv" == "y" ]]; then
         echo "PUBLIC_POSTHOG_KEY=" >> .env
         echo "GA_TRACKING_ID=1" >> .env
         echo "CLIENT_HEADER=CF-Connecting-IP" >> .env
-
-        echo "Done!"
+        echo "Writing variables to .env file completed!"
         echo
-        # Ask to start/restart the containers
-        read -p "Would you like to bring the containers up now and apply the changes? All containers will be brought down (y/n: "restart
-        echo $restart
-        if [[ "$restart" == "y" ]]; then
-                echo "You may be asked to enter your password to run 'sudo' commands"
-                echo "Bringing the containers down with sudo docker compose down"
-                sudo docker compose down
-                # Ask to remove existing images
-                read -p "Would you also like to remove and rebuild existing Remote Falcon images? (y/n) [n]: " rebuild
-                updatecerts=${updatecerts:-n}
-                echo $rebuild
-                if [[ "$rebuild" == "y" ]]; then
-                        echo "Attempting to remove Remote Falcon images..."
-                        echo "Attempting to remove ui image..."
-                        sudo docker image remove ui
-                        echo "Attempting to remove viewer image..."
-                        sudo docker image remove viewer
-                        echo "Attempting to remove control-panel image..."
-                        sudo docker image remove control-panel
-                        echo "Done removing images"
-                fi
-                echo "Bringing the containers back up with sudo docker compose up -d"
-                sudo docker compose up -d
-                echo "Sleeping 20 seconds before running 'sudo docker ps' to verify the status of all containers"
-                sleep 20s
-                echo "sudo docker ps"
-                sudo docker ps
-                echo "Done. Verify that all containers show 'Up'"
-        fi
 else
         echo "Variables were not updated! No changes were made to the .env file"
+        echo
+fi
+# Ask to start/restart the containers
+read -p "Would you like to start new containers or bring existing containers down and bring them back up to apply the .env file? (y/n): "restart
+echo $restart
+if [[ "$restart" == "y" ]]; then
+        echo "You may be asked to enter your password to run 'sudo' commands"
+        echo "Bringing containers down with sudo docker compose down"
+        sudo docker compose down
+        # Ask to remove existing images
+        read -p "Would you also like to remove and rebuild existing Remote Falcon images? (y/n) [n]: " rebuild
+        rebuild=${rebuild:-n}
+        echo $rebuild
+        if [[ "$rebuild" == "y" ]]; then
+                echo "Attempting to remove Remote Falcon images..."
+                echo "Attempting to remove ui image..."
+                sudo docker image remove ui
+                echo "Attempting to remove viewer image..."
+                sudo docker image remove viewer
+                echo "Attempting to remove control-panel image..."
+                sudo docker image remove control-panel
+                echo "Done removing images"
+        fi
+        echo "Bringing containers back up with sudo docker compose up -d"
+        sudo docker compose up -d
+        echo "Sleeping 20 seconds before running 'sudo docker ps' to verify the status of all containers"
+        sleep 20s
+        echo "sudo docker ps"
+        sudo docker ps
+        echo "Done. Verify that all containers show 'Up'"
 fi
