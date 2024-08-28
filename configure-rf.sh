@@ -145,7 +145,7 @@ else
         echo
 fi
 # Ask to start/restart the containers
-read -p "Would you like to start new containers or bring existing containers down and bring them back up to apply the .env file? (y/n): "restart
+read -p "Would you like to start new containers or bring existing containers down and bring them back up to apply the .env file? (y/n): " restart
 echo $restart
 if [[ "$restart" == "y" ]]; then
         echo "You may be asked to enter your password to run 'sudo' commands"
