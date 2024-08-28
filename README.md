@@ -227,6 +227,12 @@ Ensure your web browser is pointing you to https://yourdomain.com and *NOT* http
 
 There may also may be other causes for this error that I am not aware of.
 
+___err_quic_protocol_error in browser___
+
+Try to restart the cloudflared container:
+
+```sudo docker restart cloudflared```
+
 Below you will find some useful troubleshooting commands.
 
 Test the nginx configuration file: 
