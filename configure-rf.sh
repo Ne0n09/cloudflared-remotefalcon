@@ -8,8 +8,22 @@ if [ ! -x "$(command -v docker)" ]; then
 
         if [[ "$downloaddocker" == "y" ]]; then
                 echo "Installing docker... you may need to enter your password for the 'sudo' command"
-                sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-                echo "Docker installation done!"
+                # Get OS distribution
+                source /etc/os-release
+                case $ID in
+                ubuntu)
+                        echo "Installing Docker for Ubuntu..."
+                        sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+                        echo "Docker installation for Ubuntu complete!"
+                ;;
+                debian)
+                        echo "Installing Docker for Debian.."
+                        sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+                        echo "Docker installation for Debian complete!"
+                ;;
+                *) echo "Distribution is not supported by this script! Please install Docker manually."
+                ;;
+                esac
         fi
 fi
 
@@ -93,7 +107,7 @@ echo "Please confirm the variables below are correct:"
 echo "TUNNEL_TOKEN=$tunneltoken"
 echo "DOMAIN=$domain"
 echo "VIEWER_JWT_KEY=$viewerjwtkey"
-echo "HOSTNAME_PARTS=$hostnameparts"
+#echo "HOSTNAME_PARTS=$hostnameparts"
 echo "AUTO_VALIDATE_EMAIL=$autovalidateemail"
 echo "NGINX_CERT=./${domain}_origin_cert.pem"
 echo "NGINX_KEY=./${domain}_origin_key.pem"
@@ -108,7 +122,7 @@ if [[ "$updateenv" == "y" ]]; then
         echo "DOMAIN=$domain" >> .env
         echo "Writing VIEWER_JWT_KEY=$viewerjwtkey"
         echo "VIEWER_JWT_KEY=$viewerjwtkey" >> .env
-        echo "Writing HOSTNAME_PARTS=$hostnameparts"
+#        echo "Writing HOSTNAME_PARTS=$hostnameparts"
         echo "HOSTNAME_PARTS=$hostnameparts" >> .env
         echo "Writing AUTO_VALIDATE_EMAIL=$autovalidateemail"
         echo "AUTO_VALIDATE_EMAIL=$autovalidateemail" >> .env
@@ -127,16 +141,16 @@ if [[ "$updateenv" == "y" ]]; then
 
         echo "Done!"
         echo
-        echo "If the containers were already running you will need to run 'docker compose down' and 'docker compose up -d' for the new values to take effect."
-
-        read -p "Would you like to do this now? (y/n): " restart
+        # Ask to start/restart the containers
+        read -p "Would you like to bring the containers up now and apply the changes? All containers will be brought down (y/n: "restart
         echo $restart
         if [[ "$restart" == "y" ]]; then
                 echo "You may be asked to enter your password to run 'sudo' commands"
                 echo "Bringing the containers down with sudo docker compose down"
                 sudo docker compose down
-                
-                read -p "Would you also like to remove and rebuild existing Remote Falcon images? (y/n): " rebuild
+                # Ask to remove existing images
+                read -p "Would you also like to remove and rebuild existing Remote Falcon images? (y/n) [n]: " rebuild
+                updatecerts=${updatecerts:-n}
                 echo $rebuild
                 if [[ "$rebuild" == "y" ]]; then
                         echo "Attempting to remove Remote Falcon images..."
