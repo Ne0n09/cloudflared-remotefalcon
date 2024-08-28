@@ -133,12 +133,25 @@ if [[ "$updateenv" == "y" ]]; then
         echo $restart
         if [[ "$restart" == "y" ]]; then
                 echo "You may be asked to enter your password to run 'sudo' commands"
-                echo "sudo docker compose down"
+                echo "Bringing the containers down with sudo docker compose down"
                 sudo docker compose down
-                echo "sudo docker compose up -d"
+                
+                read -p "Would you also like to remove and rebuild existing Remote Falcon images? (y/n): " rebuild
+                echo $rebuild
+                if [[ "$rebuild" == "y" ]]; then
+                        echo "Attempting to remove Remote Falcon images..."
+                        echo "Attempting to remove ui image..."
+                        sudo docker image remove ui
+                        echo "Attempting to remove viewer image..."
+                        sudo docker image remove viewer
+                        echo "Attempting to remove control-panel image..."
+                        sudo docker image remove control-panel
+                        echo "Done removing images"
+                fi
+                echo "Bringing the containers back up with sudo docker compose up -d"
                 sudo docker compose up -d
-                echo "Sleeping 5 seconds before running 'sudo docker ps'"
-                sleep 5s
+                echo "Sleeping 20 seconds before running 'sudo docker ps' to verify the status of all containers"
+                sleep 20s
                 echo "sudo docker ps"
                 sudo docker ps
                 echo "Done. Verify that all containers show 'Up'"
