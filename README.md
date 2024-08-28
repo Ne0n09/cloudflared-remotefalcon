@@ -194,7 +194,6 @@ Make a directory for Remote Falcon, download the configuration script, make it e
    
    ```curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/configure-rf.sh```
 
-   - If curl is not installed install it with: ```sudo apt install curl```
 3. Make it executable.
    
    ```chmod +x configure-rf.sh```
