@@ -61,8 +61,8 @@ services:
       - auto-validate-email=${AUTO_VALIDATE_EMAIL}
       - jwt.user=${VIEWER_JWT_KEY}
       - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
-      - github.pat=
-      - sendgrid.key=
+      - github.pat=${GITHUB_PAT}
+      - sendgrid.key=${SENGRID_KEY}
       - client.header=${CLIENT_HEADER}
     depends_on:
       - mongo
@@ -94,6 +94,7 @@ services:
         - VIEWER_API=https://${DOMAIN}/remote-falcon-viewer
         - VIEWER_JWT_KEY=${VIEWER_JWT_KEY}
         - GOOGLE_MAPS_KEY=${GOOGLE_MAPS_KEY}
+        - PUBLIC_POSTHOG_HOST=${PUBLIC_POSTHOG_HOST}
         - PUBLIC_POSTHOG_KEY=${PUBLIC_POSTHOG_KEY}
         - GA_TRACKING_ID=${GA_TRACKING_ID}
         - HOSTNAME_PARTS=${HOSTNAME_PARTS}
