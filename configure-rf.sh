@@ -215,5 +215,5 @@ if [[ "$restart" == "y" ]]; then
         echo "sudo docker ps"
         sudo docker ps
         echo
-        echo "Done. Verify that all containers show 'Up'. If not, check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose up -d'
+        echo "Done. Verify that all containers show 'Up'. If not, check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose up -d'"
 fi
