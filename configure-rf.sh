@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Check if docker is installed and ask to download and install it if not.
+# Check if docker is installed and ask to download and install it if not (For Ubuntu and Debian).
 if [ ! -x "$(command -v docker)" ]; then
         read -p "Docker is not installed, would you like to install it? (y/n) [y]: " downloaddocker
         downloaddocker=${downloaddocker:-y}
@@ -27,7 +27,9 @@ if [ ! -x "$(command -v docker)" ]; then
         fi
 fi
 
-# Download .env, default.conf, and compose.yaml if they do not exist. Ask if they should be downloaded
+### Download compose.yaml and default.conf if they do not exist. Ask if they should be downloaded
+
+# compose.yaml download
 if [ ! -f compose.yaml ]; then
         read -p "The compose.yaml file does not exist, would you like to download it? (y/n) [y]: " downloadcompose
         downloadcompose=${downloadcompose:-y}
@@ -40,6 +42,7 @@ if [ ! -f compose.yaml ]; then
         fi
 fi
 
+# default.conf download
 if [ ! -f default.conf ]; then
         read -p "The nginx default.conf file does not exist, would you like to download it? (y/n) [y]: " downloadnginxconf
         downloadnginxconf=${downloadnginxconf:-y}
@@ -52,7 +55,7 @@ if [ ! -f default.conf ]; then
         fi
 fi
 
-# Print existing .env file variables, if it exists
+# Print existing .env file, if it exists, otherwise create the .env file and set some default values
 if [ -f .env ]; then
         echo "Source .env exists!"
         echo "Printing current values:"
@@ -67,7 +70,17 @@ else
         VIEWER_JWT_KEY="123456"
         HOSTNAME_PARTS="2"
         AUTO_VALIDATE_EMAIL="true"
+        NGINX_CONF="./default.conf"
+        GA_TRACKING_ID="1"
+        HOST_ENV="prod"
+        VERSION="1.0.0"
+        GOOGLE_MAPS_KEY=""
+        PUBLIC_POSTHOG_KEY=""
+        PUBLIC_POSTHOG_HOST="https://us.i.posthog.com"
+        GA_TRACKING_ID="1"
         CLIENT_HEADER="CF-Connecting-IP"
+        SENGRID_KEY=""
+        GITHUB_PAT=""
 fi
 
 echo "Answer the following questions to update your compose .env variables."
@@ -91,6 +104,7 @@ hostnameparts=$HOSTNAME_PARTS
 read -p "Enable auto validate email? (true/false): [$AUTO_VALIDATE_EMAIL]: " autovalidateemail
 autovalidateemail=${autovalidateemail:-$AUTO_VALIDATE_EMAIL}
 
+# Ask if Cloudflare origin certificates should be configured
 read -p "Update origin certificates? (y/n) [n]: " updatecerts
 updatecerts=${updatecerts:-n}
 echo $updatecerts
@@ -102,42 +116,67 @@ if [[ "$updatecerts" == "y" ]]; then
         nano ${domain}_origin_key.pem
 fi
 
+# Ask if analytics env variables should be set
+read -p "Update analytics variables? (y/n) [n]: " updateanalytics
+updateanalytics=${updateanalytics:-n}
+echo $updateanalytics
+if [[ "$updateanalytics" == "y" ]]; then
+        read -p "Enter your PostHog key: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
+ #       publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
+
+        read -p "Enter your Google Analytics Measurement ID: [$GA_TRACKING_ID]: " gatrackingid
+#        gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
+fi
+
+publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
+gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
+
 echo
 echo "Please confirm the variables below are correct:"
+echo
+echo "--------------------------------"
 echo "TUNNEL_TOKEN=$tunneltoken"
 echo "DOMAIN=$domain"
 echo "VIEWER_JWT_KEY=$viewerjwtkey"
-#echo "HOSTNAME_PARTS=$hostnameparts"
+echo "HOSTNAME_PARTS=$hostnameparts"
 echo "AUTO_VALIDATE_EMAIL=$autovalidateemail"
+echo "NGINX_CONF=$NGINX_CONF"
 echo "NGINX_CERT=./${domain}_origin_cert.pem"
 echo "NGINX_KEY=./${domain}_origin_key.pem"
+echo "HOST_ENV=$HOST_ENV"
+echo "VERSION=$VERSION"
+echo "GOOGLE_MAPS_KEY=$GOOGLE_MAPS_KEY"
+echo "PUBLIC_POSTHOG_KEY=$publicposthogkey"
+echo "PUBLIC_POSTHOG_HOST=$PUBLIC_POSTHOG_HOST"
+echo "GA_TRACKING_ID=$gatrackingid"
+echo "CLIENT_HEADER=$CLIENT_HEADER"
+echo "SENGRID_KEY=$SENGRID_KEY"
+echo "GITHUB_PAT=$GITHUB_PAT"
+echo "--------------------------------"
+echo
 
 read -p "Update the .env file with the above variables? (y/n): " updateenv
 
+# Write the variables to the .env file
 if [[ "$updateenv" == "y" ]]; then
         echo "Writing variables to .env file..."
-        echo "Writing TUNNEL_TOKEN=$tunneltoken"
         echo "TUNNEL_TOKEN=$tunneltoken" > .env
-        echo "Writing DOMAIN=$domain"
         echo "DOMAIN=$domain" >> .env
-        echo "Writing VIEWER_JWT_KEY=$viewerjwtkey"
         echo "VIEWER_JWT_KEY=$viewerjwtkey" >> .env
-#        echo "Writing HOSTNAME_PARTS=$hostnameparts"
         echo "HOSTNAME_PARTS=$hostnameparts" >> .env
-        echo "Writing AUTO_VALIDATE_EMAIL=$autovalidateemail"
         echo "AUTO_VALIDATE_EMAIL=$autovalidateemail" >> .env
-        echo "Writing NGINX_CONF=./default.conf"
-        echo "NGINX_CONF=./default.conf" >> .env
-        echo "Writing NGINX_CERT=./${domain}_origin_cert.pem"
+        echo "NGINX_CONF=$NGINX_CONF" >> .env
         echo "NGINX_CERT=./${domain}_origin_cert.pem" >> .env
-        echo "Writing NGINX_KEY=./${domain}_origin_key.pem"
         echo "NGINX_KEY=./${domain}_origin_key.pem" >> .env
-        echo "HOST_ENV=prod" >> .env
-        echo "VERSION=1.0.0" >> .env
-        echo "GOOGLE_MAPS_KEY=" >> .env
-        echo "PUBLIC_POSTHOG_KEY=" >> .env
-        echo "GA_TRACKING_ID=1" >> .env
-        echo "CLIENT_HEADER=CF-Connecting-IP" >> .env
+        echo "HOST_ENV=$HOST_ENV" >> .env
+        echo "VERSION=$VERSION" >> .env
+        echo "GOOGLE_MAPS_KEY=$GOOGLE_MAPS_KEY" >> .env
+        echo "PUBLIC_POSTHOG_KEY=$publicposthogkey" >> .env
+        echo "PUBLIC_POSTHOG_HOST=$PUBLIC_POSTHOG_HOST" >> .env
+        echo "GA_TRACKING_ID=$gatrackingid" >> .env
+        echo "CLIENT_HEADER=$CLIENT_HEADER" >> .env
+        echo "SENGRID_KEY=$SENGRID_KEY" >> .env
+        echo "GITHUB_PAT=$GITHUB_PAT" >> .env
         echo "Writing variables to .env file completed!"
         echo
 else
@@ -165,11 +204,16 @@ if [[ "$restart" == "y" ]]; then
                 sudo docker image remove control-panel
                 echo "Done removing images"
         fi
+        echo
         echo "Bringing containers back up with sudo docker compose up -d"
+        echo
         sudo docker compose up -d
+        echo
         echo "Sleeping 20 seconds before running 'sudo docker ps' to verify the status of all containers"
         sleep 20s
+        echo
         echo "sudo docker ps"
         sudo docker ps
-        echo "Done. Verify that all containers show 'Up'"
+        echo
+        echo "Done. Verify that all containers show 'Up'. If not, check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose up -d'
 fi
