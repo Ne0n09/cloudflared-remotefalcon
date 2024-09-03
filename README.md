@@ -101,7 +101,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
 - Subdomain: blank
 
-- Domain: your.domain.com
+- Domain: yourdomain.com
 
 - Service Type: HTTPS:
 
@@ -223,7 +223,9 @@ You can also uninstall nginx, **note** that this would remove all files under /e
 
 ___Unexpected Error___
 
-Ensure your web browser is pointing you to https://yourdomain.com and *NOT* https://www.yourdomain.com
+- Control Panel: Ensure your web browser is pointing you to https://yourdomain.com and *NOT* https://www.yourdomain.com
+
+- Viewer page: Make sure you're browsing to your show page sub-domain. You can find this by clicking the gear icon on the top right of the Remote Falcon control panel. It will show ```https://yourshowname.remotefalcon.com``` So for your show on your self hosted RF you would go to ```https://yourshowname.yourdomain.com```
 
 There may also may be other causes for this error that I am not aware of.
 
