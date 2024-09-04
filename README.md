@@ -145,6 +145,8 @@ Click *Save hostname*
 
 Click *Edit* to the right of the catch-all rule.
 
+![tunnel_public_hostname_config](https://github.com/user-attachments/assets/b1fc33be-46f4-47a8-a98c-73f7e070d2c1)
+
 Type or paste ```https://localhost``` and click *Save*.
 
 ### DNS
@@ -178,6 +180,8 @@ Now you should have two DNS records pointing to your .cfargotunnel target. Examp
 - CNAME yourdomain.com 248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com
 
 Both should be proxied.
+
+![DNS_Records_Argo_tunnel_config](https://github.com/user-attachments/assets/69eede72-edb7-45a6-8127-a978b9913c8d)
 
 Scroll down and you should see the Cloudflare Nameservers.
 
@@ -234,6 +238,14 @@ ___err_quic_protocol_error in browser___
 Try to restart the cloudflared container:
 
 ```sudo docker restart cloudflared```
+
+Otherwise, it could be something going on with Cloudflare.
+
+___Control Panel Dashboard Viewer Statistics___
+
+The Control Panel Dashboard will not count the last IP that was used to login to the Control Panel in the viewer statistics when viewing your show page. 
+
+If you want to test if viewer statistics are working you can disconnect your phone from Wi-Fi and then check from a desktop/laptop that's logged into the Control Panel.
 
 Below you will find some useful troubleshooting commands.
 
