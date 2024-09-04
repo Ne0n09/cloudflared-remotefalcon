@@ -116,6 +116,8 @@ Click Save tunnel
 
 __NOTE:__ You may receive an error if you already have DNS records. You will need to delete any existing A or CNAME records pointing to * or yourdomain.com
 
+![tunnel_public_hostname_page_settings](https://github.com/user-attachments/assets/721ad2fb-32b0-4262-9300-cef0a968ad66)
+
 **Second public hostname**
 
 Click the newly created tunnel and click Edit.
@@ -141,11 +143,13 @@ Click *Additional application settings* -> TLS
 
 Click *Save hostname*
 
+![tunnel_public_hostname_page_settings_wildcard](https://github.com/user-attachments/assets/d7df0716-69bd-40df-8b60-8274e09059e2)
+
 **Catch-all rule**
 
 Click *Edit* to the right of the catch-all rule.
 
-![tunnel_public_hostname_config](https://github.com/user-attachments/assets/b1fc33be-46f4-47a8-a98c-73f7e070d2c1)
+![tunnel_public_hostname_config](https://github.com/user-attachments/assets/e12c7b95-6fb5-40fd-a463-eb086f590cf9)
 
 Type or paste ```https://localhost``` and click *Save*.
 
@@ -181,7 +185,7 @@ Now you should have two DNS records pointing to your .cfargotunnel target. Examp
 
 Both should be proxied.
 
-![DNS_Records_Argo_tunnel_config](https://github.com/user-attachments/assets/69eede72-edb7-45a6-8127-a978b9913c8d)
+![DNS_Records_Argo_tunnel_config](https://github.com/user-attachments/assets/b67d1f28-708e-424c-8dd6-b50b7d006d68)
 
 Scroll down and you should see the Cloudflare Nameservers.
 
