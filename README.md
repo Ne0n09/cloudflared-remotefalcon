@@ -17,9 +17,7 @@ There is no need to manually edit the compose.yaml or the Nginx default.conf fil
 
 The .env file handles the configuration variables and the configure-rf.sh script walks you through setting these variables and applying them.
 
-__NOTE__ This guide is a work in progress.
-
-We will start with the Cloudflare configuration.
+We will start with the Cloudflare configuration below.
 
 ## Cloudflare Configuration
 This configuration will go over the Cloudflare DNS, certificate, and tunnel configuration.
@@ -205,6 +203,7 @@ Make a directory for Remote Falcon, download the configuration script, make it e
 3. Make it executable.
    
    ```chmod +x configure-rf.sh```
+   
 5. Run it.
    
    ```./configure-rf.sh```
@@ -213,9 +212,7 @@ Be sure to have your origin server certificate, origin private key, and tunnel t
 
 ## Notes
 
-___This Guide is a work in progress___
-
-This guide assumes you are not running nginx on the host. 
+This guide assumes you are not running nginx on the host as it will be running as a Docker container. 
 
 If nginx is running on the host you will need to stop it from running.
 
@@ -251,7 +248,41 @@ The Control Panel Dashboard will not count the last IP that was used to login to
 
 If you want to test if viewer statistics are working you can disconnect your phone from Wi-Fi and then check from a desktop/laptop that's logged into the Control Panel.
 
-Below you will find some useful troubleshooting commands.
+___Mongo Container Restarting___
+
+If your Mongo container is constantly restarting when checking ```sudo docker ps``` then check the logs with ```sudo docker logs mongo```
+
+If you see a message similar to the below you will need to downgrade the Mongo image to a version prior to 5.0 if your CPU does not support AVX.
+
+```
+	WARNING: MongoDB 5.0+ requires a CPU with AVX support, and your current system does not appear to have that!
+	  see https://jira.mongodb.org/browse/SERVER-54407
+	  see also https://www.mongodb.com/community/forums/t/mongodb-5-0-cpu-intel-g4650-compatibility/116610/2
+	  see also https://github.com/docker-library/mongo/issues/485#issuecomment-891991814
+```
+If you are running a VM in a system such as Proxmox you can try changing the CPU type to 'host'. 
+
+To downgrade you can check the latest version of 4 here [Mongo 4.x tags](https://hub.docker.com/_/mongo/tags?page_size=&ordering=&name=4.)
+
+Update the image tag in your compose.yaml
+
+```nano compose.yaml```
+
+Modify the Mongo image line:
+
+```
+  mongo:
+    image: mongo
+```
+
+To add the specific 4.x version tag that you would like to use from [Mongo 4.x tags](https://hub.docker.com/_/mongo/tags?page_size=&ordering=&name=4.)
+
+```
+  mongo:
+    image: mongo:4.0.28
+```
+
+### Troubleshooting Commands
 
 Test the nginx configuration file: 
 
