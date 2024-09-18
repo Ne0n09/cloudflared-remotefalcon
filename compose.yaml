@@ -98,6 +98,7 @@ services:
         - PUBLIC_POSTHOG_KEY=${PUBLIC_POSTHOG_KEY}
         - GA_TRACKING_ID=${GA_TRACKING_ID}
         - HOSTNAME_PARTS=${HOSTNAME_PARTS}
+        - SOCIAL_META=${SOCIAL_META}
     image: ui
     container_name: ui
     restart: always
