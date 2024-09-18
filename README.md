@@ -228,7 +228,7 @@ You can also uninstall nginx, **note** that this would remove all files under /e
 
 ___Unexpected Error___
 
-- Control Panel: Ensure your web browser is pointing you to https://yourdomain.com and *NOT* https://www.yourdomain.com
+- Control Panel: Ensure your web browser is pointing you to https://yourdomain.com and *NOT www.* https://www.yourdomain.com 
 
 - Viewer page: Make sure you're browsing to your show page sub-domain. You can find this by clicking the gear icon on the top right of the Remote Falcon control panel. It will show https://yourshowname.remotefalcon.com So for your show on your self hosted RF you would go to https://yourshowname.yourdomain.com
 
@@ -255,10 +255,10 @@ If your Mongo container is constantly restarting when checking ```sudo docker ps
 If you see a message similar to the below you will need to downgrade the Mongo image to a version prior to 5.0 if your CPU does not support AVX.
 
 ```
-	WARNING: MongoDB 5.0+ requires a CPU with AVX support, and your current system does not appear to have that!
-	  see https://jira.mongodb.org/browse/SERVER-54407
-	  see also https://www.mongodb.com/community/forums/t/mongodb-5-0-cpu-intel-g4650-compatibility/116610/2
-	  see also https://github.com/docker-library/mongo/issues/485#issuecomment-891991814
+WARNING: MongoDB 5.0+ requires a CPU with AVX support, and your current system does not appear to have that!
+see https://jira.mongodb.org/browse/SERVER-54407
+see also https://www.mongodb.com/community/forums/t/mongodb-5-0-cpu-intel-g4650-compatibility/116610/2
+see also https://github.com/docker-library/mongo/issues/485#issuecomment-891991814
 ```
 If you are running a VM in a system such as Proxmox you can try changing the CPU type to 'host'. 
 
@@ -302,11 +302,11 @@ Display the status of the Cloudflare tunnel in the Cloudflared container:
 
 Access mongo container CLI and mongo shell to run mongo shell commands:
 
-```sudo docker exec -it mongo bash```
- 
-  ```mongosh "mongodb://root:root@localhost:27017"```
- 
-  ```use remote-falcon```
+```
+sudo docker exec -it mongo bash
+mongosh "mongodb://root:root@localhost:27017" 
+use remote-falcon
+```
 	
 To find shows: 
 
@@ -315,3 +315,17 @@ To find shows:
 To delete shows:
 
   ```db.show.deleteOne( { showName: 'Test3' } )```
+
+### Updating and pulling new Remote Falcon images
+
+When changes are made to Remote Falcon sometimes it is necessary to pull a new image. 
+
+To remove the current Remote Falcon images you will have to bring Remote Falcon down, remove the, and bring RF back up:
+
+```
+sudo docker compose down
+sudo docker image remove ui
+sudo docker image remove viewer
+sudo docker image remove control-panel
+sudo docker compose up -d
+```
