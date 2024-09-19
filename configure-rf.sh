@@ -55,82 +55,111 @@ if [ ! -f default.conf ]; then
         fi
 fi
 
-# Print existing .env file, if it exists, otherwise create the .env file and set some default values
+# Print existing .env file, if it exists, otherwise download the default .env file
+echo "Checking for existing .env file for environmental variables..."
 if [ -f .env ]; then
         echo "Source .env exists!"
         echo "Printing current values:"
         echo
-        cat .env
-        echo
         # Load the existing .env variables to allow for auto-completion
-        source .env
+        while IFS='=' read -rs line; do
+                # Ignore any comment lines and empty lines
+                if [[ $line == \#* || -z "$line" ]]; then
+                        continue
+                fi
+
+                # Split the line into key and value
+                key="${line%%=*}"
+                value="${line#*=}"
+
+                export "$key"="$value"
+                echo "$key=$value"
+        done < .env
 else
         echo "Source .env DOES not exist!"
-        echo "Setting some default values..."
-        VIEWER_JWT_KEY="123456"
-        HOSTNAME_PARTS="2"
-        AUTO_VALIDATE_EMAIL="true"
-        NGINX_CONF="./default.conf"
-        GA_TRACKING_ID="1"
-        HOST_ENV="prod"
-        VERSION="1.0.0"
-        GOOGLE_MAPS_KEY=""
-        PUBLIC_POSTHOG_KEY=""
-        PUBLIC_POSTHOG_HOST="https://us.i.posthog.com"
-        GA_TRACKING_ID="1"
-        CLIENT_HEADER="CF-Connecting-IP"
-        SENGRID_KEY=""
-        GITHUB_PAT=""
+        echo "Downloading default .env..."
+        curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/.env
+        echo "Done."
+        echo "Reading values from default .env"
+        echo
+        # Load the .env variables from the default .env to allow for auto-completion
+        while IFS='=' read -rs line; do
+                # Ignore any comment lines and empty lines
+                if [[ $line == \#* || -z "$line" ]]; then
+                        continue
+                fi
+
+                # Split the line into key and value
+                key="${line%%=*}"
+                value="${line#*=}"
+
+                export "$key"="$value"
+                echo "$key=$value"
+        done < .env
 fi
 
+### Configuration walkthrough questions. Questions will pull existing or default values from the sourced .env file
+echo
 echo "Answer the following questions to update your compose .env variables."
 echo "Press enter to accept the existing values that are between the brackets [ ]."
 echo "You will be asked to confirm the changes before the file is modified."
 echo
 read -p "Enter your Cloudflare tunnel token: [$TUNNEL_TOKEN]: " tunneltoken
 tunneltoken=${tunneltoken:-$TUNNEL_TOKEN}
-
+echo
 read -p "Enter your domain name, example: yourdomain.com: [$DOMAIN]: " domain
 domain=${domain:-$DOMAIN}
-
+echo
 read -p "Enter a random value for viewer JWT key: [$VIEWER_JWT_KEY]: " viewerjwtkey
 viewerjwtkey=${viewerjwtkey:-$VIEWER_JWT_KEY}
-
-# Removed since Free CF does not allot multi level subdomains without paying
-#read -p "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com'): [$HOSTNAME_PARTS]: " hostnameparts
-#hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
-hostnameparts=$HOSTNAME_PARTS
-
-read -p "Enable auto validate email? (true/false): [$AUTO_VALIDATE_EMAIL]: " autovalidateemail
+echo
+echo "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com')"
+read -p "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month): [$HOSTNAME_PARTS]: " hostnameparts
+hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
+echo
+read -p "Enable auto validate email? While set to 'true' anyone can create a viewer page account on your site (true/false): [$AUTO_VALIDATE_EMAIL]: " autovalidateemail
 autovalidateemail=${autovalidateemail:-$AUTO_VALIDATE_EMAIL}
+echo
 
-# Ask if Cloudflare origin certificates should be configured
+# Ask if Cloudflare origin certificates should be updated. This will create the cert/key in the current directory and append the domain name to the beginning of the file name
 read -p "Update origin certificates? (y/n) [n]: " updatecerts
 updatecerts=${updatecerts:-n}
 echo $updatecerts
 if [[ "$updatecerts" == "y" ]]; then
-        read -p "Press any key to open nano to paste the origin certificate. Ctrl+X and y to save."
+        read -p "Press any key to open nano to paste the origin certificate. Ctrl+X, y, and Enter to save."
         nano ${domain}_origin_cert.pem
 
-        read -p "Press any key to open nano to paste the origin private key. Ctrl+X and y to save."
+        read -p "Press any key to open nano to paste the origin private key. Ctrl+X, y, and Enter to save."
         nano ${domain}_origin_key.pem
 fi
+echo
 
-# Ask if analytics env variables should be set
+# Ask if analytics env variables should be set for PostHog and Google Analytics
 read -p "Update analytics variables? (y/n) [n]: " updateanalytics
 updateanalytics=${updateanalytics:-n}
 echo $updateanalytics
 if [[ "$updateanalytics" == "y" ]]; then
-        read -p "Enter your PostHog key: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
- #       publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
+        read -p "Enter your PostHog key - https://posthog.com/: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
 
-        read -p "Enter your Google Analytics Measurement ID: [$GA_TRACKING_ID]: " gatrackingid
-#        gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
+        read -p "Enter your Google Analytics Measurement ID - https://analytics.google.com/: [$GA_TRACKING_ID]: " gatrackingid
 fi
 
 publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
 gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
+echo
 
+# Ask if SOCIAL_META variable should be updated
+echo "See the RF docs for details on the SOCIAL_META tag:"
+echo "https://docs.remotefalcon.com/docs/developer-docs/running-it/digitalocean-droplet?fbclid=IwY2xjawFX_bZleHRuA2FlbQIxMQABHcqsd9FjidxVKTUXxqYRmE-9K9rysi1dIU11x5sZW_kNdO_az9ZrtHRn3g_aem_T4XwWEZw7KronYDs74wGdw#update-docker-composeyaml"
+echo
+echo "Update SOCIAL_META tag or leave as default - Enter on one line only"
+echo
+read "-p [$SOCIAL_META]: " socialmeta
+
+socialmeta=${socialmeta:-$SOCIAL_META}
+echo
+
+# Print all answers before asking to update the .env file
 echo
 echo "Please confirm the variables below are correct:"
 echo
@@ -152,12 +181,13 @@ echo "GA_TRACKING_ID=$gatrackingid"
 echo "CLIENT_HEADER=$CLIENT_HEADER"
 echo "SENGRID_KEY=$SENGRID_KEY"
 echo "GITHUB_PAT=$GITHUB_PAT"
+echo "SOCIAL_META=$SOCIAL_META"
 echo "--------------------------------"
 echo
 
 read -p "Update the .env file with the above variables? (y/n): " updateenv
 
-# Write the variables to the .env file
+# Write the variables to the .env file if ansewr is y
 if [[ "$updateenv" == "y" ]]; then
         echo "Writing variables to .env file..."
         echo "TUNNEL_TOKEN=$tunneltoken" > .env
@@ -177,6 +207,7 @@ if [[ "$updateenv" == "y" ]]; then
         echo "CLIENT_HEADER=$CLIENT_HEADER" >> .env
         echo "SENGRID_KEY=$SENGRID_KEY" >> .env
         echo "GITHUB_PAT=$GITHUB_PAT" >> .env
+        echo "SOCIAL_META=$SOCIAL_META" >> .env
         echo "Writing variables to .env file completed!"
         echo
 else
