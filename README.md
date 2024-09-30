@@ -72,8 +72,8 @@ SSL/TLS -> Edge Certificates
 4. Enable TLS 1.3
 5. Enable Automatic HTTPS Rewrites
 
-[!NOTE] 
-The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains(ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
+> [!NOTE] 
+> The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains(ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
 
 
 SSL/TLS -> Client Certificates
