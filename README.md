@@ -65,16 +65,17 @@ SSL/TLS -> Edge Certificates
 4. Enable TLS 1.3
 5. Enable Automatic HTTPS Rewrites
 
+The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains(ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
+
 SSL/TLS -> Client Certificates
-I have a created certificate here, but I don't think I'm using it at the moment.
+
+The client certificate is not required for this configuration.
 
 SSL/TLS -> Origin Server
 
 Create an origin certificate and copy down the certificate and private key. 
 
 These will be used later in the Remote Falcon configuration script.
-
-The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains(ex: *sub.sub.yourdomain.com)
 
 Create the certificate such as:
 
@@ -226,7 +227,7 @@ You can also uninstall nginx, **note** that this would remove all files under /e
 
 ## Troubleshooting
 
-___Unexpected Error___
+### Unexpected Error
 
 - Control Panel: Ensure your web browser is pointing you to https://yourdomain.com and *NOT www.* https://www.yourdomain.com 
 
@@ -234,7 +235,7 @@ ___Unexpected Error___
 
 There may also may be other causes for this error that I am not aware of.
 
-___err_quic_protocol_error in browser___
+### err_quic_protocol_error in browser
 
 Try to restart the cloudflared container:
 
@@ -242,13 +243,13 @@ Try to restart the cloudflared container:
 
 Otherwise, it could be something going on with Cloudflare.
 
-___Control Panel Dashboard Viewer Statistics___
+### Control Panel Dashboard Viewer Statistics
 
 The Control Panel Dashboard will not count the last IP that was used to login to the Control Panel in the viewer statistics when viewing your show page. 
 
 If you want to test if viewer statistics are working you can disconnect your phone from Wi-Fi and then check from a desktop/laptop that's logged into the Control Panel.
 
-___Mongo Container Restarting___
+### Mongo Container Restarting
 
 If your Mongo container is constantly restarting when checking ```sudo docker ps``` then check the logs with ```sudo docker logs mongo```
 
@@ -281,6 +282,18 @@ To add the specific 4.x version tag that you would like to use from [Mongo 4.x t
   mongo:
     image: mongo:4.0.28
 ```
+
+### Show page is always redirected to the Control Panel
+
+When attempting to browse to https://yourshowname.yourdomain.com it always redirects to the Remote Falcon Control Panel. 
+
+This is caused by *HOSTNAME_PARTS* being set to 3 when everything else(Tunnel public hostnames/DNS) is configured for 2 parts.  
+
+The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains(ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
+
+I have not found a free way to get 3-part domains working with this configuration.
+
+To correct this issue, ensure you set *HOSTNAME_PARTS* to 2 and make sure to update your origin certificates using the configuration script so the cerrtificate file names are propoerly updated for the 2-part domain. 
 
 ### Troubleshooting Commands
 
@@ -318,7 +331,7 @@ To delete shows:
 
 ### Updating and pulling new Remote Falcon images
 
-When changes are made to Remote Falcon sometimes it is necessary to pull a new image. 
+When changes are made to Remote Falcon sometimes it is necessary to pull a new image. The configuration script will ask if you want to rebuild the images which will run the commands below for you.
 
 To remove the current Remote Falcon images you will have to bring Remote Falcon down, remove the, and bring RF back up:
 
@@ -329,3 +342,17 @@ sudo docker image remove viewer
 sudo docker image remove control-panel
 sudo docker compose up -d
 ```
+
+### Updating or viewing the .env file manually outside of the configuration script
+
+The configuration script isn't required to view or make updates to the .env file. You can manually edit the file, but the compose stack will have to be brought down manually and the Remote Falcon images rebuilt for some settings to take effect.
+
+To view the .env file while you're in the remotefalcon directory:
+
+```cat .env```
+
+To manually edit the .env file:
+
+```nano .env```
+
+
