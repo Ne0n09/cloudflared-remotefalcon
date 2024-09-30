@@ -10,7 +10,7 @@ The configuration script will check if you have Docker installed and install it 
 
 It will also guide you step by step to creating and saving the origin server certificates. 
 
-Everything will run as a 'compartmentalized' stack that is only accessible via the Cloudflare tunnel pointing to an NGINX container handles the proxying to the Remote Falcon containers. This also avoids port conflicts on your host system.
+Everything will run as a 'compartmentalized' stack that is only accessible via the Cloudflare tunnel pointing to an NGINX container that handles the proxying to the Remote Falcon containers. This also avoids port conflicts on your host system if you choose not to run it on a dedicated device or VM.
 
 The main benefit of this method is there is no need to directly expose port 443 when going through the Cloudflare tunnel.
 
