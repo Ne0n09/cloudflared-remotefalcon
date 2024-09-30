@@ -129,7 +129,7 @@ Click Save tunnel
 > [!WARNING]
 > You may receive an error if you already have DNS records. You will need to delete any existing A or CNAME records pointing to * or yourdomain.com
 
-![tunnel_public_hostname_page_settings](https://github.com/user-attachments/assets/721ad2fb-32b0-4262-9300-cef0a968ad66)
+![tunnel_public_hostname_page_settings](https://github.com/user-attachments/assets/934a26aa-7f68-4f6e-b5bc-8cb515de91cb)
 
 **Second public hostname**
 
@@ -157,13 +157,13 @@ Click *Additional application settings* -> TLS
 
 Click *Save hostname*
 
-![tunnel_public_hostname_page_settings_wildcard](https://github.com/user-attachments/assets/d7df0716-69bd-40df-8b60-8274e09059e2)
+![tunnel_public_hostname_page_settings_wildcard](https://github.com/user-attachments/assets/1698a66f-6c13-4b62-9c82-ae4fbcf697e0)
 
 **Catch-all rule**
 
 Click *Edit* to the right of the catch-all rule.
 
-![tunnel_public_hostname_config](https://github.com/user-attachments/assets/e12c7b95-6fb5-40fd-a463-eb086f590cf9)
+![tunnel_public_hostname_config](https://github.com/user-attachments/assets/b3f1ed8f-b75b-490f-abb6-1b5ec3cf3e7d)
 
 Type or paste ```https://nginx``` and click *Save*.
 
@@ -195,7 +195,7 @@ Now you should have two DNS records. Example:
 
 Both should be proxied.
 
-![DNS_Records_Argo_tunnel_config](https://github.com/user-attachments/assets/b67d1f28-708e-424c-8dd6-b50b7d006d68)
+![DNS_Records_Argo_tunnel_config](https://github.com/user-attachments/assets/64841499-c215-4bec-8392-dd6edfefbac5)
 
 Scroll down and you should see the Cloudflare Nameservers.
 
