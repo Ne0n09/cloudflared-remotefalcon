@@ -1,28 +1,34 @@
 # cloudflared-remotefalcon
+
 Self hosted Remote Falcon with easy setup and configuration using Cloudflare Tunnels with a configuration script.
 
 [Remote Falcon](https://remotefalcon.com/) is an awesome project and I thought I would help give back by creating a simplified way to run Remote Falcon for those who would like to self host it beyond just these [ways](https://docs.remotefalcon.com/docs/developer-docs/running-it/methods)
 
 This guide assumes you already have a domain name and that you are running a fresh installation of Debian or Ubuntu.
 
-The RF configuration script will check if you have Docker installed and install it for you if not. 
+The configuration script will check if you have Docker installed and install it for you if not. 
 
 It will also guide you step by step to creating and saving the origin server certificates. 
 
-I have modified the compose file to allow for everything to be run from Docker(Nginx and the Cloudflare Tunnel run as Docker containers), requiring only Docker be installed on the host. 
+Everything will run as a 'compartmentalized' stack that is only accessible via the Cloudflare tunnel pointing to an NGINX container handles the proxying to the Remote Falcon containers. This also avoids port conflicts on your host system.
 
-There is no need to open up port 443 when going through the Cloudflare tunnel.
-
-There is no need to manually edit the compose.yaml or the Nginx default.conf file.
+The main benefit of this method is there is no need to directly expose port 443 when going through the Cloudflare tunnel.
 
 The .env file handles the configuration variables and the configure-rf.sh script walks you through setting these variables and applying them.
+
+There is no need to manually edit the compose.yaml or the NGINX default.conf file.
 
 We will start with the Cloudflare configuration below.
 
 ## Cloudflare Configuration
+
 This configuration will go over the Cloudflare DNS, certificate, and tunnel configuration.
 
+[!NOTE]
+The tunnel configuration requires a Cloudflare Zero Trust account, which is free, but will require you to enter a payment method(Credit card or PayPal).
+
 ### Add Domain Name to Cloudflare
+
 If not already added, you'll have to add your domain name to Cloudflare
 
 Go to the [Cloudflare Dashboard](https://dash.cloudflare.com/) and click Add a Domain.
@@ -43,9 +49,10 @@ Skip the Quick Start Guide by clicking Finish Later
 
 You will have to wait some time for the new nameservers to take effect. 
 
-Cloudflare will send you an email when your domain is available. You can continue with the additional setup so it will be ready to go.
+Cloudflare will send you an email when your domain is available. You can continue with the additional setup so it will be ready to go when your domain is available.
 
 ### Certificates
+
 Next we'll move on to the certificate configuration.
 
 Click SSL/TLS on the left side of the Cloudflare Dashboard.
@@ -65,7 +72,9 @@ SSL/TLS -> Edge Certificates
 4. Enable TLS 1.3
 5. Enable Automatic HTTPS Rewrites
 
+[!NOTE] 
 The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains(ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
+
 
 SSL/TLS -> Client Certificates
 
@@ -89,7 +98,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 2. Click Networks
 3. Create a tunnel
 4. Select Cloudflared and click Next
-5. Pick any name you would like for your tunnel.
+5. Pick any name you would like for your tunnel. Example: rf-yourdomain
 6. Save tunnel
 7. Select Docker under choose your environment
 8. Copy the whole 'docker run cloudflare' command and paste it into a notepad.
@@ -104,7 +113,10 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
 - Service Type: HTTPS:
 
-- Service URL: localhost
+- Service URL: nginx
+
+[!TIP]
+The Service URL must be set to the NGINX container_name in the compose.yaml which is 'nginx' by default.
 
 Click Additional application settings -> TLS
 
@@ -113,7 +125,8 @@ Click Additional application settings -> TLS
 
 Click Save tunnel
 
-__NOTE:__ You may receive an error if you already have DNS records. You will need to delete any existing A or CNAME records pointing to * or yourdomain.com
+[!WARNING] 
+You may receive an error if you already have DNS records. You will need to delete any existing A or CNAME records pointing to * or yourdomain.com
 
 ![tunnel_public_hostname_page_settings](https://github.com/user-attachments/assets/721ad2fb-32b0-4262-9300-cef0a968ad66)
 
@@ -129,11 +142,12 @@ Click + Add a public hostname
 
 - Domain: yourdomain.com
 
- __NOTE:__ Ignore the warning about 'This domain contains a wildcard." We will manually add the wildcard entry under the DNS settings later.
+[!NOTE]
+Ignore the warning about 'This domain contains a wildcard." We will manually add the wildcard entry under the DNS settings later.
 
 - Service Type: HTTPS
 
-- Service URL: localhost
+- Service URL: nginx
 
 Click *Additional application settings* -> TLS
 
@@ -150,7 +164,7 @@ Click *Edit* to the right of the catch-all rule.
 
 ![tunnel_public_hostname_config](https://github.com/user-attachments/assets/e12c7b95-6fb5-40fd-a463-eb086f590cf9)
 
-Type or paste ```https://localhost``` and click *Save*.
+Type or paste ```https://nginx``` and click *Save*.
 
 ### DNS
 
@@ -160,11 +174,7 @@ Click yourdomain.com
 
 Select DNS -> Records
 
-You should see a CNAME record that was created automatically for the tunnel, (ex: 248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com)
-
-Click Edit on the yourdomain.com CNAME record and copy the Target(ending with cfargotunnel.com)
-
-Click Cancel
+You should see a CNAME record that was created automatically for the tunnel, (ex: CNAME yourdomain.com  248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com)
 
 Click + Add Record
 
@@ -172,13 +182,13 @@ Type: CNAME
 
 Name: *
 
-Target: Paste your complete cfargotunnel.com Target
+Target: yourdomain.com
 
 Click Save
 
-Now you should have two DNS records pointing to your .cfargotunnel target. Example:
+Now you should have two DNS records. Example:
 
-- CNAME * 248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com
+- CNAME * yourdomain.com
 
 - CNAME yourdomain.com 248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com
 
@@ -191,6 +201,7 @@ Scroll down and you should see the Cloudflare Nameservers.
 Ensure that you are using these name servers with your domain name registrar/provider.
 
 ## Remote Falcon Installation
+
 Make a directory for Remote Falcon, download the configuration script, make it executable and run it!
 
 1. Make a directory to host the Remote Falcon files in your current directory. Your current directory can be verified with ```pwd```
@@ -211,19 +222,19 @@ Make a directory for Remote Falcon, download the configuration script, make it e
 
 Be sure to have your origin server certificate, origin private key, and tunnel token available in a notepad. The configuration script will ask for these.
 
-## Notes
+If everything went to plan with the configuration you should see your containers all up similar to below:
 
-This guide assumes you are not running nginx on the host as it will be running as a Docker container. 
-
-If nginx is running on the host you will need to stop it from running.
-
-  ```sudo systemctl stop nginx```
-
-You can also uninstall nginx, **note** that this would remove all files under /etc/nginx!
-
-  ```sudo apt purge nginx nginx-common nginx-core```
-  
-  ```sudo apt autoremove```
+```
+CONTAINER ID   IMAGE                    COMMAND                  CREATED         STATUS         PORTS       NAMES
+6a28663e81af   ui                       "docker-entrypoint.s…"   3 minutes ago   Up 3 minutes   3000/tcp    ui
+47271a3f29df   viewer                   "/bin/sh -c 'exec ja…"   3 minutes ago   Up 3 minutes   8080/tcp    viewer
+9b56286a455b   plugins-api              "/bin/sh -c 'exec ja…"   3 minutes ago   Up 3 minutes   8080/tcp    plugins-api
+a925e26c4809   control-panel            "/bin/sh -c 'exec ja…"   3 minutes ago   Up 3 minutes   8080/tcp    control-panel
+c590693f6165   mongo                    "docker-entrypoint.s…"   3 minutes ago   Up 3 minutes   27017/tcp   mongo
+32cd8dfc3e5b   nginx                    "/docker-entrypoint.…"   3 minutes ago   Up 3 minutes   80/tcp      nginx
+e6d4f3a547d8   cloudflare/cloudflared   "cloudflared --no-au…"   3 minutes ago   Up 3 minutes               cloudflared
+```
+You can re-run the configuration script to help make any changes as needed.
 
 ## Troubleshooting
 
@@ -232,8 +243,6 @@ You can also uninstall nginx, **note** that this would remove all files under /e
 - Control Panel: Ensure your web browser is pointing you to https://yourdomain.com and *NOT www.* https://www.yourdomain.com 
 
 - Viewer page: Make sure you're browsing to your show page sub-domain. You can find this by clicking the gear icon on the top right of the Remote Falcon control panel. It will show https://yourshowname.remotefalcon.com So for your show on your self hosted RF you would go to https://yourshowname.yourdomain.com
-
-There may also may be other causes for this error that I am not aware of.
 
 ### err_quic_protocol_error in browser
 
@@ -289,23 +298,19 @@ When attempting to browse to https://yourshowname.yourdomain.com it always redir
 
 This is caused by *HOSTNAME_PARTS* being set to 3 when everything else(Tunnel public hostnames/DNS) is configured for 2 parts.  
 
-The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains(ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
-
-I have not found a free way to get 3-part domains working with this configuration.
-
-To correct this issue, ensure you set *HOSTNAME_PARTS* to 2 and make sure to update your origin certificates using the configuration script so the cerrtificate file names are propoerly updated for the 2-part domain. 
+To correct this issue, ensure you set *HOSTNAME_PARTS* to 2 and make sure to update your origin certificates using the configuration script so the certificate file names are propoerly updated for the 2-part domain. 
 
 ### Troubleshooting Commands
 
-Test the nginx configuration file: 
+Test the NGINX configuration file: 
 
 ```sudo docker exec nginx nginx -t```
 
-Show the nginx configuration file that is being used:
+Show the NGINX configuration file that is being used:
 
 ```sudo docker exec nginx nginx -T```
 
-Display logs from the nginx container (Or any other container by changing the 'nginx' name at the end):
+Display logs from the NGINX container (Or any other container by changing the 'nginx' name at the end):
 
 ```sudo docker logs nginx```
 

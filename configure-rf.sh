@@ -37,7 +37,7 @@ if [ ! -f compose.yaml ]; then
 
         if [[ "$downloadcompose" == "y" ]]; then
                 echo "Downloading compose.yaml..."
-                curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/compose.yaml
+                        curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/compose.yml
                 echo "Done."
         fi
 fi
@@ -50,7 +50,7 @@ if [ ! -f default.conf ]; then
 
         if [[ "$downloadnginxconf" == "y" ]]; then
                 echo "Downloading default.conf..."
-                curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/default.conf
+                curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/default.conf
                 echo "Done."
         fi
 fi
@@ -113,10 +113,11 @@ echo
 read -p "Enter a random value for viewer JWT key: [$VIEWER_JWT_KEY]: " viewerjwtkey
 viewerjwtkey=${viewerjwtkey:-$VIEWER_JWT_KEY}
 echo
-echo "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com')"
-read -p "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month): [$HOSTNAME_PARTS]: " hostnameparts
-hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
-echo
+# Removing this again to avoid issues - .env can be manually edited if you have ACM and want a 3 part domain.
+#echo "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com')"
+#read -p "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month): [$HOSTNAME_PARTS]: " hostnameparts
+#hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
+#echo
 read -p "Enable auto validate email? While set to 'true' anyone can create a viewer page account on your site (true/false): [$AUTO_VALIDATE_EMAIL]: " autovalidateemail
 autovalidateemail=${autovalidateemail:-$AUTO_VALIDATE_EMAIL}
 echo
