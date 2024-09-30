@@ -24,8 +24,8 @@ We will start with the Cloudflare configuration below.
 
 This configuration will go over the Cloudflare DNS, certificate, and tunnel configuration.
 
-[!NOTE]
-The tunnel configuration requires a Cloudflare Zero Trust account, which is free, but will require you to enter a payment method(Credit card or PayPal).
+> [!NOTE]
+> The tunnel configuration requires a Cloudflare Zero Trust account, which is free, but will require you to enter a payment method(Credit card or PayPal).
 
 ### Add Domain Name to Cloudflare
 
@@ -73,7 +73,8 @@ SSL/TLS -> Edge Certificates
 5. Enable Automatic HTTPS Rewrites
 
 > [!NOTE] 
-> The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains(ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
+> The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains
+> (ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
 
 
 SSL/TLS -> Client Certificates
@@ -115,8 +116,8 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
 - Service URL: nginx
 
-[!TIP]
-The Service URL must be set to the NGINX container_name in the compose.yaml which is 'nginx' by default.
+> [!TIP]
+> The Service URL must be set to the NGINX container_name in the compose.yaml which is 'nginx' by default.
 
 Click Additional application settings -> TLS
 
@@ -125,8 +126,8 @@ Click Additional application settings -> TLS
 
 Click Save tunnel
 
-[!WARNING] 
-You may receive an error if you already have DNS records. You will need to delete any existing A or CNAME records pointing to * or yourdomain.com
+> [!WARNING]
+> You may receive an error if you already have DNS records. You will need to delete any existing A or CNAME records pointing to * or yourdomain.com
 
 ![tunnel_public_hostname_page_settings](https://github.com/user-attachments/assets/721ad2fb-32b0-4262-9300-cef0a968ad66)
 
@@ -142,8 +143,8 @@ Click + Add a public hostname
 
 - Domain: yourdomain.com
 
-[!NOTE]
-Ignore the warning about 'This domain contains a wildcard." We will manually add the wildcard entry under the DNS settings later.
+> [!NOTE]
+> Ignore the warning about 'This domain contains a wildcard." We will manually add the wildcard entry under the DNS settings later.
 
 - Service Type: HTTPS
 
