@@ -186,7 +186,9 @@ echo "SOCIAL_META=$SOCIAL_META"
 echo "--------------------------------"
 echo
 
-read -p "Update the .env file with the above variables? (y/n): " updateenv
+read -p "Update the .env file with the above variables? (y/n) [n]: " updateenv
+updateenv=${updateenv:-n}
+echo $updateenv
 
 # Write the variables to the .env file if ansewr is y
 if [[ "$updateenv" == "y" ]]; then
@@ -215,9 +217,12 @@ else
         echo "Variables were not updated! No changes were made to the .env file"
         echo
 fi
+
 # Ask to start/restart the containers
-read -p "Would you like to start new containers or bring existing containers down and bring them back up to apply the .env file? (y/n): " restart
+read -p "Would you like to start new containers or bring existing containers down and bring them back up to apply the .env file? (y/n): [n]" restart
+restart=${restart:-n}
 echo $restart
+
 if [[ "$restart" == "y" ]]; then
         echo "You may be asked to enter your password to run 'sudo' commands"
         echo "Bringing containers down with sudo docker compose down"
@@ -234,6 +239,8 @@ if [[ "$restart" == "y" ]]; then
                 sudo docker image remove viewer
                 echo "Attempting to remove control-panel image..."
                 sudo docker image remove control-panel
+                echo "Attempting to remove plugins-api image..."
+                sudo docker image remove plugins-api
                 echo "Done removing images"
         fi
         echo
