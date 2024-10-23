@@ -219,7 +219,7 @@ else
 fi
 
 # Ask to start/restart the containers
-read -p "Would you like to start new containers or bring existing containers down and bring them back up to apply the .env file? (y/n): [n]" restart
+read -p "Would you like to start new containers or bring existing containers down and bring them back up to apply the .env file? (y/n) [n]:" restart
 restart=${restart:-n}
 echo $restart
 
