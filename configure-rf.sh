@@ -37,7 +37,7 @@ if [ ! -f compose.yaml ]; then
 
         if [[ "$downloadcompose" == "y" ]]; then
                 echo "Downloading compose.yaml..."
-                        curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/compose.yml
+                        curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/compose.yaml
                 echo "Done."
         fi
 fi
