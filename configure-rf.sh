@@ -118,6 +118,7 @@ echo
 #read -p "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month): [$HOSTNAME_PARTS]: " hostnameparts
 #hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
 #echo
+hostnameparts=2
 read -p "Enable auto validate email? While set to 'true' anyone can create a viewer page account on your site (true/false): [$AUTO_VALIDATE_EMAIL]: " autovalidateemail
 autovalidateemail=${autovalidateemail:-$AUTO_VALIDATE_EMAIL}
 echo
