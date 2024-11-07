@@ -4,19 +4,21 @@ Self hosted Remote Falcon with easy setup and configuration using Cloudflare Tun
 
 [Remote Falcon](https://remotefalcon.com/) is an awesome project and I thought I would help give back by creating a simplified way to run Remote Falcon for those who would like to self host it beyond just these [ways](https://docs.remotefalcon.com/docs/developer-docs/running-it/methods)
 
-This guide assumes you already have a domain name and that you are running a fresh installation of Debian or Ubuntu.
+This guide assumes you already have a domain name and that you are running a fresh installation of 64-bit Debian or Ubuntu.
 
-The configuration script will check if you have Docker installed and install it for you if not. 
+The MongoDB container requires a 64-bit OS.
+
+The configuration script will check if you have Docker installed(For Debian and Ubuntu) and install it for you if not. 
 
 It will also guide you step by step to creating and saving the origin server certificates. 
 
-Everything will run as a 'compartmentalized' stack that is only accessible via the Cloudflare tunnel pointing to an NGINX container that handles the proxying to the Remote Falcon containers. This also avoids port conflicts on your host system if you choose not to run it on a dedicated device or VM.
+Everything will run as a 'compartmentalized' stack that is only accessible via the Cloudflare tunnel pointing to an NGINX container that handles the proxying to the Remote Falcon containers. This avoids port conflicts on your host system if you choose not to run it on a dedicated device or VM.
 
 The main benefit of this method is there is no need to directly expose port 443 when going through the Cloudflare tunnel.
 
-The .env file handles the configuration variables and the configure-rf.sh script walks you through setting these variables and applying them.
+Cloudflare also provides a lot of other features for free.
 
-There is no need to manually edit the compose.yaml or the NGINX default.conf file.
+The .env file handles the configuration variables and the configure-rf.sh script walks you through setting these variables and applying them.
 
 We will start with the Cloudflare configuration below.
 
@@ -237,6 +239,16 @@ e6d4f3a547d8   cloudflare/cloudflared   "cloudflared --no-au…"   3 minutes ago
 ```
 You can re-run the configuration script to help make any changes as needed.
 
+### Update the Plugin settings
+
+In FPP go to Content Setup -> Remote Falcon
+
+Enter your *show token* from your self-hosted Remote Falcon account settings.
+
+Update the *Plugins API Path* to your domain: ```https://yourdomain.com/remote-falcon-plugins-api```
+
+Reboot FPP.
+
 ## Troubleshooting
 
 ### Unexpected Error
@@ -299,9 +311,67 @@ When attempting to browse to https://yourshowname.yourdomain.com it always redir
 
 This is caused by *HOSTNAME_PARTS* being set to 3 when everything else(Tunnel public hostnames/DNS) is configured for 2 parts.  
 
-To correct this issue, ensure you set *HOSTNAME_PARTS* to 2 and make sure to update your origin certificates using the configuration script so the certificate file names are propoerly updated for the 2-part domain. 
+To correct this issue, ensure you set *HOSTNAME_PARTS* to 2 in the .env file and make sure to update your origin certificates using the configuration script so the certificate file names are propoerly updated for the 2-part domain. 
 
-### Troubleshooting Commands
+### Viewer page Now playing/Up next not updating as expected
+
+You will observe intermittent and random times where the Now playing/Up next do not update and requests also do not play. 
+
+After waiting 15 minutes or so things will start working as expected again.
+
+You can check the FPP logs by going to Content Setup -> File Manager -> Logs
+
+Check *remote-falcon-listener.log* and look for any gaps in the logs where you would expect sequences to be updated.
+
+Example, note the gap where there are not updates from 7:11:45 PM to 7:29:53 PM:
+
+```
+2024-10-26 07:11:45 PM: /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php : [] Updated current playing sequence to Michael Jackson - Thriller
+2024-10-26 07:11:45 PM: /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php : [] Updated next scheduled sequence to The Hit Crew -The Addams Family
+2024-10-26 07:29:53 PM: /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php : [] Updated current playing sequence to Fall Out Boy - My Songs Know What You Did In The Dark (Light Em Up)
+2024-10-26 07:29:54 PM: /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php : [] Updated next scheduled sequence to Geoff Castellucci - Monster Mash
+```
+
+Check */var/log/syslog* for around the same time frame of any gaps noticed in the *remote-falcon-listener.log*.
+
+If you see errors such as the below at the end of the gap timeframe(7:29 PM) then there is some type of connectivity issue between the plugins-api and FPP.
+
+```
+Oct 26 19:29:52 FPP fppd_boot_post[2128]: PHP Warning:  file_get_contents(): SSL: Handshake timed out in /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php on line 376
+Oct 26 19:29:52 FPP fppd_boot_post[2128]: PHP Warning:  file_get_contents(): Failed to enable crypto in /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php on line 376
+Oct 26 19:29:52 FPP fppd_boot_post[2128]: PHP Warning:  file_get_contents(https://yourdomain.com/remote-falcon-plugins-api/nextPlaylistInQueue?updateQueue=true): failed to open stream: operation failed in /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php on line 376
+```
+
+To resolve, we can publish the plugins-api port and configure the FPP plugin to connect locally to plugins-api to avoid FPP from having to go out to the internet to reach the plugins-api. 
+
+1. Modify the compose.yaml and update the plugins-api container to publish port 8083:
+
+```
+  plugins-api:
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
+      args:
+        - OTEL_OPTS=
+    image: plugins-api
+    container_name: plugins-api
+    restart: always
+    ports:
+      - "8083:8083"
+```
+
+2. Restart the containers with ```sudo docker compose down``` and ```sudo docker compose up -d```
+3. ```sudo docker ps``` will show the plugins-api is now published on port 8083: 
+```
+CONTAINER ID   IMAGE                    COMMAND                  CREATED      STATUS      PORTS                                                 NAMES
+a7b80e0cb7dd   ui                       "docker-entrypoint.s…"   3 days ago   Up 3 days   3000/tcp                                              ui
+66c80ce78294   plugins-api              "/bin/sh -c 'exec ja…"   3 days ago   Up 3 days   8080/tcp, 0.0.0.0:8083->8083/tcp, :::8083->8083/tcp   plugins-api
+```
+5. In the FPP plugin settings update the Plugins API path to the IP address of your local self hosted RF instance: ```http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api```
+6. Reboot FPP.
+
+## Troubleshooting Commands
+
+### NGINX
 
 Test the NGINX configuration file: 
 
@@ -315,9 +385,13 @@ Display logs from the NGINX container (Or any other container by changing the 'n
 
 ```sudo docker logs nginx```
 
+### Cloudflared
+
 Display the status of the Cloudflare tunnel in the Cloudflared container:
 
   ```sudo docker exec cloudflared cloudflared tunnel list```
+
+### Mongo
 
 Access mongo container CLI and mongo shell to run mongo shell commands:
 
@@ -339,13 +413,14 @@ To delete shows:
 
 When changes are made to Remote Falcon sometimes it is necessary to pull a new image. The configuration script will ask if you want to rebuild the images which will run the commands below for you.
 
-To remove the current Remote Falcon images you will have to bring Remote Falcon down, remove the, and bring RF back up:
+To remove the current Remote Falcon images you will have to bring Remote Falcon down, remove the images, and bring RF back up from your remotefalcon directory:
 
 ```
 sudo docker compose down
 sudo docker image remove ui
 sudo docker image remove viewer
 sudo docker image remove control-panel
+sudo docker image remove plugins-api
 sudo docker compose up -d
 ```
 
