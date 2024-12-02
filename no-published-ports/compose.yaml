@@ -3,8 +3,8 @@
 # Cloudflare tunnel public hostnames and catch-all rule will need to be changed from 'localhost' to the nginx container_name 'nginx'
 services:
   nginx:
-    image: nginx
-    container_name: nginx:${NGINX_VERSION}
+    image: nginx:${NGINX_VERSION}
+    container_name: nginx
     restart: unless-stopped
     volumes:
       - ${NGINX_CONF}:/etc/nginx/templates/default.conf.template:ro
