@@ -480,7 +480,6 @@ You can test your JWT with curl in Linux directly from your RF server.
 
 2. Verify your JWT is set by entering ```$JWT``` on the shell
 
-
 3. Replace *yourdomain.com* with your RF domain and run the curl command:
 
 ```curl -X 'GET' 'https://yourdomain.com/remote-falcon-external-api/showDetails' -H 'accept: application/json' -H "Authorization: Bearer $JWT"```
