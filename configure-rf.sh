@@ -271,6 +271,8 @@ if [[ "$restart" == "y" ]]; then
                 sudo docker image remove control-panel
                 echo "Attempting to remove plugins-api image..."
                 sudo docker image remove plugins-api
+                echo "Attempting to remove external-api image..."
+                sudo docker image remove external-api
                 echo "Done removing images"
         fi
         echo
