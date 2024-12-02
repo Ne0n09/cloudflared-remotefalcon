@@ -4,7 +4,7 @@
 services:
   nginx:
     image: nginx
-    container_name: nginx
+    container_name: nginx:${NGINX_VERSION}
     restart: unless-stopped
     volumes:
       - ${NGINX_CONF}:/etc/nginx/templates/default.conf.template:ro
@@ -13,14 +13,14 @@ services:
     environment:
       - YOUR_DOMAIN=${DOMAIN}
   cloudflared:
-    image: cloudflare/cloudflared
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION}
     container_name: cloudflared
     restart: unless-stopped
     command: tunnel run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
   mongo:
-    image: mongo
+    image: mongo:${MONGO_VERSION}
     container_name: mongo
     restart: always
     volumes:
@@ -33,7 +33,7 @@ services:
       context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
       args:
         - OTEL_OPTS=
-    image: plugins-api
+    image: plugins-api:${RF_CONTAINER_BUILD_DATE}
     container_name: plugins-api
     restart: always
     environment:
@@ -47,7 +47,7 @@ services:
       context: https://github.com/Remote-Falcon/remote-falcon-control-panel.git
       args:
         - OTEL_OPTS=
-    image: control-panel
+    image: control-panel:${RF_CONTAINER_BUILD_DATE}
     container_name: control-panel
     restart: always
     environment:
@@ -66,7 +66,7 @@ services:
       context: https://github.com/Remote-Falcon/remote-falcon-viewer.git
       args:
         - OTEL_OPTS=
-    image: viewer
+    image: viewer:${RF_CONTAINER_BUILD_DATE}
     container_name: viewer
     restart: always
     environment:
@@ -91,9 +91,23 @@ services:
         - GA_TRACKING_ID=${GA_TRACKING_ID}
         - HOSTNAME_PARTS=${HOSTNAME_PARTS}
         - SOCIAL_META=${SOCIAL_META}
-    image: ui
+    image: ui:${RF_CONTAINER_BUILD_DATE}
     container_name: ui
     restart: always
     depends_on:
       - control-panel
       - viewer
+  external-api:
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-external-api.git
+      args:
+        - OTEL_OPTS=
+    image: external-api:${RF_CONTAINER_BUILD_DATE}
+    container_name: external-api
+    restart: always
+    environment:
+      - server.port=8084
+      - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
+      - viewer.api.url=https://${DOMAIN}/remote-falcon-viewer
+    depends_on:
+      - mongo

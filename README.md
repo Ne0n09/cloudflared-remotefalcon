@@ -436,4 +436,57 @@ To manually edit the .env file:
 
 ```nano .env```
 
+## Extra
 
+### External API
+
+Follow the steps below to get access to the external API for your self hosted RF.
+
+This requires that you have the *externalj-api* container running.
+
+References:
+
+![Remote Falcon SwaggerHub](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon)
+
+![Remote Falcon external-api-sample](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample)
+
+1. From the Control Panel Dashboard click the *gear* icon on the top right
+2. Click *Account*
+3. Click *Request Access* to the right of Request API Access
+> [!NOTE]
+> Ignore the Unexpected Error or API Access Already Requested if you do not have email configured. The API token and secret will still be generated. 
+4.  Download the generate_jwt.sh script to your RF server.
+   
+   ```curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/generate_jwt.sh```
+
+3. Make it executable.
+   
+   ```chmod +x generate_jwt.sh```
+   
+5. Run it.
+   
+   ```./generate_jwt.sh```
+
+The script will look for a 'mongo' container and dump out all the API details that it finds in the database.
+
+6. Enter your *apiAccessToken* with no quotes ''
+7. Enter your *apiAccessSecret* with no quotes ''
+
+The script will display your JWT that you can use as needed.
+
+You can test your JWT with curl in Linux directly from your RF server.
+
+1. Enter your JWT on the shell to set the JWT variable with ```JWT=replace_with_your_JWT```
+
+2. Verify your JWT is set by entering ```$JWT``` on the shell
+
+
+3. Replace *yourdomain.com* with your RF domain and run the curl command:
+
+```curl -X 'GET' 'https://yourdomain.com/remote-falcon-external-api/showDetails' -H 'accept: application/json' -H "Authorization: Bearer $JWT"```
+
+If all went to plan you will see output similar to the below if you have a freshly configured account.
+
+```
+{"preferences":{"viewerControlEnabled":false,"viewerControlMode":"JUKEBOX","resetVotes":false,"jukeboxDepth":0,"locationCheckMethod":null,"showLatitude":0.0,"showLongitude":0.0,"allowedRadius":1.0,"jukeboxRequestLimit":0,"locationCode":null,"hideSequenceCount":0,"makeItSnow":false},"sequences":[],"sequenceGroups":[],"requests":[],"votes":[],"playingNow":null,"playingNext":null,"playingNextFromSchedule":null}
+```
