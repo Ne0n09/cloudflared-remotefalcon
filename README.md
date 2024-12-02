@@ -446,9 +446,9 @@ This requires that you have the *externalj-api* container running.
 
 References:
 
-![Remote Falcon SwaggerHub](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon)
+[Remote Falcon SwaggerHub](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon)
 
-![Remote Falcon external-api-sample](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample)
+[Remote Falcon external-api-sample](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample)
 
 1. From the Control Panel Dashboard click the *gear* icon on the top right
 2. Click *Account*
