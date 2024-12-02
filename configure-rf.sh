@@ -170,7 +170,7 @@ if [[ "$configureenv" == "y" ]]; then
                 echo "Update SOCIAL_META tag or leave as default - Enter on one line only"
                 echo
                 read "-p [$SOCIAL_META]: " socialmeta
-
+        fi
         socialmeta=${socialmeta:-$SOCIAL_META}
         echo
 
