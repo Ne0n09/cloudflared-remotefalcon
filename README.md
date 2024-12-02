@@ -442,7 +442,7 @@ To manually edit the .env file:
 
 Follow the steps below to get access to the external API for your self hosted RF.
 
-This requires that you have the *externalj-api* container running.
+This requires that you have the *external-api* container running.
 
 References:
 
