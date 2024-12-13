@@ -40,6 +40,7 @@ services:
       - server.port=8083
       - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
       - server.servlet.context-path=/remote-falcon-plugins-api
+      - sequence-limit=200
     depends_on:
       - mongo
   control-panel:
