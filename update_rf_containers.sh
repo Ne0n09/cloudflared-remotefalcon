@@ -1,8 +1,9 @@
 #!/bin/bash
+
 # This script will get the latest commit short hash and details from the RF GitHub repos.
 # It will then update the compose.yaml image tag with the short hash, build the image, and start the container with the image tagged to the hash.
 # This makes it easier to see how 'up to date' your RF containers are versus just having them set to 'latest'
-# Example sudo docker ps output:
+# Example sudo docker ps output: 
 # CONTAINER ID   IMAGE                              COMMAND                  CREATED        STATUS        PORTS                                                 NAMES
 # 6a5b9d3ab5ba   control-panel:3557af5              "/bin/sh -c 'exec ja…"   14 hours ago   Up 14 hours   8080/tcp                                              control-panel
 # 24813711c096   viewer:07edd6a                     "/bin/sh -c 'exec ja…"   14 hours ago   Up 14 hours   8080/tcp                                              viewer
@@ -12,13 +13,14 @@
 # 18e6c6d8e79c   external-api:a9f4918               "/bin/sh -c 'exec ja…"   16 hours ago   Up 16 hours   8080/tcp                                              external-api
 # 6e052fb1fe39   nginx:latest                       "/docker-entrypoint.…"   16 hours ago   Up 16 hours   80/tcp                                                nginx
 
-# This script can be run directly by itself to only update the RF containers:
+# This script can be run directly by itself to only update the RF containers: 
 # Skipping the health_check.sh script: ./update_rf_containers.sh" --no-health
 # OR with the health_check.sh script: ./update_rf_containers.sh"
 # The script will display the changes found and ask if you would like to update the container(s)
 # By default it will run a health check when unless --no-health is specified: update_rf_containers.sh --no-health
 
-VERSION=2025.1.4.1
+# Set the script version in YYYY.MM.DD.X to allow for update checking and downloading
+VERSION=2025.1.2.1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RF_DIR="remotefalcon"
 WORKING_DIR="$SCRIPT_DIR/$RF_DIR"
@@ -84,10 +86,9 @@ echo "Checking Remote Falcon container image tags in '$COMPOSE_FILE'..."
 for container_info in "${CONTAINERS[@]}"; do
   IFS='|' read -r CONTAINER_NAME REPO_URL BRANCH <<< "$container_info"
   echo "Checking container '$CONTAINER_NAME'..."
-  # Get the image tag of the container from the compose.yaml
-  #CURRENT_COMPOSE_TAG=$(sed -n "/$CONTAINER_NAME:/,/image:/ s/image:.*:\(.*\)/\1/p" "$COMPOSE_FILE" | xargs)
-  CURRENT_COMPOSE_TAG=$(sed -n "/$CONTAINER_NAME:/,/image:/s|.*image:.*:\([^ ]*\)|\1|p" "$COMPOSE_FILE" | xargs | tr -d '\r\n')
-  (echo -e "TEST - CURRENT_COMPOSE_TAG:--'$CURRENT_COMPOSE_TAG'--" | tr -d '\r\n')
+  # Get the image tag of the container from the compose.yaml 
+  CURRENT_COMPOSE_TAG=$(sed -n "/$CONTAINER_NAME:/,/image:/ s/image:.*:\(.*\)/\1/p" "$COMPOSE_FILE" | xargs | tr -d '\r\n')
+  
   # Fetch the latest commit hash for the branch
   LATEST_HASH=$(git ls-remote "$REPO_URL" "$BRANCH" | awk '{print $1}')
   if [[ -z $LATEST_HASH ]]; then
@@ -98,7 +99,7 @@ for container_info in "${CONTAINERS[@]}"; do
   SHORT_LATEST_HASH=$(echo "$LATEST_HASH" | cut -c 1-7)
 
   # Check the current compose tag is in the valid short hash format 'abc1234'
-  if [[ "$CURRENT_COMPOSE_TAG" =~ ^[a-fA-F0-9]{7}$ ]]; then
+  if [[ "$CURRENT_COMPOSE_TAG" =~ ^[a-f0-9]{7}$ ]]; then
     echo "Container '$CONTAINER_NAME' has a valid short hash: $CURRENT_COMPOSE_TAG"
     # Download changes from current short hash image tag to the latest short hash in order to display changes later
     if [[ ! "$CURRENT_COMPOSE_TAG" == "$SHORT_LATEST_HASH" ]]; then
@@ -156,7 +157,7 @@ else
   for CONTAINER_NAME in "${!UPDATE_INFO[@]}"; do
     SHORT_LATEST_HASH=$(echo "${UPDATE_INFO["$CONTAINER_NAME"]}" | sed -n '1s/^\(.......\).*/\1/p')
     COMMIT_HISTORY=$(echo "${UPDATE_INFO["$CONTAINER_NAME"]}" | cut -d'|' -f2-)
-    # Get the image tag of the container from the compose.yaml
+    # Get the image tag of the container from the compose.yaml 
     CURRENT_COMPOSE_TAG=$(sed -n "/$CONTAINER_NAME:/,/image:/ s/image:.*:\(.*\)/\1/p" "$COMPOSE_FILE" | xargs)
 
     echo
