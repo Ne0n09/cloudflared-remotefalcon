@@ -4,9 +4,9 @@ VERSION=2025.1.4.1
 CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/configure-rf.sh"
 
 # Set the URLs to download the compose.yaml, NGINX default.conf, and default .env files
-DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/compose.yaml"
-NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/default.conf"
-DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/.env"
+DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/compose.yaml"
+NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/default.conf"
+DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/.env"
 UPDATE_RF_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_rf_containers.sh"
 UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_containers.sh"
 HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/health_check.sh"
