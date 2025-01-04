@@ -7,9 +7,9 @@ CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefal
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/compose.yaml"
 NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/default.conf"
 DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/.env"
-UPDATE_RF_CONTAINERS_URL="...."
-UPDATE_CONTAINERS_URL="......"
-HEALTH_CHECK_URL="......."
+UPDATE_RF_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_rf_containers.sh"
+UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_containers.sh"
+HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/health_check.sh"
 
 # Get the directory where the script is located and set the RF directory to 'remotefalcon'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
