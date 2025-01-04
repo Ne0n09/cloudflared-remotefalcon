@@ -300,3 +300,26 @@ fi
 bash "$SCRIPT_DIR/health_check.sh"
 echo "Done! Exiting RF configuration script..."
 exit 0
+
+# Update script to hanlde missing files instead of creating the file with these contents: 404: Not Found
+#Working in directory: /home/travisd/1_4_2025_test/remotefalcon
+#compose.yaml does not exist. Downloading compose.yaml...
+#  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+#                                 Dload  Upload   Total   Spent    Left  Speed
+#100    14  100    14    0     0     93      0 --:--:-- --:--:-- --:--:--    93
+#Downloaded compose.yaml successfully.
+#default.conf does not exist. Downloading default.conf...
+#  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+#                                 Dload  Upload   Total   Spent    Left  Speed
+#100    14  100    14    0     0     84      0 --:--:-- --:--:-- --:--:--    85
+#Downloaded default.conf successfully.
+#Checking for existing .env file for environmental variables...
+#.env does not exist. Downloading .env...
+#  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+#                                 Dload  Upload   Total   Spent    Left  Speed
+#100    14  100    14    0     0     91      0 --:--:-- --:--:-- --:--:--    92
+#Downloaded .env successfully.
+#Printing default .env variables:
+#
+#--------------------------------
+#--------------------------------
