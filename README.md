@@ -12,7 +12,7 @@ The configuration script will check if you have Docker installed(For Debian and 
 
 It will also guide you step by step to creating and saving the origin server certificates. 
 
-Everything will run as a 'compartmentalized' stack that is only accessible via the Cloudflare tunnel pointing to an NGINX container that handles the proxying to the Remote Falcon containers. This avoids port conflicts on your host system if you choose not to run it on a dedicated device or VM.
+Everything will run as a 'compartmentalized' stack that is only accessible via the Cloudflare tunnel pointing to an NGINX container that handles the proxying to the Remote Falcon containers. This avoids port conflicts on your host system if you choose not to run it on a dedicated device or VM. Except the plugins-api container which has port 8083 published to allow for local LAN access from the RF plugin.
 
 The main benefit of this method is there is no need to directly expose port 443 when going through the Cloudflare tunnel.
 
@@ -21,6 +21,46 @@ Cloudflare also provides a lot of other features for free.
 The .env file handles the configuration variables and the configure-rf.sh script walks you through setting these variables and applying them.
 
 We will start with the Cloudflare configuration below.
+
+## Changes
+
+2025.1.4.1
+
+- Everything with regards to the compose.yaml files and configuration script has been updated. The two compose.yaml scripts for published and non-published ports have been removed to just the single compose.yaml with plugins-api port 8083 published. This is exactly how I have run RF for the 2024 season without any issues. 
+
+- Updated the configure-rf script to run outside of the 'remotefalcon' directory. It will also auto create the 'remotefalcon' directory if it is not found in the current directory.
+
+- Added two update scripts. These scripts will display a list of changes in newer versions compared to your current container version and ask you to update. The scripts will directly modify your compose.yaml to update the image tag to the new version versus tagging the containers to 'latest'
+
+- The update_containers.sh script can be run directly with:
+
+  ```./update_containers.sh container-name --no-health```
+
+  ```
+  ./update_containers.sh cloudflared --no-health
+
+  Running update script for container 'cloudflared'
+  Checking if container 'cloudflared' is running...
+  Container 'cloudflared' is running.
+  Checking container 'cloudflared' current version...
+  Container 'cloudflared' current version: 2024.12.2
+  Latest version: 2024.12.2
+  Container 'cloudflared' is at the latest version: 2024.12.2
+  ```
+
+- Added health check script that gets called from the configure-rf.sh script and the update scripts.
+
+- The health_check.sh script can be run directly with:
+
+```./health_check.sh```
+
+- The health check will check/display the following:
+  - sudo docker ps -a
+  - Remote Falcon endpoints
+  - SSL certificate and private key match validation
+  - Nginx configuration
+  - Any shows configured on Remote Falcon in the format of the show URL.
+
 
 ## Cloudflare Configuration
 
@@ -205,13 +245,9 @@ Ensure that you are using these name servers with your domain name registrar/pro
 
 ## Remote Falcon Installation
 
-Make a directory for Remote Falcon, download the configuration script, make it executable and run it!
+Download the configuration script, make it executable and run it!
 
-1. Make a directory to host the Remote Falcon files in your current directory. Your current directory can be verified with ```pwd```
-
-   ```mkdir remotefalcon && cd remotefalcon```
-
-1. Download the script.
+1. Download the script to your desired directory. The script will create a 'remotefalcon' directory if it does not already exist. Your current directory can be verified with ```pwd```
    
    ```curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/configure-rf.sh```
 
@@ -228,16 +264,20 @@ Be sure to have your origin server certificate, origin private key, and tunnel t
 If everything went to plan with the configuration you should see your containers all up similar to below:
 
 ```
-CONTAINER ID   IMAGE                    COMMAND                  CREATED         STATUS         PORTS       NAMES
-6a28663e81af   ui                       "docker-entrypoint.s…"   3 minutes ago   Up 3 minutes   3000/tcp    ui
-47271a3f29df   viewer                   "/bin/sh -c 'exec ja…"   3 minutes ago   Up 3 minutes   8080/tcp    viewer
-9b56286a455b   plugins-api              "/bin/sh -c 'exec ja…"   3 minutes ago   Up 3 minutes   8080/tcp    plugins-api
-a925e26c4809   control-panel            "/bin/sh -c 'exec ja…"   3 minutes ago   Up 3 minutes   8080/tcp    control-panel
-c590693f6165   mongo                    "docker-entrypoint.s…"   3 minutes ago   Up 3 minutes   27017/tcp   mongo
-32cd8dfc3e5b   nginx                    "/docker-entrypoint.…"   3 minutes ago   Up 3 minutes   80/tcp      nginx
-e6d4f3a547d8   cloudflare/cloudflared   "cloudflared --no-au…"   3 minutes ago   Up 3 minutes               cloudflared
+CONTAINER ID   IMAGE                              COMMAND                  CREATED          STATUS          PORTS                                                 NAMES
+7dd138f36842   ui:e36968c                         "docker-entrypoint.s…"   21 seconds ago   Up 20 seconds   3000/tcp                                              ui
+790cd1e80d86   plugins-api:fe7c932                "/bin/sh -c 'exec ja…"   22 seconds ago   Up 20 seconds   8080/tcp, 0.0.0.0:8083->8083/tcp, :::8083->8083/tcp   plugins-api
+4cd6197ae142   control-panel:3557af5              "/bin/sh -c 'exec ja…"   22 seconds ago   Up 20 seconds   8080/tcp                                              control-panel
+379bd760736d   viewer:07edd6a                     "/bin/sh -c 'exec ja…"   22 seconds ago   Up 20 seconds   8080/tcp                                              viewer
+18e6c6d8e79c   external-api:a9f4918               "/bin/sh -c 'exec ja…"   22 seconds ago   Up 20 seconds   8080/tcp                                              external-api
+04e92027115c   cloudflare/cloudflared:2024.12.1   "cloudflared --no-au…"   22 seconds ago   Up 21 seconds                                                         cloudflared
+51e2d60ef8f9   mongo:latest                       "docker-entrypoint.s…"   22 seconds ago   Up 21 seconds   27017/tcp                                             mongo
+6e052fb1fe39   nginx:latest                       "/docker-entrypoint.…"   22 seconds ago   Up 20 seconds   80/tcp                                                nginx
 ```
+
 You can re-run the configuration script to help make any changes as needed.
+
+You can also directly run the health_check, update_rf_containers, or update_containers scripts directly as well.
 
 ### Update the Plugin settings
 
@@ -246,6 +286,10 @@ In FPP go to Content Setup -> Remote Falcon
 Enter your *show token* from your self-hosted Remote Falcon account settings.
 
 Update the *Plugins API Path* to your domain: ```https://yourdomain.com/remote-falcon-plugins-api```
+
+OR if you have local access to your FPP player you can directly connect to the plugins-api container if port 8083 is published: 
+
+  ```http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api```
 
 Reboot FPP.
 
@@ -344,7 +388,7 @@ Oct 26 19:29:52 FPP fppd_boot_post[2128]: PHP Warning:  file_get_contents(https:
 
 To resolve, we can publish the plugins-api port and configure the FPP plugin to connect locally to plugins-api to avoid FPP from having to go out to the internet to reach the plugins-api. 
 
-1. Modify the compose.yaml and update the plugins-api container to publish port 8083:
+1. Modify the compose.yaml and update the plugins-api container to publish port 8083(if it is not already published):
 
 ```
   plugins-api:
@@ -411,18 +455,23 @@ To delete shows:
 
 ### Updating and pulling new Remote Falcon images
 
-When changes are made to Remote Falcon sometimes it is necessary to pull a new image. The configuration script will ask if you want to rebuild the images which will run the commands below for you.
+Run the update_rf_containers.sh script:
 
-To remove the current Remote Falcon images you will have to bring Remote Falcon down, remove the images, and bring RF back up from your remotefalcon directory:
+```./update_rf_containers.sh```
 
-```
-sudo docker compose down
-sudo docker image remove ui
-sudo docker image remove viewer
-sudo docker image remove control-panel
-sudo docker image remove plugins-api
-sudo docker compose up -d
-```
+If your images are tagged to the commit short hash the script will compare your current hash to the GitHub hash. If any changes are found they will be displayed along with a prompt to update the container(s). Otherwise, if they are current the script will let you know there are no updates.
+
+This allows for RF containers to be 'tagged' to a hash versus just being tagged to 'latest' which makes it difficult to tell if your containers are outdated.
+
+### Updating Cloudflared, NGINX, Mongo containers
+
+Run the update_containers.sh script with the container name:
+
+  ```
+  ./update_containers.sh cloudflared
+  ./update_containers.sh nginx
+  ./update_containers.sh mongo
+  ```
 
 ### Updating or viewing the .env file manually outside of the configuration script
 
@@ -444,32 +493,26 @@ Follow the steps below to get access to the external API for your self hosted RF
 
 This requires that you have the *external-api* container running.
 
-References:
-
-[Remote Falcon SwaggerHub](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon)
-
-[Remote Falcon external-api-sample](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample)
-
 1. From the Control Panel Dashboard click the *gear* icon on the top right
+
 2. Click *Account*
+
 3. Click *Request Access* to the right of Request API Access
 > [!NOTE]
 > Ignore the Unexpected Error or API Access Already Requested if you do not have email configured. The API token and secret will still be generated. 
 4.  Download the generate_jwt.sh script to your RF server.
-   
    ```curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/generate_jwt.sh```
 
 3. Make it executable.
-   
    ```chmod +x generate_jwt.sh```
-   
+
 5. Run it.
-   
    ```./generate_jwt.sh```
 
 The script will look for a 'mongo' container and dump out all the API details that it finds in the database.
 
 6. Enter your *apiAccessToken* with no quotes ''
+
 7. Enter your *apiAccessSecret* with no quotes ''
 
 The script will display your JWT that you can use as needed.
@@ -489,3 +532,9 @@ If all went to plan you will see output similar to the below if you have a fresh
 ```
 {"preferences":{"viewerControlEnabled":false,"viewerControlMode":"JUKEBOX","resetVotes":false,"jukeboxDepth":0,"locationCheckMethod":null,"showLatitude":0.0,"showLongitude":0.0,"allowedRadius":1.0,"jukeboxRequestLimit":0,"locationCode":null,"hideSequenceCount":0,"makeItSnow":false},"sequences":[],"sequenceGroups":[],"requests":[],"votes":[],"playingNow":null,"playingNext":null,"playingNextFromSchedule":null}
 ```
+
+References:
+
+[Remote Falcon SwaggerHub](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon)
+
+[Remote Falcon external-api-sample](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample)

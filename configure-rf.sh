@@ -1,290 +1,302 @@
 #!/bin/bash
 
-# Check if docker is installed and ask to download and install it if not (For Ubuntu and Debian).
+VERSION=2025.1.4.1
+CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/configure-rf.sh"
+
+# Set the URLs to download the compose.yaml, NGINX default.conf, and default .env files
+DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/compose.yaml"
+NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/default.conf"
+DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/.env"
+UPDATE_RF_CONTAINERS_URL="...."
+UPDATE_CONTAINERS_URL="......"
+HEALTH_CHECK_URL="......."
+
+# Get the directory where the script is located and set the RF directory to 'remotefalcon'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RF_DIR="remotefalcon"
+WORKING_DIR="$SCRIPT_DIR/$RF_DIR"
+
+# Function to download file if it does not exist
+download_file() {
+  local url=$1
+  local filename=$2
+
+  if [ ! -f "$filename" ]; then
+    echo "$filename does not exist. Downloading $filename..."
+    if curl -O "$url"; then
+      echo "Downloaded $filename successfully."
+    else
+      echo "Failed to download $filename from $url."
+      exit 1
+    fi
+  fi
+}
+
+# Function to get user input for configuration questions
+get_input() {
+  local prompt="$1"
+  local default="$2"
+  local input
+
+  read -p "$prompt [$default]: " input
+  echo "${input:-$default}"
+}
+
+# Function to read the .env file
+parse_env() {
+  echo
+  echo "--------------------------------"
+  # Load the existing .env variables to allow for auto-completion
+  declare -gA existing_env_vars
+  original_keys=()
+  while IFS='=' read -rs line; do
+    # Ignore any comment lines and empty lines
+    if [[ $line == \#* || -z "$line" ]]; then
+      continue
+    fi
+
+    # Split the line into key and value
+    key="${line%%=*}"
+    value="${line#*=}"
+    existing_env_vars["$key"]="$value"
+    original_keys+=("$key")
+
+    export "$key"="$value" # Export the variable for auto-completion
+    echo "$key=$value"
+  done < .env
+  echo "--------------------------------"
+}
+
+# Function to update the .env file
+update_env() {
+  # Declare new variables in an associative array
+  declare -A new_env_vars=(
+    ["TUNNEL_TOKEN"]="$tunneltoken"
+    ["DOMAIN"]="$domain"
+    ["VIEWER_JWT_KEY"]="$viewerjwtkey"
+    ["HOSTNAME_PARTS"]="$hostnameparts"
+    ["AUTO_VALIDATE_EMAIL"]="$autovalidateemail"
+    ["NGINX_CONF"]="$NGINX_CONF"
+    ["NGINX_CERT"]="./${domain}_origin_cert.pem"
+    ["NGINX_KEY"]="./${domain}_origin_key.pem"
+    ["HOST_ENV"]="$HOST_ENV"
+    ["VERSION"]="$VERSION"
+    ["GOOGLE_MAPS_KEY"]="$GOOGLE_MAPS_KEY"
+    ["PUBLIC_POSTHOG_KEY"]="$publicposthogkey"
+    ["PUBLIC_POSTHOG_HOST"]="$PUBLIC_POSTHOG_HOST"
+    ["GA_TRACKING_ID"]="$gatrackingid"
+    ["CLIENT_HEADER"]="$CLIENT_HEADER"
+    ["SENGRID_KEY"]="$SENGRID_KEY"
+    ["GITHUB_PAT"]="$GITHUB_PAT"
+    ["SOCIAL_META"]="$socialmeta"
+    ["SEQUENCE_LIMIT"]="$sequencelimit"
+  )
+
+  # Print all answers before asking to update the .env file
+  echo
+  echo "Please confirm the values below are correct:"
+  echo
+  echo "--------------------------------"
+  # Iterate over the original order of keys
+  for key in "${original_keys[@]}"; do
+    if [[ -n "${new_env_vars[$key]}" ]]; then
+      echo "$key=${new_env_vars[$key]}"
+    fi
+  done
+  echo "--------------------------------"
+  echo
+
+  # Write the variables to the .env file if answer is y
+  if [[ "$(get_input "Update the .env file with the above values? (y/n)" "n" )" =~ ^[Yy]$ ]]; then
+    # Backup the existing .env file
+    cp .env .env.bak 2>/dev/null || echo "No existing .env file to back up."
+
+    # Update the .env file
+    for key in "${!new_env_vars[@]}"; do
+      if [[ -n "${existing_env_vars[$key]}" ]]; then
+        # Update existing variable
+       # echo "Updating existing .env variable ${key}=${new_env_vars[$key]}"
+        sed -i "s|^${key}=.*|${key}=${new_env_vars[$key]}|" .env
+      else
+        # Append new variable
+       # echo "Appending new .env variable ${key}=${new_env_vars[$key]}"
+        echo "${key}=${new_env_vars[$key]}" >> .env
+      fi
+    done
+    echo "Writing variables to .env file completed!"
+    echo
+  else
+    echo "Variables were not updated! No changes were made to the .env file"
+    echo
+  fi
+}
+
+# Check if user is root or in the sudo group
+if [[ $EUID -eq 0 ]]; then
+  # User is root, do nothing
+  :
+elif id -nG "$USER" | grep -qw "sudo"; then
+  # User is in the sudo group, do nothing
+  :
+else
+  echo "User '$USER' is NOT root and NOT part of the sudo group."
+  echo "You must add the user '$USER' to the sudo group or run the script as root."
+  echo
+  echo "To add a user to the sudo group, usually you can run the following commmands..."
+  echo "Switch to the root user: su root"
+  echo "Add the user to the sudo group: /sbin/usermod -aG sudo $USER"
+  echo "Switch back to the user: su $USER"
+  exit 1
+fi
+
+# Check if Docker is installed and ask to download and install it if not (For Ubuntu and Debian).
 if [ ! -x "$(command -v docker)" ]; then
-        read -p "Docker is not installed, would you like to install it? (y/n) [y]: " downloaddocker
-        downloaddocker=${downloaddocker:-y}
-        echo $downloaddocker
-
-        if [[ "$downloaddocker" == "y" ]]; then
-                echo "Installing docker... you may need to enter your password for the 'sudo' command"
-                # Get OS distribution
-                source /etc/os-release
-                case $ID in
-                ubuntu)
-                        echo "Installing Docker for Ubuntu..."
-                        sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-                        echo "Docker installation for Ubuntu complete!"
-                ;;
-                debian)
-                        echo "Installing Docker for Debian.."
-                        sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-                        echo "Docker installation for Debian complete!"
-                ;;
-                *) echo "Distribution is not supported by this script! Please install Docker manually."
-                ;;
-                esac
+  if [[ "$(get_input "Docker is not installed, would you like to install it? (y/n)" "y")" =~ ^[Yy]$ ]]; then
+    echo "Installing docker... you may need to enter your password for the 'sudo' command."
+    # Get OS distribution
+    source /etc/os-release
+    case $ID in
+      ubuntu)
+        echo "Installing Docker for Ubuntu..."
+        sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        if [ ! -x "$(command -v docker)" ]; then
+          echo "Docker install failed. Please install Docker to proceed."
+          exit 1
+        else
+          echo "Docker installation for Ubuntu complete!"
         fi
+      ;;
+      debian)
+        echo "Installing Docker for Debian.."
+        sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        if [ ! -x "$(command -v docker)" ]; then
+          echo "Docker install failed. Please install Docker to proceed."
+          exit 1
+        else
+          echo "Docker installation for Debian complete!"
+        fi
+      ;;
+      *) echo "Distribution is not supported by this script! Please install Docker manually."
+      ;;
+    esac
+  else
+    echo "Docker must be installed. Please re-run the script to install Docker and to proceed."
+    exit 1
+  fi
+  echo
 fi
 
-### Download compose.yaml and default.conf if they do not exist. Ask if they should be downloaded
+# Download extra helper scripts if they do not exist and make them executable
+download_file $UPDATE_RF_CONTAINERS_URL "update_rf_containers.sh"
+chmod +x "update_rf_containers.sh"
+download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
+chmod +x "update_containers.sh"
+download_file $HEALTH_CHECK_URL "health_check.sh"
+chmod +x "health_check.sh"
 
-# compose.yaml download
-if [ ! -f compose.yaml ]; then
-        read -p "The compose.yaml file does not exist, would you like to download it? (y/n) [y]: " downloadcompose
-        downloadcompose=${downloadcompose:-y}
-        echo $downloadcompose
-
-        if [[ "$downloadcompose" == "y" ]]; then
-                echo "Downloading compose.yaml..."
-                        curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/compose.yaml
-                echo "Done."
-        fi
+# Ensure the 'remotefalcon' directory exists
+if [ ! -d "$WORKING_DIR" ]; then
+  echo "Directory '$RF_DIR' does not exist. Creating it in $SCRIPT_DIR..."
+  mkdir "$WORKING_DIR"
 fi
 
-# default.conf download
-if [ ! -f default.conf ]; then
-        read -p "The nginx default.conf file does not exist, would you like to download it? (y/n) [y]: " downloadnginxconf
-        downloadnginxconf=${downloadnginxconf:-y}
-        echo $downloadnginxconf
+# Change to the 'remotefalcon' directory
+cd "$WORKING_DIR" || { echo "Failed to change directory to '$WORKING_DIR'. Exiting."; exit 1; }
+echo "Working in directory: $(pwd)"
 
-        if [[ "$downloadnginxconf" == "y" ]]; then
-                echo "Downloading default.conf..."
-                curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/no-published-ports/default.conf
-                echo "Done."
-        fi
-fi
+# Download compose.yaml and NGINX default.conf in the working directory if they do not exist
+download_file $DOCKER_COMPOSE_URL "compose.yaml"
+download_file $NGINX_DEFAULT_URL "default.conf"
 
 # Print existing .env file, if it exists, otherwise download the default .env file
 echo "Checking for existing .env file for environmental variables..."
 if [ -f .env ]; then
-        echo "Source .env exists!"
-        echo "Printing current .env variables:"
-        echo
-        echo "--------------------------------"
-        # Load the existing .env variables to allow for auto-completion
-        while IFS='=' read -rs line; do
-                # Ignore any comment lines and empty lines
-                if [[ $line == \#* || -z "$line" ]]; then
-                        continue
-                fi
-
-                # Split the line into key and value
-                key="${line%%=*}"
-                value="${line#*=}"
-
-                export "$key"="$value"
-                echo "$key=$value"
-        done < .env
-        echo "--------------------------------"
+  echo "Source .env exists!"
+  echo "Printing current .env variables:"
+  parse_env
 else
-        echo "Source .env DOES not exist!"
-        echo "Downloading default .env..."
-        curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/.env
-        echo "Done."
-        echo "Reading values from default .env"
-        echo
-        echo "--------------------------------"
-        # Load the .env variables from the default .env to allow for auto-completion
-        while IFS='=' read -rs line; do
-                # Ignore any comment lines and empty lines
-                if [[ $line == \#* || -z "$line" ]]; then
-                        continue
-                fi
-
-                # Split the line into key and value
-                key="${line%%=*}"
-                value="${line#*=}"
-
-                export "$key"="$value"
-                echo "$key=$value"
-        done < .env
-        echo "--------------------------------"
+  download_file $DEFAULT_ENV_URL ".env"
+  echo "Printing default .env variables:"
+  parse_env
 fi
 
 # Ask to configure .env values
-read -p "Update the .env file variables? (y/n) [n]: " configureenv
-configureenv=${configureenv:-n}
-echo $configureenv
-if [[ "$configureenv" == "y" ]]; then
-        ### Configuration walkthrough questions. Questions will pull existing or default values from the sourced .env file
-        echo
-        echo "Answer the following questions to update your compose .env variables."
-        echo "Press enter to accept the existing values that are between the brackets [ ]."
-        echo "You will be asked to confirm the changes before the file is modified."
-        echo
-        read -p "Enter your Cloudflare tunnel token: [$TUNNEL_TOKEN]: " tunneltoken
-        tunneltoken=${tunneltoken:-$TUNNEL_TOKEN}
-        echo
-        read -p "Enter your domain name, example: yourdomain.com: [$DOMAIN]: " domain
-        domain=${domain:-$DOMAIN}
-        echo
-        read -p "Enter a random value for viewer JWT key: [$VIEWER_JWT_KEY]: " viewerjwtkey
-        viewerjwtkey=${viewerjwtkey:-$VIEWER_JWT_KEY}
-        echo
-        # Removing this again to avoid issues - .env can be manually edited if you have ACM and want a 3 part domain.
-        #echo "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com')"
-        #read -p "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month): [$HOSTNAME_PARTS]: " hostnameparts
-        #hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
-        #echo
-        hostnameparts=2
-        read -p "Enable auto validate email? While set to 'true' anyone can create a viewer page account on your site (true/false): [$AUTO_VALIDATE_EMAIL]: " autovalidateemail
-        autovalidateemail=${autovalidateemail:-$AUTO_VALIDATE_EMAIL}
-        echo
+if [[ "$(get_input "Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ ]]; then
+  # Configuration walkthrough questions. Questions will pull existing or default values from the sourced .env file
+  echo
+  echo "Answer the following questions to update your compose .env variables."
+  echo "Press ENTER to accept the existing values that are between the brackets [ ]."
+  echo "You will be asked to confirm the changes before the file is modified."
+  echo
+  tunneltoken=$(get_input "Enter your Cloudflare tunnel token:" "$TUNNEL_TOKEN")
+  echo
+  domain=$(get_input "Enter your domain name, example: yourdomain.com:" "$DOMAIN")
+  echo
+  viewerjwtkey=$(get_input "Enter a random value for viewer JWT key:" "$VIEWER_JWT_KEY")
+  echo
+  # Removed this question to avoid issues - .env can be manually edited if you have ACM and want a 3 part domain.
+  #echo "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com')"
+  #hostnameparts=$(get_input "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month):" "$HOSTNAME_PARTS" )
+  #echo
+  hostnameparts=2
+  autovalidateemail=$(get_input "Enable auto validate email? While set to 'true' anyone can create a viewer page account on your site (true/false):" "$AUTO_VALIDATE_EMAIL")
+  echo
 
-        # Ask if Cloudflare origin certificates should be updated. This will create the cert/key in the current directory and append the domain name to the beginning of the file name
-        read -p "Update origin certificates? (y/n) [n]: " updatecerts
-        updatecerts=${updatecerts:-n}
-        echo $updatecerts
-        if [[ "$updatecerts" == "y" ]]; then
-                read -p "Press any key to open nano to paste the origin certificate. Ctrl+X, y, and Enter to save."
-                nano ${domain}_origin_cert.pem
+  # Ask if Cloudflare origin certificates should be updated. This will create the cert/key in the current directory and append the domain name to the beginning of the file name
+  if [[ "$(get_input "Update origin certificates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+    read -p "Press any key to open nano to paste the origin certificate. Ctrl+X, y, and Enter to save."
+    nano ${domain}_origin_cert.pem
+    read -p "Press any key to open nano to paste the origin private key. Ctrl+X, y, and Enter to save."
+    nano ${domain}_origin_key.pem
+  fi
+  echo
 
-                read -p "Press any key to open nano to paste the origin private key. Ctrl+X, y, and Enter to save."
-                nano ${domain}_origin_key.pem
-        fi
-        echo
+  # Ask if analytics env variables should be set for PostHog and Google Analytics
+  if [[ "$(get_input "Update analytics variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+    read -p "Enter your PostHog key - https://posthog.com/: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
+    read -p "Enter your Google Analytics Measurement ID - https://analytics.google.com/: [$GA_TRACKING_ID]: " gatrackingid
+  fi
 
-        # Ask if analytics env variables should be set for PostHog and Google Analytics
-        read -p "Update analytics variables? (y/n) [n]: " updateanalytics
-        updateanalytics=${updateanalytics:-n}
-        echo $updateanalytics
-        if [[ "$updateanalytics" == "y" ]]; then
-                read -p "Enter your PostHog key - https://posthog.com/: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
+  publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
+  gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
+  echo
 
-                read -p "Enter your Google Analytics Measurement ID - https://analytics.google.com/: [$GA_TRACKING_ID]: " gatrackingid
-        fi
+  # Ask if SOCIAL_META variable should be updated
+  if [[ "$(get_input "Update social meta tag? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+    echo "See the RF docs for details on the SOCIAL_META tag:"
+    echo "https://docs.remotefalcon.com/docs/developer-docs/running-it/digitalocean-droplet?#update-docker-composeyaml"
+    echo
+    echo "Update SOCIAL_META tag or leave as default - Enter on one line only"
+    echo
+    read -p "[$SOCIAL_META]: " socialmeta
+  fi
+  socialmeta=${socialmeta:-$SOCIAL_META}
+  echo
 
-        publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
-        gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
-        echo
+  sequencelimit=$(get_input "Enter desired sequence limit:" "$SEQUENCE_LIMIT")
 
-        # Ask if SOCIAL_META variable should be updated
-        read -p "Update social meta tag? (y/n) [n]: " updatemeta
-        updatemeta=${updatemeta:-n}
-        echo $updatemeta
-        if [[ "$updatemeta" == "y" ]]; then
-                echo "See the RF docs for details on the SOCIAL_META tag:"
-                echo "https://docs.remotefalcon.com/docs/developer-docs/running-it/digitalocean-droplet?fbclid=IwY2xjawFX_bZleHRuA2FlbQIxMQABHcqsd9FjidxVKTUXxqYRmE-9K9rysi1dIU11x5sZW_kNdO_az9ZrtHRn3g_aem_T4XwWEZw7KronYDs74wGdw#update-docker-composeyaml"
-                echo
-                echo "Update SOCIAL_META tag or leave as default - Enter on one line only"
-                echo
-                read "-p [$SOCIAL_META]: " socialmeta
-        fi
-        socialmeta=${socialmeta:-$SOCIAL_META}
-        echo
+  # Display updated variables and ask to write them to the .env file
+  update_env
 
-        # May implement some container upgrade logic in the future
-        rfcontainerbuilddate=$RF_CONTAINER_BUILD_DATE
-        nginxversion=$NGINX_VERSION
-        mongoversion=$MONGO_VERSION
-        cloudflaredversion=$CLOUDFLARED_VERSION
-
-        # Print all answers before asking to update the .env file
-        echo
-        echo "Please confirm the values below are correct:"
-        echo
-        echo "--------------------------------"
-        echo "TUNNEL_TOKEN=$tunneltoken"
-        echo "DOMAIN=$domain"
-        echo "VIEWER_JWT_KEY=$viewerjwtkey"
-        echo "HOSTNAME_PARTS=$hostnameparts"
-        echo "AUTO_VALIDATE_EMAIL=$autovalidateemail"
-        echo "NGINX_CONF=$NGINX_CONF"
-        echo "NGINX_CERT=./${domain}_origin_cert.pem"
-        echo "NGINX_KEY=./${domain}_origin_key.pem"
-        echo "HOST_ENV=$HOST_ENV"
-        echo "VERSION=$VERSION"
-        echo "GOOGLE_MAPS_KEY=$GOOGLE_MAPS_KEY"
-        echo "PUBLIC_POSTHOG_KEY=$publicposthogkey"
-        echo "PUBLIC_POSTHOG_HOST=$PUBLIC_POSTHOG_HOST"
-        echo "GA_TRACKING_ID=$gatrackingid"
-        echo "CLIENT_HEADER=$CLIENT_HEADER"
-        echo "SENGRID_KEY=$SENGRID_KEY"
-        echo "GITHUB_PAT=$GITHUB_PAT"
-        echo "SOCIAL_META=$socialmeta"
-        echo "RF_CONTAINER_BUILD_DATE=$rfcontainerbuilddate"
-        echo "NGINX_VERSION=$nginxversion"
-        echo "MONGO_VERSION=$mongoversion"
-        echo "CLOUDFLARED_VERSION=$cloudflaredversion"
-        echo "--------------------------------"
-        echo
-
-        read -p "Update the .env file with the above values? (y/n) [n]: " updateenv
-        updateenv=${updateenv:-n}
-        echo $updateenv
-
-        # Write the variables to the .env file if ansewr is y
-        if [[ "$updateenv" == "y" ]]; then
-                echo "Writing variables to .env file..."
-                echo "TUNNEL_TOKEN=$tunneltoken" > .env
-                echo "DOMAIN=$domain" >> .env
-                echo "VIEWER_JWT_KEY=$viewerjwtkey" >> .env
-                echo "HOSTNAME_PARTS=$hostnameparts" >> .env
-                echo "AUTO_VALIDATE_EMAIL=$autovalidateemail" >> .env
-                echo "NGINX_CONF=$NGINX_CONF" >> .env
-                echo "NGINX_CERT=./${domain}_origin_cert.pem" >> .env
-                echo "NGINX_KEY=./${domain}_origin_key.pem" >> .env
-                echo "HOST_ENV=$HOST_ENV" >> .env
-                echo "VERSION=$VERSION" >> .env
-                echo "GOOGLE_MAPS_KEY=$GOOGLE_MAPS_KEY" >> .env
-                echo "PUBLIC_POSTHOG_KEY=$publicposthogkey" >> .env
-                echo "PUBLIC_POSTHOG_HOST=$PUBLIC_POSTHOG_HOST" >> .env
-                echo "GA_TRACKING_ID=$gatrackingid" >> .env
-                echo "CLIENT_HEADER=$CLIENT_HEADER" >> .env
-                echo "SENGRID_KEY=$SENGRID_KEY" >> .env
-                echo "GITHUB_PAT=$GITHUB_PAT" >> .env
-                echo "SOCIAL_META=$SOCIAL_META" >> .env
-                echo "RF_CONTAINER_BUILD_DATE=$rfcontainerbuilddate" >> .env
-                echo "NGINX_VERSION=$nginxversion" >> .env
-                echo "MONGO_VERSION=$mongoversion" >> .env
-                echo "CLOUDFLARED_VERSION=$cloudflaredversion" >> .env
-                echo "Writing variables to .env file completed!"
-                echo
-        else
-                echo "Variables were not updated! No changes were made to the .env file"
-                echo
-        fi
+  # Parse/print variables again to allow for checking the $DOMAIN variable later
+  echo "Printing current .env variables:"
+  parse_env
+else
+  echo "No .env variables modified."
+  echo
 fi
 
-# Ask to start new containers or restart/rebuild existing containers
-read -p "Start new containers or restart/rebuild existing containers to apply any changes to the .env file? (y/n) [n]: " restart
-restart=${restart:-n}
-echo $restart
-
-if [[ "$restart" == "y" ]]; then
-        echo "You may be asked to enter your password to run 'sudo' commands"
-        echo "Bringing containers down with sudo docker compose down:"
-        sudo docker compose down
-        echo
-        # Ask to remove existing images
-        read -p "Would you also like to remove and rebuild existing Remote Falcon images? (y/n) [n]: " rebuild
-        rebuild=${rebuild:-n}
-        echo $rebuild
-        if [[ "$rebuild" == "y" ]]; then
-                echo "Attempting to remove Remote Falcon images..."
-                echo "Attempting to remove ui image..."
-                sudo docker image remove ui
-                echo "Attempting to remove viewer image..."
-                sudo docker image remove viewer
-                echo "Attempting to remove control-panel image..."
-                sudo docker image remove control-panel
-                echo "Attempting to remove plugins-api image..."
-                sudo docker image remove plugins-api
-                echo "Attempting to remove external-api image..."
-                sudo docker image remove external-api
-                echo "Done removing images"
-        fi
-        echo
-        echo "Bringing containers up with sudo docker compose up -d"
-        echo
-        sudo docker compose up -d
-        echo
-        echo "Sleeping 20 seconds before running 'sudo docker ps' to verify the status of all containers"
-        sleep 20s
-        echo
-        echo "sudo docker ps"
-        sudo docker ps
-        echo
-        echo "Done. Verify that all containers show 'Up'. If not, check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose up -d'"
+# Run the container update scripts if the domain isn't the default value
+if [[ "$DOMAIN" != "your_domain.com" ]]; then
+  bash "$SCRIPT_DIR/update_containers.sh" "mongo" --no-health # Start with Mongo first since the RF containers depend on it.
+  bash "$SCRIPT_DIR/update_rf_containers.sh" --no-health
+  bash "$SCRIPT_DIR/update_containers.sh" "nginx" --no-health
+  bash "$SCRIPT_DIR/update_containers.sh" "cloudflared" --no-health
+else
+  echo "DOMAIN is still set to the default '$DOMAIN' domain. Re-run the configure-rf.sh script to modify the default .env values."
+  exit 1
 fi
+
+bash "$SCRIPT_DIR/health_check.sh"
+echo "Done! Exiting RF configuration script..."
+exit 0
