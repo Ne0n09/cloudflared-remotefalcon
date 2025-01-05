@@ -546,7 +546,7 @@ This will provde a new Admin section on the left-hand menu on the Control Panel.
 The make_admin.sh script will display any shows found on your RF and whether they are configured as a USER or ADMIN:
    
 ```
-curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/make_admin.sh```
+curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/make_admin.sh
 chmod +x ./make_admin.sh```
 ./make_admin.sh
 ```
