@@ -465,7 +465,7 @@ This allows for RF containers to be 'tagged' to a hash versus just being tagged 
 
 ### Updating Cloudflared, NGINX, Mongo containers
 
-Run the update_containers.sh script with the container name:
+Run the update_containers.sh script with the container name, you can copy and paste all of them to run one update after another:
 
   ```
   ./update_containers.sh cloudflared
@@ -538,3 +538,19 @@ References:
 [Remote Falcon SwaggerHub](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon)
 
 [Remote Falcon external-api-sample](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample)
+
+### Admin access
+
+This will provde a new Admin section on the left-hand menu on the Control Panel. It will let you search for show subdomains and let you basically view/edit the Mongo DB record.
+
+The make_admin.sh script will display any shows found on your RF and whether they are configured as a USER or ADMIN:
+   
+```
+curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/make_admin.sh```
+chmod +x ./make_admin.sh```
+./make_admin.sh
+```
+
+After the running the script and getting the list of shows and their roles you can re-run the script to toggle the show from USER or ADMIN:
+
+```./make_admin.sh yourshowname```
