@@ -279,6 +279,14 @@ You can re-run the configuration script to help make any changes as needed.
 
 You can also directly run the health_check, update_rf_containers, or update_containers scripts directly as well.
 
+```
+./health_check.sh
+./update_rf_containers.sh --no-health
+./update_containers.sh cloudflared --no-health
+./update_containers.sh nginx --no-health
+./update_containers.sh mongo --no-health
+```
+
 ### Update the Plugin settings
 
 In FPP go to Content Setup -> Remote Falcon
@@ -287,11 +295,12 @@ Enter your *show token* from your self-hosted Remote Falcon account settings.
 
 Update the *Plugins API Path* to your domain: ```https://yourdomain.com/remote-falcon-plugins-api```
 
-OR if you have local access to your FPP player you can directly connect to the plugins-api container if port 8083 is published: 
+> [!TIP] 
+> If you have local access to your FPP player you can directly connect to the plugins-api container if port 8083 is published: 
+>
+>  ```http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api```
 
-  ```http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api```
-
-Reboot FPP.
+Reboot FPP after applying the changes.
 
 ## Troubleshooting
 
@@ -339,7 +348,7 @@ Modify the Mongo image line:
 
 ```
   mongo:
-    image: mongo
+    image: mongo:latest
 ```
 
 To add the specific 4.x version tag that you would like to use from [Mongo 4.x tags](https://hub.docker.com/_/mongo/tags?page_size=&ordering=&name=4.)
@@ -386,7 +395,7 @@ Oct 26 19:29:52 FPP fppd_boot_post[2128]: PHP Warning:  file_get_contents(): Fai
 Oct 26 19:29:52 FPP fppd_boot_post[2128]: PHP Warning:  file_get_contents(https://yourdomain.com/remote-falcon-plugins-api/nextPlaylistInQueue?updateQueue=true): failed to open stream: operation failed in /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php on line 376
 ```
 
-To resolve, we can publish the plugins-api port and configure the FPP plugin to connect locally to plugins-api to avoid FPP from having to go out to the internet to reach the plugins-api. 
+To resolve, we can publish the plugins-api port and configure the FPP plugin to connect locally to plugins-api to avoid FPP from having to go out to the internet to reach the plugins-api:
 
 1. Modify the compose.yaml and update the plugins-api container to publish port 8083(if it is not already published):
 
@@ -406,9 +415,8 @@ To resolve, we can publish the plugins-api port and configure the FPP plugin to 
 2. Restart the containers with ```sudo docker compose down``` and ```sudo docker compose up -d```
 3. ```sudo docker ps``` will show the plugins-api is now published on port 8083: 
 ```
-CONTAINER ID   IMAGE                    COMMAND                  CREATED      STATUS      PORTS                                                 NAMES
-a7b80e0cb7dd   ui                       "docker-entrypoint.s…"   3 days ago   Up 3 days   3000/tcp                                              ui
-66c80ce78294   plugins-api              "/bin/sh -c 'exec ja…"   3 days ago   Up 3 days   8080/tcp, 0.0.0.0:8083->8083/tcp, :::8083->8083/tcp   plugins-api
+ONTAINER ID   IMAGE                              COMMAND                  CREATED       STATUS       PORTS                                                 NAMES
+c3dc4de3a19b   plugins-api:fe7c932                "/bin/sh -c 'exec ja…"   5 hours ago   Up 5 hours   8080/tcp, 0.0.0.0:8083->8083/tcp, :::8083->8083/tcp   plugins-api
 ```
 5. In the FPP plugin settings update the Plugins API path to the IP address of your local self hosted RF instance: ```http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api```
 6. Reboot FPP.
@@ -431,9 +439,12 @@ Display logs from the NGINX container (Or any other container by changing the 'n
 
 ### Cloudflared
 
-Display the status of the Cloudflare tunnel in the Cloudflared container:
+Display the status of the Cloudflare tunnel in the Cloudflared container. You will have to open the login link and login to Cloudflare before running the list command.
 
-  ```sudo docker exec cloudflared cloudflared tunnel list```
+  ```
+  sudo docker exec cloudflared cloudflared tunnel login
+  sudo docker exec cloudflared cloudflared tunnel list
+  ```
 
 ### Mongo
 
@@ -452,6 +463,8 @@ To find shows:
 To delete shows:
 
   ```db.show.deleteOne( { showName: 'Test3' } )```
+
+## Extra
 
 ### Updating and pulling new Remote Falcon images
 
@@ -473,6 +486,21 @@ Run the update_containers.sh script with the container name, you can copy and pa
   ./update_containers.sh mongo
   ```
 
+The scripts directly check the versions in the containers themselves so it does not rely on the image tags in the compose.yaml. So when running 'sudo docker ps' you may still see these containers tagged to the 'latest' image. The tag is only updated by the script when an updated version is detected and accepted.
+
+### Health Check script
+
+The health check script runs automatically after the configure-rf script to display and check various things:
+
+- 'sudo docker ps -a' to display the status of all containers.
+- curl command is run against each Remote Falcon endpoint and the HTTP response code and endpoint status are displayed along with the endpoint links.
+- The certificate and private key are validated with openssl to confirm they match.
+- If nginx is running, 'sudo docker exec nginx nginx -t' to test the nginx configuration.
+- If mongo is running, any shows that are configured in Remote Falcon will be displayed in the format of https://showname.yourdomain.com
+- The main Remote Falcon link is displayed in the format of https://yourdomain.com
+
+```./health_check.sh```
+
 ### Updating or viewing the .env file manually outside of the configuration script
 
 The configuration script isn't required to view or make updates to the .env file. You can manually edit the file, but the compose stack will have to be brought down manually and the Remote Falcon images rebuilt for some settings to take effect.
@@ -484,8 +512,6 @@ To view the .env file while you're in the remotefalcon directory:
 To manually edit the .env file:
 
 ```nano .env```
-
-## Extra
 
 ### External API
 
