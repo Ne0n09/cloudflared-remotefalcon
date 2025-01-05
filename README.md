@@ -547,7 +547,7 @@ The make_admin.sh script will display any shows found on your RF and whether the
    
 ```
 curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/make_admin.sh
-chmod +x ./make_admin.sh```
+chmod +x ./make_admin.sh
 ./make_admin.sh
 ```
 
