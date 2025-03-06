@@ -1,10 +1,11 @@
 #!/bin/bash
 
-VERSION=2025.1.4.1
+SCRIPT_VERSION=2025.3.6.1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RF_DIR="remotefalcon"
 WORKING_DIR="$SCRIPT_DIR/$RF_DIR"
 COMPOSE_FILE="$WORKING_DIR/compose.yaml"
+ENV_FILE="$WORKING_DIR/.env"
 HEALTH_CHECK_SCRIPT="$SCRIPT_DIR/health_check.sh"
 NO_HEALTH=$1
 
@@ -45,16 +46,37 @@ container_running() {
   sudo docker ps --filter "name=$container_name" --format '{{.Names}}' | grep -q "$container_name"
 }
 
+# Function to update VERSION variable in .env in the YYYY.MM.DD format
+update_env_version() {
+  NEW_VERSION=$(date +'%Y.%m.%-d')
+
+  # Check if .env file exists
+  if [[ -f "$ENV_FILE" ]]; then
+      # Update or add the VERSION variable in the .env file
+      if grep -q "^VERSION=" "$ENV_FILE"; then
+          sed -i "s/^VERSION=.*/VERSION=$NEW_VERSION/" "$ENV_FILE"
+      else
+          echo "VERSION=$NEW_VERSION" >> "$ENV_FILE"
+      fi
+      echo "Updated VERSION in $ENV_FILE to $NEW_VERSION"
+  fi
+}
+
 update_tag_and_build_container() {
   local container_name="$1"
   local short_latest_hash="$2"
+  local latest_hash="$3"
   # Update the image tag in the compose.yaml with the latest short hash
   sed -i "s|image:.*$container_name:.*|image: $container_name:$short_latest_hash|g" "$COMPOSE_FILE"
+  # Update the container build context with the actual hash 
+  sed -i "s|\(\s*context: https://github.com/Remote-Falcon/remote-falcon-$container_name.git\)\(#[^[:space:]]*\)\?|\1#$latest_hash|g" "$COMPOSE_FILE"
 
-  # Build the new container image with the updated short hash tag
+  # Build the new container image with the context set to the hash and tag the image to the short hash
   echo
   echo "Building new '$container_name' image tagged with hash '$short_latest_hash' using 'sudo docker compose build $container_name'"
   sudo docker compose -f "$COMPOSE_FILE" build "$container_name"
+  # Update the version variable in the .env file
+  update_env_version
 }
 
 echo
@@ -62,12 +84,14 @@ echo "Running update script for Remote Falcon containers..."
 
 # Loop through each RF container, check its tags in compose.yaml and update the tag as appropriate
 declare -A UPDATE_INFO
-echo "Checking Remote Falcon container image tags in '$COMPOSE_FILE'..."
+echo "Checking Remote Falcon container images in '$COMPOSE_FILE'..."
 for container_info in "${CONTAINERS[@]}"; do
   IFS='|' read -r CONTAINER_NAME REPO_URL BRANCH <<< "$container_info"
-  echo "Checking container '$CONTAINER_NAME'..."
+#  echo "Checking container '$CONTAINER_NAME'..."
   # Get the image tag of the container from the compose.yaml
   CURRENT_COMPOSE_TAG=$(sed -n "/$CONTAINER_NAME:/,/image:/ s/image:.*:\(.*\)/\1/p" "$COMPOSE_FILE" | xargs | tr -d '\r\n')
+  CURRENT_COMPOSE_CONTEXT=$(sed -nE "s|^[[:space:]]*context:[[:space:]]+https://github.com/Remote-Falcon/remote-falcon-${CONTAINER_NAME}.git#([a-fA-F0-9]{6,})\r?$|\1|p" "$COMPOSE_FILE")
+#  echo $CONTAINER_NAME - $CURRENT_COMPOSE_TAG - $CURRENT_COMPOSE_CONTEXT
 
   # Fetch the latest commit hash for the branch
   LATEST_HASH=$(git ls-remote "$REPO_URL" "$BRANCH" | awk '{print $1}')
@@ -80,7 +104,7 @@ for container_info in "${CONTAINERS[@]}"; do
 
   # Check the current compose tag is in the valid short hash format 'abc1234'
   if [[ "$CURRENT_COMPOSE_TAG" =~ ^[a-f0-9]{7}$ ]]; then
-    echo "Container '$CONTAINER_NAME' has a valid short hash: $CURRENT_COMPOSE_TAG"
+#    echo "Container '$CONTAINER_NAME' has a valid short hash: $CURRENT_COMPOSE_TAG"
     # Download changes from current short hash image tag to the latest short hash in order to display changes later
     if [[ ! "$CURRENT_COMPOSE_TAG" == "$SHORT_LATEST_HASH" ]]; then
       # Clone the repository to view commit history
@@ -104,7 +128,7 @@ for container_info in "${CONTAINERS[@]}"; do
       # Clean up the temporary directory
       rm -rf "$TEMP_DIR"
     else
-      echo "Container '$CONTAINER_NAME' is at the latest version: $SHORT_LATEST_HASH"
+      echo -e "✅ Container '$CONTAINER_NAME' is at the latest version: $SHORT_LATEST_HASH"
     fi
   else # Image tag in compose is not a valid short hash - either new or existing setups that do not use the 'abc1234' hash format
     # Check if container is running and ask to update to latest hash tag or if container is not running update to the latest hash tag
@@ -113,19 +137,18 @@ for container_info in "${CONTAINERS[@]}"; do
       echo "Container '$CONTAINER_NAME' is running."
       read -p "Would you like to update the image tag for '$CONTAINER_NAME' to '$SHORT_LATEST_HASH' and rebuild the container? (y/n): " CONFIRM
       if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-        update_tag_and_build_container "$CONTAINER_NAME" "$SHORT_LATEST_HASH"
+        update_tag_and_build_container "$CONTAINER_NAME" "$SHORT_LATEST_HASH" "$LATEST_HASH"
       else
         echo "Container '$CONTAINER_NAME' image tag not updated. Current image tag remains: $CURRENT_COMPOSE_TAG"
       fi
     else
       # Container is not running and the image tag is not a hash, auto update the compose tag for the container with the latest short hash and start the container
-      update_tag_and_build_container "$CONTAINER_NAME" "$SHORT_LATEST_HASH"
+      update_tag_and_build_container "$CONTAINER_NAME" "$SHORT_LATEST_HASH" "$LATEST_HASH"
     fi
   fi
-  echo
+#  echo
 done
 echo "Done checking Remote Falcon container image tags."
-echo
 
 # Display no updates detected if UPDATE_INFO is empty or display all the available updates and prompt to update
 if [[ ${#UPDATE_INFO[@]} -eq 0 ]]; then
@@ -148,7 +171,7 @@ else
     read -p "Would you like to update the version for container '$CONTAINER_NAME' to '$SHORT_LATEST_HASH'? (y/n): " CONFIRM
     if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
       echo "Updating container '$CONTAINER_NAME' to image tag '$SHORT_LATEST_HASH' in $COMPOSE_FILE..."
-      update_tag_and_build_container "$CONTAINER_NAME" "$SHORT_LATEST_HASH"
+      update_tag_and_build_container "$CONTAINER_NAME" "$SHORT_LATEST_HASH" "$LATEST_HASH"
     fi
   done
 fi

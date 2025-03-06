@@ -7,7 +7,7 @@
 # ./update_containers.sh nginx
 # ./update_containers.sh mongo
 
-SCRIPT_VERSION=2025.1.4.1
+SCRIPT_VERSION=2025.3.6.1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RF_DIR="remotefalcon"
 WORKING_DIR="$SCRIPT_DIR/$RF_DIR"
@@ -89,7 +89,7 @@ fetch_latest_version() {
 
   case "$container_name" in
     "cloudflared")
-      curl -s "$release_notes_url" | grep -Eo '^[0-9]{4}\.[0-9]{2}\.[0-9]+' | head -n 1
+      curl -s "$release_notes_url" | grep -Eo '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$' | head -n 1
       ;;
     "nginx")
       curl -s "$release_notes_url" | grep -Eo 'nginx [0-9]+\.[0-9]+\.[0-9]+' | head -n 1 | awk '{print $2}'
@@ -131,11 +131,11 @@ prompt_to_update() {
   local sed_command="$3"
 
   # Prompt user to update
-  read -p "Would you like to update container '$container_name' to the $latest_version version? (y/n): " CONFIRM
+  read -p "Would you like to update container '$container_name' to the $latest_version version? (y/n) [n]: " CONFIRM
 
   if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     # Offer to backup mongo prior ot update
-    if $container_name == "mongo"; then
+    if [[ $container_name == "mongo" ]]; then
       backup_mongo "mongo"
     fi
     # Update the tag
@@ -207,13 +207,10 @@ if [[ -z "$LATEST_VERSION" ]]; then
   exit 1
 fi
 
-echo
 echo "Running update script for container '$CONTAINER_NAME'"
 
 #echo "Checking if container '$CONTAINER_NAME' is running..."
-if sudo docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-  echo "Container '$CONTAINER_NAME' is running."
-else
+if ! sudo docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
   echo "Container '$CONTAINER_NAME' does not exist or is not running."
   echo "Attempting to start '$CONTAINER_NAME'..."
   sudo docker compose -f "$COMPOSE_FILE" up -d "$CONTAINER_NAME"
@@ -227,22 +224,22 @@ if [[ -z "$CURRENT_VERSION" ]]; then
   echo "Failed to fetch the current version for container '$CONTAINER_NAME'"
   exit 1
 fi
-echo "Container '$CONTAINER_NAME' current version: $CURRENT_VERSION"
+#echo "Container '$CONTAINER_NAME' current version: $CURRENT_VERSION"
 
 # Update logic for each container: cloudflared, nginx, mongo
 case "$CONTAINER_NAME" in
     "cloudflared")
-      # Check if the current version is in the valid XXXX.XX.X format
-      if [[ ! $CURRENT_VERSION =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]+$ ]]; then
+      # Check if the current version is in the valid XXXX.XX.X XXXX.X.X format
+      if [[ ! $CURRENT_VERSION =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]]; then
         echo "Container '$CONTAINER_NAME' current version '$CURRENT_VERSION' is not in the valid format (XXXX.XX.X)."
       fi
 
       # Display latest version
-      echo "Container '$CONTAINER_NAME' latest version: $LATEST_VERSION"
+#      echo "Container '$CONTAINER_NAME' latest version: $LATEST_VERSION"
 
       # Exit early if the current version is the latest patch
       if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
-        echo "Container '$CONTAINER_NAME' is at the latest version: $LATEST_VERSION"
+        echo "✅ Container '$CONTAINER_NAME' is at the latest version: $LATEST_VERSION"
         exit 0
       fi
 
@@ -252,7 +249,7 @@ case "$CONTAINER_NAME" in
       # Flag to track if we are between the versions
       BETWEEN_VERSIONS=0
 
-      echo -e "\nChanges between version $CURRENT_VERSION and $LATEST_VERSION:"
+      echo -e "\nChanges between current version $CURRENT_VERSION and latest version $LATEST_VERSION:"
 
       # Loop through each line of the release notes
       while IFS= read -r line; do
@@ -283,7 +280,7 @@ case "$CONTAINER_NAME" in
 
       # Exit early if the current version is the latest patch
       if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
-        echo "Container '$CONTAINER_NAME' is at the latest version: $LATEST_VERSION"
+        echo -e "✅ Container '$CONTAINER_NAME' is at the latest version: $LATEST_VERSION"
         exit 0
       fi
 
@@ -293,7 +290,7 @@ case "$CONTAINER_NAME" in
       # Flag to track if we are between the versions
       BETWEEN_VERSIONS=0
 
-      echo -e "\nChanges between version $CURRENT_VERSION and $LATEST_VERSION:"
+      echo -e "\nChanges between current version $CURRENT_VERSION and latest version $LATEST_VERSION:"
 
       # Loop through each line of the release notes
       while IFS= read -r line; do
@@ -318,6 +315,10 @@ case "$CONTAINER_NAME" in
         echo "Container '$CONTAINER_NAME' current version '$CURRENT_VERSION' is not in the valid format (XX.X.XX)."
       fi
 
+      # Display current version
+      echo "Container '$CONTAINER_NAME' current version: $CURRENT_VERSION"
+
+
       # Function to extract the major version from a version string
       get_major_version() {
         echo "$1" | cut -d'.' -f1
@@ -339,7 +340,7 @@ case "$CONTAINER_NAME" in
 
       # Exit early if the current version is the latest patch
       if [[ "$CURRENT_VERSION" == "$LATEST_SAME_MAJOR" && "$LATEST_NEXT_MAJOR" == "" ]]; then
-        echo "Container '$CONTAINER_NAME' is at the latest current major patch version: $LATEST_SAME_MAJOR"
+        echo "✅ Container '$CONTAINER_NAME' is at the latest current major patch version: $LATEST_SAME_MAJOR"
         exit 0
       fi
 

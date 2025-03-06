@@ -34,7 +34,7 @@ services:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
       args:
-        - OTEL_OPTS=
+        - OTEL_OPTS=${OTEL_OPTS}
     image: plugins-api:latest
     container_name: plugins-api
     restart: always
@@ -42,7 +42,7 @@ services:
       - "8083:8083"
     environment:
       - server.port=8083
-      - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
+      - spring.data.mongodb.uri=${MONGO_URI}
       - server.servlet.context-path=/remote-falcon-plugins-api
       - sequence-limit=${SEQUENCE_LIMIT}
     depends_on:
@@ -51,7 +51,7 @@ services:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-control-panel.git
       args:
-        - OTEL_OPTS=
+        - OTEL_OPTS=${OTEL_OPTS}
     image: control-panel:latest
     container_name: control-panel
     restart: always
@@ -59,25 +59,30 @@ services:
       - server.port=8081
       - web.url=https://${DOMAIN}
       - auto-validate-email=${AUTO_VALIDATE_EMAIL}
-      - jwt.user=${VIEWER_JWT_KEY}
-      - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
+      - jwt.user=${USER_JWT_KEY}
+      - spring.data.mongodb.uri=${MONGO_URI}
       - github.pat=${GITHUB_PAT}
       - sendgrid.key=${SENDGRID_KEY}
       - client.header=${CLIENT_HEADER}
+      - s3.endpoint=${S3_ENDPOINT}
+      - s3.accessKey=${S3_ACCESS_KEY}
+      - s3.secretKey=${S3_SECRET_KEY}
     depends_on:
       - mongo
   viewer:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-viewer.git
       args:
-        - OTEL_OPTS=
+        - OTEL_OPTS=${OTEL_OPTS}
+        - OTEL_URI=${OTEL_URI}
+        - MONGO_URI=${MONGO_URI}
     image: viewer:latest
     container_name: viewer
     restart: always
     environment:
       - server.port=8082
       - jwt.viewer=${VIEWER_JWT_KEY}
-      - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
+      - spring.data.mongodb.uri=${MONGO_URI}
       - client.header=${CLIENT_HEADER}
     depends_on:
       - mongo
@@ -94,6 +99,7 @@ services:
         - PUBLIC_POSTHOG_HOST=${PUBLIC_POSTHOG_HOST}
         - PUBLIC_POSTHOG_KEY=${PUBLIC_POSTHOG_KEY}
         - GA_TRACKING_ID=${GA_TRACKING_ID}
+        - MIXPANEL_KEY=${MIXPANEL_KEY}
         - HOSTNAME_PARTS=${HOSTNAME_PARTS}
         - SOCIAL_META=${SOCIAL_META}
     image: ui:latest
@@ -106,13 +112,13 @@ services:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-external-api.git
       args:
-        - OTEL_OPTS=
+        - OTEL_OPTS=${OTEL_OPTS}
     image: external-api:latest
     container_name: external-api
     restart: always
     environment:
       - server.port=8084
-      - spring.data.mongodb.uri=mongodb://root:root@mongo:27017/remote-falcon?authSource=admin
+      - spring.data.mongodb.uri=${MONGO_URI}
       - viewer.api.url=https://${DOMAIN}/remote-falcon-viewer
     depends_on:
       - mongo

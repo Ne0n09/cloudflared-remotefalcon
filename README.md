@@ -24,6 +24,46 @@ We will start with the Cloudflare configuration below.
 
 ## Changes
 
+2025.3.6.1
+
+- Updated update_rf_containers script to set the context to the GitHub commit hash in compose.yaml when updating to new image tag:		
+
+```		
+control-panel:
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-control-panel.git#f12f5fbfa90c6f2358a2843ec340de771a7e88bf
+      args:
+        - OTEL_OPTS=
+    image: control-panel:f12f5fb
+    container_name: control-panel
+```	
+
+- Updated update_rf_containers script to update the VERSION variable to YYYY.MM.DD version format when RF images are built and deployed.
+
+- Updated compose.yaml to change jwt.user to use new ${USER_JWT_KEY} .env variable.
+
+- Added USER_JWT_KEY to .env file.
+
+- Updated configure-rf script to generate random JWT keys without asking for a value.
+
+- Fixed configure-rf script to allow = in variable.
+
+- Fixed configure-rf script to display variables that are not assigned. 
+
+- Updated some formatting on the update_containers script.
+
+- Added MIXPANEL_KEY to compose.yaml and .env.
+
+- Added MONGO_URI, OTEL_URI, OTEL_OPTS to .env.
+
+- Added S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY to .env and compose.yaml.
+
+- Updated NGINX default.conf viewer port from 8082 to 8080 due to change in 15ab9d4.
+
+- Updated compose.yaml viewer section to change port to 8080 and added MONGO_URI and OTEL_URI build args.
+
+- Updated health_check script viewer endpoint to https://$DOMAIN/remote-falcon-viewer/q/health
+
 2025.1.4.1
 
 - Everything with regards to the compose.yaml files and configuration script has been updated. The two compose.yaml scripts for published and non-published ports have been removed to just the single compose.yaml with plugins-api port 8083 published. This is exactly how I have run RF for the 2024 season without any issues. 

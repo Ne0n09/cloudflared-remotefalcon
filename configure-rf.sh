@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=2025.1.4.1
+SCRIPT_VERSION=2025.3.6.1
 CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/configure-rf.sh"
 
 # Set the URLs to download the compose.yaml, NGINX default.conf, and default .env files
@@ -49,21 +49,27 @@ parse_env() {
   # Load the existing .env variables to allow for auto-completion
   declare -gA existing_env_vars
   original_keys=()
-  while IFS='=' read -rs line; do
-    # Ignore any comment lines and empty lines
-    if [[ $line == \#* || -z "$line" ]]; then
+
+  while IFS= read -r line; do
+    # Ignore comment lines and empty lines
+    if [[ "$line" == \#* || -z "$line" ]]; then
       continue
     fi
 
-    # Split the line into key and value
+    # Extract key and preserve the full value (including `=` characters)
     key="${line%%=*}"
     value="${line#*=}"
+
+    # Ensure value remains empty if there's no assignment
+    [[ "$key" == "$value" ]] && value=""
+
     existing_env_vars["$key"]="$value"
     original_keys+=("$key")
 
     export "$key"="$value" # Export the variable for auto-completion
     echo "$key=$value"
   done < .env
+
   echo "--------------------------------"
 }
 
@@ -74,6 +80,7 @@ update_env() {
     ["TUNNEL_TOKEN"]="$tunneltoken"
     ["DOMAIN"]="$domain"
     ["VIEWER_JWT_KEY"]="$viewerjwtkey"
+    ["USER_JWT_KEY"]="$userjwtkey"
     ["HOSTNAME_PARTS"]="$hostnameparts"
     ["AUTO_VALIDATE_EMAIL"]="$autovalidateemail"
     ["NGINX_CONF"]="$NGINX_CONF"
@@ -85,6 +92,7 @@ update_env() {
     ["PUBLIC_POSTHOG_KEY"]="$publicposthogkey"
     ["PUBLIC_POSTHOG_HOST"]="$PUBLIC_POSTHOG_HOST"
     ["GA_TRACKING_ID"]="$gatrackingid"
+    ["MIXPANEL_KEY"]="$mixpanelkey"
     ["CLIENT_HEADER"]="$CLIENT_HEADER"
     ["SENGRID_KEY"]="$SENGRID_KEY"
     ["GITHUB_PAT"]="$GITHUB_PAT"
@@ -99,7 +107,8 @@ update_env() {
   echo "--------------------------------"
   # Iterate over the original order of keys
   for key in "${original_keys[@]}"; do
-    if [[ -n "${new_env_vars[$key]}" ]]; then
+    #if [[ -n "${new_env_vars[$key]}" ]]; then
+    if [[ -v new_env_vars[$key] ]]; then  # Ensures empty values are displayed
       echo "$key=${new_env_vars[$key]}"
     fi
   done
@@ -113,16 +122,18 @@ update_env() {
 
     # Update the .env file
     for key in "${!new_env_vars[@]}"; do
-      if [[ -n "${existing_env_vars[$key]}" ]]; then
-        # Update existing variable
-       # echo "Updating existing .env variable ${key}=${new_env_vars[$key]}"
+      if grep -q "^${key}=" .env; then
+        # Use sed to update the existing key, correctly handling empty values
         sed -i "s|^${key}=.*|${key}=${new_env_vars[$key]}|" .env
       else
-        # Append new variable
-       # echo "Appending new .env variable ${key}=${new_env_vars[$key]}"
+        # Append only if it doesn’t exist in the .env file
         echo "${key}=${new_env_vars[$key]}" >> .env
       fi
     done
+
+    # Remove any duplicate lines in the .env file
+    awk '!seen[$0]++' .env > .env.tmp && mv .env.tmp .env
+
     echo "Writing variables to .env file completed!"
     echo
   else
@@ -229,18 +240,17 @@ if [[ "$(get_input "Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ ]]; 
   echo "You will be asked to confirm the changes before the file is modified."
   echo
   tunneltoken=$(get_input "Enter your Cloudflare tunnel token:" "$TUNNEL_TOKEN")
-  echo
   domain=$(get_input "Enter your domain name, example: yourdomain.com:" "$DOMAIN")
-  echo
-  viewerjwtkey=$(get_input "Enter a random value for viewer JWT key:" "$VIEWER_JWT_KEY")
-  echo
-  # Removed this question to avoid issues - .env can be manually edited if you have ACM and want a 3 part domain.
+  # Automatically configure the JWT keys for user and viewer to use a random Base64 value
+  viewerjwtkey=$(openssl rand -base64 32)
+  userjwtkey=$(openssl rand -base64 32)
+
+  # Removed this hostnameparts question to avoid issues - .env can be manually edited if you have ACM and want a 3 part domain.
   #echo "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com')"
   #hostnameparts=$(get_input "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month):" "$HOSTNAME_PARTS" )
   #echo
   hostnameparts=2
   autovalidateemail=$(get_input "Enable auto validate email? While set to 'true' anyone can create a viewer page account on your site (true/false):" "$AUTO_VALIDATE_EMAIL")
-  echo
 
   # Ask if Cloudflare origin certificates should be updated. This will create the cert/key in the current directory and append the domain name to the beginning of the file name
   if [[ "$(get_input "Update origin certificates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
@@ -249,17 +259,17 @@ if [[ "$(get_input "Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ ]]; 
     read -p "Press any key to open nano to paste the origin private key. Ctrl+X, y, and Enter to save."
     nano ${domain}_origin_key.pem
   fi
-  echo
 
-  # Ask if analytics env variables should be set for PostHog and Google Analytics
+  # Ask if analytics env variables should be set for PostHog, Google Analytics, or Mixpanel
   if [[ "$(get_input "Update analytics variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
     read -p "Enter your PostHog key - https://posthog.com/: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
     read -p "Enter your Google Analytics Measurement ID - https://analytics.google.com/: [$GA_TRACKING_ID]: " gatrackingid
+    read -p "Enter your Mixpanel key - https://mixpanel.com/: [$MIXPANEL_KEY]: " mixpanelkey
   fi
 
   publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
   gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
-  echo
+  mixpanelkey=${mixpanelkey:-$MIXPANEL_KEY}
 
   # Ask if SOCIAL_META variable should be updated
   if [[ "$(get_input "Update social meta tag? (y/n)" "n")" =~ ^[Yy]$ ]]; then
@@ -271,7 +281,6 @@ if [[ "$(get_input "Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ ]]; 
     read -p "[$SOCIAL_META]: " socialmeta
   fi
   socialmeta=${socialmeta:-$SOCIAL_META}
-  echo
 
   sequencelimit=$(get_input "Enter desired sequence limit:" "$SEQUENCE_LIMIT")
 

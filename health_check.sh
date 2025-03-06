@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=2025.1.4.1
+SCRIPT_VERSION=2025.3.6.1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RF_DIR="remotefalcon"
 WORKING_DIR="$SCRIPT_DIR/$RF_DIR"
@@ -55,7 +55,7 @@ if [[ -f $ENV_FILE ]]; then
   declare -A containers=(
     ["control-panel"]="https://$DOMAIN/remote-falcon-control-panel/actuator/health/"
     ["ui"]="https://$DOMAIN/health.json"
-    ["viewer"]="https://$DOMAIN/remote-falcon-viewer/actuator/health/"
+    ["viewer"]="https://$DOMAIN/remote-falcon-viewer/q/health"
     ["plugins-api"]="https://$DOMAIN/remote-falcon-plugins-api/actuator/health/"
     ["external-api"]="https://$DOMAIN/remote-falcon-external-api/actuator/health/"
   )
@@ -72,7 +72,7 @@ if [[ -f $ENV_FILE ]]; then
     body=$(cat /tmp/curl_response)
 
     # Extract the "status" field from the JSON-like response (handles compact and formatted JSON)
-    status=$(echo "$body" | tr -d '\n' | grep -o '"status":[ ]*"[^"]*"' | sed 's/.*"status":[ ]*"\([^"]*\)".*/\1/')
+    status=$(echo "$body" | grep -o '"status":[ ]*"UP"' | head -n1 | sed 's/.*"status":[ ]*"\([^"]*\)".*/\1/')
 
     # Check if the status is "UP" or handle errors
     if [[ "$http_code" -eq 200 && "$status" == "UP" ]]; then
@@ -82,13 +82,14 @@ if [[ -f $ENV_FILE ]]; then
             echo -e "❌ Container '$container' HTTP Error: $http_code (Endpoint '$endpoint' may be down)"
         else
             echo -e "❌ Container '$container' endpoint ''$endpoint'' status is NOT UP (Current status: $status)"
+            echo "Check the logs with 'sudo docker logs $container' for more information."
         fi
     fi
   done
   echo
 
   # Check if the cert or the key do not exist and exit, else validate the cert and key with openssl
-  echo "Checking certificate and private key file..."
+  echo "Checking certificate '$NGINX_CERT' and private key '$NGINX_KEY' file..."
   if [[ ! -f "$WORKING_DIR/$NGINX_CERT" || ! -f "$WORKING_DIR/$NGINX_KEY" ]]; then
     echo "Error: Certificate or private key file not found."
     echo "$WORKING_DIR/$NGINX_CERT"
