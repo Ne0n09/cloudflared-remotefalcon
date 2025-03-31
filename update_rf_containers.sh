@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_VERSION=2025.3.6.1
+SCRIPT_VERSION=2025.3.30.1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RF_DIR="remotefalcon"
 WORKING_DIR="$SCRIPT_DIR/$RF_DIR"
@@ -95,6 +95,7 @@ for container_info in "${CONTAINERS[@]}"; do
 
   # Fetch the latest commit hash for the branch
   LATEST_HASH=$(git ls-remote "$REPO_URL" "$BRANCH" | awk '{print $1}')
+
   if [[ -z $LATEST_HASH ]]; then
     echo "Failed to retrieve the latest commit hash for $CONTAINER_NAME."
     continue
@@ -123,7 +124,7 @@ for container_info in "${CONTAINERS[@]}"; do
       cd - >/dev/null
 
       # Store update information
-      UPDATE_INFO["$CONTAINER_NAME"]="$SHORT_LATEST_HASH|$COMMIT_HISTORY"
+      UPDATE_INFO["$CONTAINER_NAME"]="$SHORT_LATEST_HASH|$LATEST_HASH|$COMMIT_HISTORY"
 
       # Clean up the temporary directory
       rm -rf "$TEMP_DIR"
@@ -158,8 +159,19 @@ else
   # Display all updates and prompt to update the image tag for each container
   echo "Updates detected for the following Remote Falcon containers:"
   for CONTAINER_NAME in "${!UPDATE_INFO[@]}"; do
+    # Reassign REPO_URL and BRANCH to avoid incorrect values from being displayed
+    for container_info in "${CONTAINERS[@]}"; do
+      IFS='|' read -r NAME REPO BRANCH <<< "$container_info"
+      if [[ "$NAME" == "$CONTAINER_NAME" ]]; then
+        REPO_URL="$REPO"
+        break
+      fi
+    done
+
     SHORT_LATEST_HASH=$(echo "${UPDATE_INFO["$CONTAINER_NAME"]}" | sed -n '1s/^\(.......\).*/\1/p')
-    COMMIT_HISTORY=$(echo "${UPDATE_INFO["$CONTAINER_NAME"]}" | cut -d'|' -f2-)
+    LATEST_HASH=$(echo "${UPDATE_INFO["$CONTAINER_NAME"]}" | sed -n 's/^[^|]*|\([^|]*\).*/\1/p')
+    COMMIT_HISTORY=$(echo "${UPDATE_INFO["$CONTAINER_NAME"]}" | cut -d'|' -f3-)
+
     # Get the image tag of the container from the compose.yaml
     CURRENT_COMPOSE_TAG=$(sed -n "/$CONTAINER_NAME:/,/image:/ s/image:.*:\(.*\)/\1/p" "$COMPOSE_FILE" | xargs)
 
@@ -190,3 +202,5 @@ echo "Done checking for Remote Falcon container updates."
 health_check
 echo "Done! Exiting update Remote Falcon containers script..."
 exit 0
+
+## Add auto-update??

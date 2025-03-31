@@ -24,6 +24,12 @@ We will start with the Cloudflare configuration below.
 
 ## Changes
 
+2025.3.30.1
+
+- Fixed the update_rf_containers script. The build context for a container would incorrectly be updated to the context of the repo of another container.
+
+- Fixed the wrong repo being displayed on the update prompt.
+
 2025.3.6.1
 
 - Updated update_rf_containers script to set the context to the GitHub commit hash in compose.yaml when updating to new image tag:		
