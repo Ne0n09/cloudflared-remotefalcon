@@ -80,6 +80,7 @@ services:
     container_name: viewer
     restart: always
     environment:
+      - quarkus.http.port=8082
       - server.port=8082
       - jwt.viewer=${VIEWER_JWT_KEY}
       - spring.data.mongodb.uri=${MONGO_URI}
