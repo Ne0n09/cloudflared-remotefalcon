@@ -536,9 +536,10 @@ This allows for RF containers to be 'tagged' to a hash versus just being tagged 
 
 ### Updating Cloudflared, NGINX, Mongo containers
 
-Run the update_containers.sh script with the container name, you can copy and paste all of them to run one update after another:
+Run the update_containers.sh script with no container name at the end to cycle through updating all non-RF containers or specify the specific container:
 
   ```
+  ./update_containers.sh 
   ./update_containers.sh cloudflared
   ./update_containers.sh nginx
   ./update_containers.sh mongo
