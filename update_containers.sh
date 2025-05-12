@@ -1,23 +1,22 @@
 #!/bin/bash
 
-# Accepts arguments bash "$SCRIPT_DIR/update_container.sh" container-name --no-health
-# $1=container_name $2=--no-health
+# Accepts arguments bash "$SCRIPT_DIR/update_container.sh" container-name
+# $1=container_name
 # This script will check for and display updates for cloudflared, nginx, and mongo containers
+# ./update_containers.sh" will check for updates to all containers
 # ./update_containers.sh cloudflared
 # ./update_containers.sh nginx
 # ./update_containers.sh mongo
 
-SCRIPT_VERSION=2025.3.6.1
+SCRIPT_VERSION=2025.5.12.1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RF_DIR="remotefalcon"
 WORKING_DIR="$SCRIPT_DIR/$RF_DIR"
 COMPOSE_FILE="$WORKING_DIR/compose.yaml"
 ENV_FILE="$WORKING_DIR/.env"
-HEALTH_CHECK_SCRIPT="$SCRIPT_DIR/health_check.sh"
-BACKUP_DIR=$SCRIPT_DIR 
-DB_NAME="remote-falcon"
+BACKUP_DIR=$SCRIPT_DIR
 CONTAINER_NAME=$1
-NO_HEALTH=$2
+CONTAINERS=("cloudflared" "nginx" "mongo")
 
 # Check if the compose file exists
 if [[ ! -f "$COMPOSE_FILE" ]]; then
@@ -45,21 +44,13 @@ parse_env() {
   done < $ENV_FILE
 }
 
-# Health check function to call health check script with override to do --no-health to avoid repeated health checks in the main configure-rf script
-health_check() {
-  # Check if the --no-health argument is passed
-  if [[ "$NO_HEALTH" == "--no-health" ]]; then
-    return 0  # Skip the health check and continue the script
-  fi
-
-  # Check if the health check script exists and is executable
-  if [[ -x "$HEALTH_CHECK_SCRIPT" ]]; then
-    "$HEALTH_CHECK_SCRIPT"
-  else
-    echo "Error: Health check script not found or not executable at $HEALTH_CHECK_SCRIPT"
-    exit 0 # Continue running anyway
-  fi
-}
+# If no container name is provided, loop through all containers
+if [ -z "$1" ]; then
+  for CONTAINER_NAME in "${CONTAINERS[@]}"; do
+    ./update_containers.sh "$CONTAINER_NAME"
+  done
+  exit 0
+fi
 
 # Define release notes URL for each container
 case "$CONTAINER_NAME" in
@@ -75,6 +66,7 @@ case "$CONTAINER_NAME" in
   *)
     echo "Unsupported container: $CONTAINER_NAME" >&2
     echo "Usage:"
+    echo "./update_containers.sh"
     echo "./update_containers.sh cloudflared"
     echo "./update_containers.sh nginx"
     echo "./update_containers.sh mongo"
@@ -116,7 +108,7 @@ fetch_current_version() {
       sudo docker exec nginx nginx -v 2>&1 | sed -n 's/^nginx version: nginx\///p'
       ;;
     "mongo")
-      sudo docker exec -it mongo bash -c "mongod --version | grep -oP 'db version v\\K[\\d\\.]+'" | tr -d '[:space:]'
+      sudo docker exec mongo bash -c "mongod --version | grep -oP 'db version v\\K[\\d\\.]+'" | tr -d '[:space:]'
       ;;
     *)
       echo "Failed to fetch current version. Unsupported container: $container_name" >&2
@@ -139,15 +131,13 @@ prompt_to_update() {
       backup_mongo "mongo"
     fi
     # Update the tag
-    sed -i.bak -E $3 "$COMPOSE_FILE"
+    sed -i.bak -E "$sed_command" "$COMPOSE_FILE"
     echo "Updated container '$container_name' image tag to version $latest_version in $COMPOSE_FILE..."
 
     # Restart the container with the new image
     echo "Restarting container '$container_name' with the $latest_version image..."
-    sudo docker compose -f "$COMPOSE_FILE" pull "$container_name"
     sudo docker compose -f "$COMPOSE_FILE" up -d "$container_name"
     echo "Container '$container_name' update complete!"
-    health_check
     exit 0
   else
     echo "Container '$container_name' update cancelled by user."
@@ -157,7 +147,7 @@ prompt_to_update() {
 
 backup_mongo() {
   # Define container name and backup directory
-  local container_name="$1" 
+  local container_name="$1"
 
   # Load environment variables from .env file
   if [ -f "$ENV_FILE" ]; then
@@ -173,31 +163,43 @@ backup_mongo() {
     exit 1
   fi
 
-  # Prompt the user for confirmation to backup
-  read -p "Do you want to create a backup of the container '$container_name' MongoDB database? (y/n): " CONFIRM
-
-  if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "Backup operation canceled."
-  else
-    # Generate a backup filename with date
-    BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_backup_$(date +'%Y-%m-%d_%H-%M-%S').gz"
-
-    echo "Creating backup of the '$DB_NAME' database from container '$container_name'..."
-
-    sudo docker exec $container_name mongodump --archive=/tmp/backup.archive --gzip --db $DB_NAME --username root --password root --authenticationDatabase admin
-
-    # Copy the backup file from the container to the local machine
-    sudo docker cp $container_name:/tmp/backup.archive $BACKUP_FILE
-
-    # Confirm completion and cleanup
-    if [ -f "$BACKUP_FILE" ]; then
-      echo "Backup completed successfully and stored in: $BACKUP_FILE"
-      sudo docker exec $container_name rm /tmp/backup.archive  # Clean up temporary backup file inside the container
-    else
-      echo "Backup failed. Please check the container logs for more information."
-      exit 1
-    fi
+  # Check MONGO_URI in the .env file is in the valid format
+  if [[ ! "$MONGO_URI" =~ ^mongodb:\/\/[^:@]+:[^:@]+@[^:\/]+:[0-9]+\/[^?]+(\?.*)?$ ]]; then
+    echo "Error: MONGO_URI is not in the valid format (mongodb://user:pass@host:27017/dbname?authSource=admin)."
+    exit 1
   fi
+
+  # Get the DB name from the MONGO_URI
+  db_name="${MONGO_URI##*/}"
+  db_name="${db_name%%\?*}"
+
+  # Get the DB username
+  db_username="${MONGO_URI#mongodb://}"
+  db_username="${db_username%%:*}"
+
+  # Get the DB password
+  db_password="${MONGO_URI#mongodb://*:*}"
+  db_password="${db_password%%@*}"
+
+  # Generate a backup filename with date
+  backup_file="$BACKUP_DIR/${db_name}_backup_$(date +'%Y-%m-%d_%H-%M-%S').gz"
+
+  echo "Creating backup of the '$db_name' database from container '$container_name'..."
+
+  sudo docker exec $container_name mongodump --archive=/tmp/backup.archive --gzip --db $db_name --username $db_username --password $db_password --authenticationDatabase admin
+
+  # Copy the backup file from the container to the local machine
+  sudo docker cp $container_name:/tmp/backup.archive $backup_file
+
+  # Confirm completion and cleanup
+  if [ -f "$backup_file" ]; then
+    echo "Backup completed successfully and stored in: $backup_file"
+    sudo docker exec $container_name rm /tmp/backup.archive  # Clean up temporary backup file inside the container
+  else
+    echo "Backup failed. Please check the container logs for more information."
+    exit 1
+  fi
+  #fi
 }
 
 # Fetch latest version(s) from the release notes
