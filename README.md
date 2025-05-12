@@ -24,6 +24,17 @@ We will start with the Cloudflare configuration below.
 
 ## Changes
 
+2025.05.12.1
+- Updated update_containers.sh
+
+- Removed the prompt to backup and just automatically backup Mongo.
+
+- Updated sed command in prompt_to_update().
+
+- Extract Mongo DB name, username, and password from MONGO_URI in the .env file.
+
+- Removed health_check from update_containers.sh to simplify the script.
+
 2025.3.30.1
 
 - Fixed the update_rf_containers script. The build context for a container would incorrectly be updated to the context of the repo of another container.
@@ -328,9 +339,10 @@ You can also directly run the health_check, update_rf_containers, or update_cont
 ```
 ./health_check.sh
 ./update_rf_containers.sh --no-health
-./update_containers.sh cloudflared --no-health
-./update_containers.sh nginx --no-health
-./update_containers.sh mongo --no-health
+./update_containers.sh 
+./update_containers.sh cloudflared
+./update_containers.sh nginx
+./update_containers.sh mongo
 ```
 
 ### Update the Plugin settings
