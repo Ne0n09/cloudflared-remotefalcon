@@ -1,52 +1,36 @@
 #!/bin/bash
 
-SCRIPT_VERSION=2025.3.6.1
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RF_DIR="remotefalcon"
-WORKING_DIR="$SCRIPT_DIR/$RF_DIR"
-ENV_FILE="$WORKING_DIR/.env"
+# VERSION=2025.5.26.1
+
+#set -euo pipefail
+#set -x
+
 SLEEP_TIME=20s
 
-parse_env() {
-  # Load the existing .env variables to allow for auto-completion
-  declare -gA existing_env_vars
-  original_keys=()
-  while IFS='=' read -rs line; do
-    # Ignore any comment lines and empty lines
-    if [[ $line == \#* || -z "$line" ]]; then
-      continue
-    fi
+# Source shared functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -f "$SCRIPT_DIR/shared_functions.sh" ]]; then
+  echo -e "${RED}❌ ERROR: shared_functions.sh does not exist in $SCRIPT_DIR.${NC}"
+  exit 1
+fi
 
-    # Split the line into key and value
-    key="${line%%=*}"
-    value="${line#*=}"
-    existing_env_vars["$key"]="$value"
-    original_keys+=("$key")
+source "$SCRIPT_DIR/shared_functions.sh"
 
-    export "$key"="$value" # Export the variable for auto-completion
-  done < $ENV_FILE
-}
-
-echo
-echo "Running health check script..."
+echo -e "${BLUE}⚙️ Running health check script...${NC}"
 echo "Sleeping $SLEEP_TIME before running 'sudo docker ps -a' to verify the status of all containers."
 sleep $SLEEP_TIME
-echo
-echo "'sudo docker ps -a':"
 sudo docker ps -a
 echo
-echo "Verify that all containers show 'running OR Up'. If not, check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose up -d'"
-echo
-
+echo "Verify that all containers show 'running OR Up'. If not, check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose -f "$COMPOSE_FILE" up -d'"
 
 # Check if env file exists, parse it, then check if domain is not yourdomain.com
 # Then run various health checks
 if [[ -f $ENV_FILE ]]; then
-  parse_env
+  parse_env $ENV_FILE
 
   # Check if DOMAIN is set
-  if [[ -z "$DOMAIN" || "$DOMAIN" == "your_domain.com"  ]]; then
-    echo "Error: DOMAIN is not set in the .env file."
+  if [[ -z "$DOMAIN" || "$DOMAIN" == "your_domain.com" ]]; then
+    echo -e "${RED}❌ Error: DOMAIN is not set in the .env file.${NC}"
     exit 1
   fi
 
@@ -60,7 +44,8 @@ if [[ -f $ENV_FILE ]]; then
     ["external-api"]="https://$DOMAIN/remote-falcon-external-api/actuator/health/"
   )
 
-  echo "Checking Remote Falcon endpoints..."
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${CYAN}🔄 Checking Remote Falcon endpoints...${NC}"
 
   # Iterate through each container and its endpoint
   for container in "${!containers[@]}"; do
@@ -72,61 +57,118 @@ if [[ -f $ENV_FILE ]]; then
     body=$(cat /tmp/curl_response)
 
     # Extract the "status" field from the JSON-like response (handles compact and formatted JSON)
-    status=$(echo "$body" | grep -o '"status":[ ]*"UP"' | head -n1 | sed 's/.*"status":[ ]*"\([^"]*\)".*/\1/')
+    status=$(echo "$body" | grep -o '"status":[ ]*"UP"' | head -n1 | sed 's/.*"status":[ ]*"\([^"]*\)".*/\1/' || true)
 
     # Check if the status is "UP" or handle errors
     if [[ "$http_code" -eq 200 && "$status" == "UP" ]]; then
-        echo -e "✅ Container '$container' endpoint '$endpoint' status is UP"
+        echo -e "  ${YELLOW}•${NC} ${GREEN}✅ $container endpoint ${BLUE}🔗 $endpoint${NC} ${GREEN}status is UP${NC}"
     else
         if [[ "$http_code" -ne 200 ]]; then
-            echo -e "❌ Container '$container' HTTP Error: $http_code (Endpoint '$endpoint' may be down)"
+            echo -e "  ${YELLOW}•${NC} ${RED}❌ $container HTTP Error: $http_code (Endpoint ${BLUE}🔗 $endpoint${NC} ${RED}may be down)${NC}"
         else
-            echo -e "❌ Container '$container' endpoint ''$endpoint'' status is NOT UP (Current status: $status)"
-            echo "Check the logs with 'sudo docker logs $container' for more information."
+            echo -e "  ${YELLOW}•${NC} ${RED}❌ $container endpoint ${BLUE}🔗 $endpoint${NC} ${RED}status is NOT UP (Current status: $status)${NC}"
+            echo -e "${YELLOW}⚠️ Check the logs with 'sudo docker logs $container' for more information.${NC}"
         fi
     fi
   done
-  echo
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
   # Check if the cert or the key do not exist and exit, else validate the cert and key with openssl
-  echo "Checking certificate '$NGINX_CERT' and private key '$NGINX_KEY' file..."
+  echo -e "${CYAN}🔄 Checking certificate '$NGINX_CERT' and private key '$NGINX_KEY' file...${NC}"
   if [[ ! -f "$WORKING_DIR/$NGINX_CERT" || ! -f "$WORKING_DIR/$NGINX_KEY" ]]; then
-    echo "Error: Certificate or private key file not found."
+    echo -e "${RED}❌ Error: Certificate or private key file not found.${NC}"
     echo "$WORKING_DIR/$NGINX_CERT"
     echo "$WORKING_DIR/$NGINX_KEY"
   else
     # Extract the public key from the certificate
-    cert_pub_key=$(openssl x509 -in "$NGINX_CERT" -pubkey -noout 2>/dev/null)
+    cert_pub_key=$(openssl x509 -in "$NGINX_CERT" -pubkey -noout 2>/dev/null || true)
 
     # Extract the public key from the private key
-    key_pub_key=$(openssl rsa -in "$NGINX_KEY" -pubout 2>/dev/null)
+    key_pub_key=$(openssl rsa -in "$NGINX_KEY" -pubout 2>/dev/null || true)
 
     # Compare the public keys
     if [[ "$cert_pub_key" == "$key_pub_key" ]]; then
-      echo "✅ The certificate and private key match."
+      echo -e "${GREEN}✅ The certificate and private key match.${NC}"
     else
-      echo "❌ The certificate and private key do NOT match."
-      echo "Certificate: "$WORKING_DIR/$NGINX_CERT""
-      echo "Private key: "$WORKING_DIR/$NGINX_KEY""
+      echo -e "${RED}❌ The certificate and private key do NOT match.${NC}"
+      echo "  ${YELLOW}•${NC} Certificate: "$WORKING_DIR/$NGINX_CERT""
+      echo "  ${YELLOW}•${NC} Private key: "$WORKING_DIR/$NGINX_KEY""
     fi
   fi
 
-  echo
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   container_name="nginx"
 
   # Check if the nginx container is running and test its configuration
   if sudo docker ps --filter "name=$container_name" --filter "status=running" --format "{{.Names}}" | grep -q "^$container_name$"; then
-    echo "The container '$container_name' is running. Testing the configuration with 'sudo docker exec $container_name nginx -t'..."
+    echo -e "${CYAN}🔄 $container_name is running. Testing the configuration with 'sudo docker exec $container_name nginx -t'...${NC}"
     sudo docker exec $container_name nginx -t
   else
-    echo "❌ The container '$container_name' is NOT running."
+    echo -e "${RED}❌ $container_name is NOT running.${NC}"
   fi
-echo
+
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  container_name="remote-falcon-images.minio"
+
+  # Check if the minio container is running
+  if sudo docker ps --filter "name=$container_name" --filter "status=running" --format "{{.Names}}" | grep -q "^$container_name$"; then
+    echo -e "${CYAN}🔄 $container_name is running. Checking the status of the MinIO server...${NC}"
+    lan_ip=$(ip route get 1 | awk '/src/ { for(i=1;i<=NF;i++) if ($i=="src") print $(i+1) }')
+    echo -e "MinIO Console: ${BLUE}🔗 http://$lan_ip:9001${NC}"
+
+    ALIAS_CMD="mc alias set $MINIO_ALIAS $S3_ENDPOINT $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD"
+    sudo docker exec "$container_name" $ALIAS_CMD
+    sudo docker exec "$container_name" mc admin info $MINIO_ALIAS
+    echo
+    # Print bucket and object information
+    echo "Checking bucket '$BUCKET_NAME' and object information..."
+    #sudo docker exec "$container_name" mc du --recursive $MINIO_ALIAS
+    output=$(sudo docker exec "$container_name" mc du --recursive "$MINIO_ALIAS" 2>/dev/null || true)
+    echo "$output"
+    if echo "$output" | grep -qE '\bremote-falcon-images\b'; then
+      echo -e "${GREEN}✅ Bucket '$BUCKET_NAME' found in $container_name${NC}"
+    else
+      echo -e "${RED}❌ Bucket '$BUCKET_NAME' not found in $container_name. Re-run ./minio_init.sh${NC}"
+    fi
+
+    if sudo docker exec "$container_name" mc anonymous get "$MINIO_ALIAS/$BUCKET_NAME" | grep -q "Access permission.*is.*public"; then
+      echo -e "${GREEN}✅ Bucket '$BUCKET_NAME' is public.${NC}"
+    else
+      echo -e "${RED}❌ Bucket '$BUCKET_NAME' is NOT public.${NC}"
+    fi
+    # Get the non-expiring access key (expiration == 1970-01-01T00:00:00Z)
+    minio_3_access_key=$(sudo docker exec $container_name mc admin accesskey ls --json $MINIO_ALIAS \
+      | grep -B3 '"expiration":"1970-01-01T00:00:00Z"' \
+      | grep '"accessKey"' \
+      | head -n1 \
+      | sed -E 's/.*"accessKey":"([^"]+)".*/\1/')
+
+    # Compare to the S3_SECRET_KEY
+    if [[ "$minio_3_access_key" == "$S3_ACCESS_KEY" ]]; then
+      echo -e "${GREEN}✅ S3 access key matches S3_ACCESS_KEY in $ENV_FILE${NC}"
+    else
+      echo -e "${RED}❌ S3 access key does NOT match S3_ACCESS_KEY in $ENV_FILE${NC}"
+      echo -e "${YELLOW}MinIO Key: ${minio_3_access_key}${NC}"
+      echo -e "${YELLOW}S3_ACCESS_KEY: ${S3_ACCESS_KEY}${NC}"
+    fi
+
+    # Verify control-panel has a valid S3_ACCESS_KEY
+    if sudo docker logs control-panel 2>&1 | grep -q "InvalidAccessKeyId"; then
+      echo -e "${RED}❌ control-panel is reporting InvalidAccessKeyId. You may want to re-run ./minio_init.sh to correct this.${NC}"
+    fi
+
+
+   # sudo docker exec "$container_name" mc ls --summarize --recursive $MINIO_ALIAS
+  else
+    echo -e "${RED}❌ $container_name is NOT running.${NC}"
+  fi
+
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   container_name="mongo"
 
   # If mongo exists, display show subdomain details from mongo in the format of https://subdomain.yourdomain.com
   if sudo docker ps --filter "name=$container_name" --filter "status=running" --format "{{.Names}}" | grep -q "^$container_name$"; then
-    echo "The container '$container_name' is running. Finding any shows in Mongo container '$container_name'..."
+    echo -e "${CYAN}🔄 $container_name is running. Finding any shows in Mongo container '$container_name'...${NC}"
 
     subdomains=$(sudo docker exec -it mongo bash -c "
     mongosh --quiet 'mongodb://root:root@localhost:27017' --eval '
@@ -145,18 +187,18 @@ echo
     '")
 
     if [[ "$subdomains" == *"No subdomains found"* ]]; then
-      echo "No shows have been configured in Remote Falcon. Create a new account at: https://$DOMAIN.com/signup"
+      echo -e "${YELLOW}⚠️ No shows have been configured in ${NC}${RED}Remote Falcon${NC}${YELLOW}. Create a new account at:${NC} ${BLUE}🔗 https://$DOMAIN/signup${NC}"
     else
-      echo "$subdomains"
+      echo -e "${BLUE}$subdomains${NC}"
     fi
   else
-    echo "❌ The container '$container_name' is NOT running."
+    echo -e "${RED}❌ $container_name is NOT running.${NC}"
   fi
 
   echo
-  echo "If everything is running properly, Remote Falcon should be accessible at: https://$DOMAIN"
+  echo -e "If everything is running properly, ${RED}Remote Falcon${NC} should be accessible at: ${BLUE}🔗 https://$DOMAIN${NC}"
 else
-    echo "Error: $ENV_FILE file not found."
+    echo -e "${RED}❌ Error: $ENV_FILE file not found.${NC}"
 fi
 
 exit 0
