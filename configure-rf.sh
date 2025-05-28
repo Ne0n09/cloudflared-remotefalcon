@@ -18,16 +18,6 @@ MINIO_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalco
 SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo minio)
 ANY_SERVICE_RUNNING=false
 
-# Source shared functions
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ ! -f "$SCRIPT_DIR/shared_functions.sh" ]]; then
-  echo -e "${RED}❌ ERROR: shared_functions.sh does not exist in $SCRIPT_DIR.${NC}"
-  exit 1
-fi
-
-source "$SCRIPT_DIR/shared_functions.sh"
-
-
 # Function to download file if it does not exist
 download_file() {
   local url=$1
@@ -43,6 +33,25 @@ download_file() {
     fi
   fi
 }
+
+echo -e "${BLUE}⚙️ Running ${RED}RF${NC} configuration script...${NC}"
+
+# Download extra helper scripts if they do not exist and make them executable
+download_file $SHARED_FUNCTIONS_URL "shared_functions.sh"
+download_file $UPDATE_RF_CONTAINERS_URL "update_rf_containers.sh"
+download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
+download_file $HEALTH_CHECK_URL "health_check.sh"
+download_file $MINIO_INIT_URL "minio_init.sh"
+chmod +x "shared_functions.sh" "update_rf_containers.sh" "update_containers.sh" "health_check.sh" "minio_init.sh"
+
+# Source shared functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -f "$SCRIPT_DIR/shared_functions.sh" ]]; then
+  echo -e "${RED}❌ ERROR: shared_functions.sh does not exist in $SCRIPT_DIR.${NC}"
+  exit 1
+fi
+
+source "$SCRIPT_DIR/shared_functions.sh"
 
 # Function to get user input for configuration questions
 get_input() {
@@ -255,16 +264,6 @@ if [ ! -x "$(command -v docker)" ]; then
   fi
   echo
 fi
-
-echo -e "${BLUE}⚙️ Running ${RED}RF${NC} configuration script...${NC}"
-
-# Download extra helper scripts if they do not exist and make them executable
-download_file $SHARED_FUNCTIONS_URL "shared_functions.sh"
-download_file $UPDATE_RF_CONTAINERS_URL "update_rf_containers.sh"
-download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
-download_file $HEALTH_CHECK_URL "health_check.sh"
-download_file $MINIO_INIT_URL "minio_init.sh"
-chmod +x "shared_functions.sh" "update_rf_containers.sh" "update_containers.sh" "health_check.sh" "minio_init.sh"
 
 # Ensure the 'remotefalcon' directory exists
 if [ ! -d "$WORKING_DIR" ]; then
