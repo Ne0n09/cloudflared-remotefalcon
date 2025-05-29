@@ -1,6 +1,6 @@
 ## Cloudflare Configuration
 
-This configuration will go over the Cloudflare DNS, certificate, and tunnel configuration.
+This page covers the Cloudflare domain name, certificate, tunnel, and DNS configuration.
 
 !!! note
 
@@ -168,9 +168,15 @@ With the Cloudflare tunnel configuration completed. Go back to the main [Cloudfl
 
 2. Select DNS -> Records
 
-You should see a CNAME record that was created automatically for the tunnel, (ex: CNAME yourdomain.com  248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com)
+You should see a CNAME record that was created automatically for the tunnel.
 
-Click + Add Record
+!!! example "Example tunnel DNS record"
+
+    | Type  | Name             | Content                                                    |
+    |-------|------------------|------------------------------------------------------------|
+    | CNAME | `yourdomain.com` | `248a0b11-e62a-4b0e-8e30-123456789101112.cfargotunnel.com` |
+
+Click + Add Record and add it as below, substiting yourdomain.com for your domain name.
 
 === "Add record"
 
@@ -196,3 +202,5 @@ Both should be proxied.
 Scroll down and you should see the Cloudflare Nameservers.
 
 Ensure that you are using these name servers with your domain name registrar/provider.
+
+Next is Remote Falcon [installation](../install/remotefalcon.md).
