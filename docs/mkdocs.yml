@@ -1,6 +1,7 @@
 site_name: cloudflared-remotefalcon docs
 site_url: https://ne0n09.github.io/cloudflared-remotefalcon/docs/
 repo_url: https://github.com/Ne0n09/cloudflared-remotefalcon
+docs_dir: docs
 theme:
   name: material
   font:
