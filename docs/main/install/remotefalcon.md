@@ -1,10 +1,8 @@
-## Remote Falcon Installation
-
 Download the configuration script, make it executable and run it!
 
-### Download configure-rf.sh
+## Download and run configure-rf.sh
 
-1. Download the script to your desired directory. The script will create a 'remotefalcon' directory if it does not already exist. Your current directory can be verified with ```pwd```
+1. Download the script to your desired directory. The script will create a 'remotefalcon' directory if it does not already exist. Your current directory can be verified with `#!sh pwd`.
       
       ```sh
       curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/configure-rf.sh
@@ -22,13 +20,13 @@ Download the configuration script, make it executable and run it!
       ./configure-rf.sh
       ```
 
-Make sure you have th following information available to copy and paste as the configuration script will ask for these:
+Make sure you have the following information available to copy and paste as the configuration script will ask for these:
 
 - Cloudflare tunnel token
 
 - Cloudflare origin server certificate
 
-- cloudflare origin sever private key
+- Cloudflare origin sever private key
 
 If everything went to plan with the configuration you should see your containers all up similar to below:
 
@@ -49,27 +47,35 @@ The configuration script can be re-run to help make any changes if needed.
 
 You can also directly run the health_check, update_rf_containers, or update_containers scripts directly as well.
 
+See the [scripts](../../scripts/index.md) page for more details.
+
 ```
 ./health_check.sh
-./update_rf_containers.sh --no-health
-./update_containers.sh 
-./update_containers.sh cloudflared
-./update_containers.sh nginx
+./update_rf_containers.sh auto-apply health
+./update_containers.sh all dry-run
+./update_containers.sh cloudflared auto-apply health
+./update_containers.sh nginx dry-run
 ./update_containers.sh mongo
 ```
 
-### Update the FPP plugin settings
+## Update the FPP plugin settings
 
 1. In FPP go to Content Setup -> Remote Falcon
 
 2. Enter your *show token* from your self-hosted Remote Falcon account settings.
 
-3. Update the *Plugins API Path* to your domain: ```https://yourdomain.com/remote-falcon-plugins-api```
+3. Update the *Plugins API Path* to your domain:
+
+    !!! example "Example Plugins API Path"
+
+          |                    | Developer Settings                                             |
+          |--------------------|----------------------------------------------------------------|
+          | Plugins API Path   | ```https://yourdomain.com/remote-falcon-plugins-api```         |
 
 4. Reboot FPP after applying the changes.
 
-!!! tip
+    !!! tip
 
-      If you have local access to your FPP player you can directly connect to the plugins-api container if port 8083 is published: 
+          If you have local access to your FPP player you can directly connect to the plugins-api container if port 8083 is published:
 
-      ```http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api```
+          ```http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api```

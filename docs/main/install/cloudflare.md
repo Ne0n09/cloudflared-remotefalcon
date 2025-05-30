@@ -1,12 +1,10 @@
-## Cloudflare Configuration
-
 This page covers the Cloudflare domain name, certificate, tunnel, and DNS configuration.
 
 !!! note
 
     The tunnel configuration requires a Cloudflare Zero Trust account, which is free, but will require you to enter a payment method(Credit card or PayPal).
 
-### Add Domain Name to Cloudflare
+## Add Domain Name to Cloudflare
 
 If not already added, you'll have to add your domain name to Cloudflare
 
@@ -30,7 +28,7 @@ You will have to wait some time for the new nameservers to take effect.
 
 Cloudflare will send you an email when your domain is available. You can continue with the additional setup so it will be ready to go when your domain is available.
 
-### Certificate
+## Certificate
 
 1. Click SSL/TLS on the left side of the Cloudflare Dashboard
 
@@ -69,7 +67,7 @@ Cloudflare will send you an email when your domain is available. You can continu
         The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains 
         (ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
 
-### Cloudflare Tunnel
+## Cloudflare Tunnel
 
 Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if not there already.
 
@@ -86,7 +84,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 !!! note
     Ensure you have copied the whole token. We will need it later in the configuration script.
 
-#### Configure both public hostnames.
+### Configure both public hostnames.
 
 ???+ info "Public Hostnames"
 
@@ -152,7 +150,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
         ![tunnel_public_hostname_page_settings_wildcard](https://github.com/user-attachments/assets/1698a66f-6c13-4b62-9c82-ae4fbcf697e0)
 
-#### **Catch-all rule**
+### **Catch-all rule**
 
 1. Click *Edit* to the right of the catch-all rule.
 
@@ -160,7 +158,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
 ![tunnel_public_hostname_config](https://github.com/user-attachments/assets/b3f1ed8f-b75b-490f-abb6-1b5ec3cf3e7d)
 
-### DNS
+## DNS
 
 With the Cloudflare tunnel configuration completed. Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/).
 

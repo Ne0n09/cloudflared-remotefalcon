@@ -39,25 +39,40 @@ control-panel:
     image: control-panel:f12f5fb
     container_name: control-panel
 ```	
+
 - Updated update_rf_containers script to update the VERSION variable to YYYY.MM.DD version format when RF images are built and deployed.
+
 - Updated compose.yaml to change jwt.user to use new ${USER_JWT_KEY} .env variable.
 - Added USER_JWT_KEY to .env file.
+
 - Updated configure-rf script to generate random JWT keys without asking for a value.
+
 - Fixed configure-rf script to allow = in variable.
+
 - Fixed configure-rf script to display variables that are not assigned. 
+
 - Updated some formatting on the update_containers script.
+
 - Added MIXPANEL_KEY to compose.yaml and .env.
+
 - Added MONGO_URI, OTEL_URI, OTEL_OPTS to .env.
+
 - Added S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY to .env and compose.yaml.
-- Updated NGINX default.conf viewer port from 8082 to 8080 due to change in 15ab9d4.
+
+- Updated NGINX default.conf viewer port from 8082 to 8080 due to change in [15ab9d4](https://github.com/Remote-Falcon/remote-falcon-viewer/commit/15ab9d45c546da0b2ad7193410ca33b3383ccc25).
+
 - Updated compose.yaml viewer section to change port to 8080 and added MONGO_URI and OTEL_URI build args.
+
 - Updated health_check script viewer endpoint to https://$DOMAIN/remote-falcon-viewer/q/health
 
 ## 2025.1.4.1
 
 - Everything with regards to the compose.yaml files and configuration script has been updated. The two compose.yaml scripts for published and non-published ports have been removed to just the single compose.yaml with plugins-api port 8083 published. This is exactly how I have run RF for the 2024 season without any issues. 
+
 - Updated the configure-rf script to run outside of the 'remotefalcon' directory. It will also auto create the 'remotefalcon' directory if it is not found in the current directory.
+
 - Added two update scripts. These scripts will display a list of changes in newer versions compared to your current container version and ask you to update. The scripts will directly modify your compose.yaml to update the image tag to the new version versus tagging the containers to 'latest'
+
 - The update_containers.sh script can be run directly with:
 
 !!! example "Update containers syntax"
@@ -68,23 +83,25 @@ control-panel:
 
 !!! example "Update specific container"
 
-    ```sh
+    ```
       ./update_containers.sh cloudflared auto-apply health
+      ⚙️ Checking for non-RF container updates...
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      🔄 Container: cloudflared
+      🔸 Current version: 2025.5.0
+      🔹 Latest version: 2025.5.0
+      ✅ cloudflared is up-to-date.
+      🚀 Done. Non-RF container update process complete.
     ```
 
-  Running update script for container 'cloudflared'
-  Checking if container 'cloudflared' is running...
-  Container 'cloudflared' is running.
-  Checking container 'cloudflared' current version...
-  Container 'cloudflared' current version: 2024.12.2
-  Latest version: 2024.12.2
-  Container 'cloudflared' is at the latest version: 2024.12.2
-  ```
 - Added health check script that gets called from the configure-rf.sh script and the update scripts.
+
 - The health_check.sh script can be run directly with:
 
-```./health_check.sh```
+    `#!sh ./health_check.sh`
+
 - The health check will check/display the following:
+
   - sudo docker ps -a
   - Remote Falcon endpoints
   - SSL certificate and private key match validation

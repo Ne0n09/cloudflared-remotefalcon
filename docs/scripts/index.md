@@ -1,32 +1,4 @@
-# Scripts
-
 **WORK IN PROGRESS**
-
-## Bash Scripts Syntax
-
-```sh title="configure-rf.sh" linenums="1" hl_lines="3"
-# To run the script
-
-./configure-rf.sh
-```
-
-```sh title="update_rf_containers.sh" linenums="1" hl_lines="3"
-# To update Remote Falcon containers run this script
-    
-./update_rf_containers.sh [dry-run|auto-apply|interactive] [health]
-```
-
-```sh title="update_containers.sh" linenums="1" hl_lines="3"
-# To update Non-Remote Falcon containers run this script
-    
-./update_containers.sh [all|mongo|minio|nginx|cloudflared] [dry-run|auto-apply|interactive] [health]
-```
-
-```sh title="update_containers.sh" linenums="1" hl_lines="3"
-# Run a health check directly:
-    
-./health_check.sh
-```
 
 ## Bash Scripts Details
 

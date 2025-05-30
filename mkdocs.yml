@@ -2,7 +2,6 @@ site_name: cloudflared-remotefalcon docs
 site_url: https://ne0n09.github.io/cloudflared-remotefalcon/docs/
 repo_url: https://github.com/Ne0n09/cloudflared-remotefalcon
 docs_dir: docs
-
 theme:
   name: material
   font:
@@ -13,7 +12,10 @@ theme:
   features:
     - navigation.top
     - navigation.instant
+#    - navigation.instant.preview
+    - navigation.tracking
     - navigation.indexes
+#    - navigation.tabs
     - search.suggest
     - search.highlight
     - search.share
@@ -70,6 +72,7 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  - pymdownx.highlight
   - pymdownx.snippets
   - pymdownx.superfences:
       custom_fences:
@@ -81,6 +84,7 @@ markdown_extensions:
   - admonition
   - pymdownx.details
   - tables
+  - def_list
 
 plugins:
   - glightbox

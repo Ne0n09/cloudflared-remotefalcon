@@ -1,14 +1,18 @@
+**WORK IN PROGRESS**
+
 ### Unexpected Error
 
-- Control Panel: Ensure your web browser is pointing you to https://yourdomain.com and *NOT www.* https://www.yourdomain.com 
+- **Control Panel**: Ensure your web browser is pointing you to `https://yourdomain.com` and *NOT `www`:* `https://www.yourdomain.com`
 
-- Viewer page: Make sure you're browsing to your show page sub-domain. You can find this by clicking the gear icon on the top right of the Remote Falcon control panel. It will show https://yourshowname.remotefalcon.com So for your show on your self hosted RF you would go to https://yourshowname.yourdomain.com
+- **Viewer page**: Make sure you're browsing to your show page sub-domain. You can find this by clicking the gear icon on the top right of the Remote Falcon control panel. It will show `https://yourshowname.remotefalcon.com` So for your show on your self hosted RF you would go to `https://yourshowname.yourdomain.com`
 
 ### err_quic_protocol_error in browser
 
 Try to restart the cloudflared container:
 
-```sudo docker restart cloudflared```
+```sh
+sudo docker restart cloudflared
+```
 
 Otherwise, it could be something going on with Cloudflare.
 
@@ -20,7 +24,7 @@ If you want to test if viewer statistics are working you can disconnect your pho
 
 ### Mongo Container Restarting
 
-If your Mongo container is constantly restarting when checking ```sudo docker ps``` then check the logs with ```sudo docker logs mongo```
+If your Mongo container is constantly restarting when checking `#!sh sudo docker ps` then check the logs with `#!sh sudo docker logs mongo`
 
 If you see a message similar to the below you will need to downgrade the Mongo image to a version prior to 5.0 if your CPU does not support AVX.
 
@@ -30,35 +34,37 @@ see https://jira.mongodb.org/browse/SERVER-54407
 see also https://www.mongodb.com/community/forums/t/mongodb-5-0-cpu-intel-g4650-compatibility/116610/2
 see also https://github.com/docker-library/mongo/issues/485#issuecomment-891991814
 ```
-If you are running a VM in a system such as Proxmox you can try changing the CPU type to 'host'. 
+If you are running a VM in a system such as Proxmox you can try changing the CPU type to '`host`'. 
 
 To downgrade you can check the latest version of 4 here [Mongo 4.x tags](https://hub.docker.com/_/mongo/tags?page_size=&ordering=&name=4.)
 
 Update the image tag in your compose.yaml
 
-```nano compose.yaml```
+```sh
+nano remotefalcon/compose.yaml
+```
 
 Modify the Mongo image line:
 
-```
+```yaml title="compose.yaml" linenums="27" hl_lines="2"
   mongo:
     image: mongo:latest
 ```
 
 To add the specific 4.x version tag that you would like to use from [Mongo 4.x tags](https://hub.docker.com/_/mongo/tags?page_size=&ordering=&name=4.)
 
-```
+```yaml title="compose.yaml" linenums="27" hl_lines="2"
   mongo:
     image: mongo:4.0.28
 ```
 
 ### Show page is always redirected to the Control Panel
 
-When attempting to browse to https://yourshowname.yourdomain.com it always redirects to the Remote Falcon Control Panel. 
+When attempting to browse to `https://yourshowname.yourdomain.com` it always redirects to the Remote Falcon Control Panel. 
 
-This is caused by *HOSTNAME_PARTS* being set to 3 when everything else(Tunnel public hostnames/DNS) is configured for 2 parts.  
+This is caused by *`HOSTNAME_PARTS`* being set to 3 when everything else(Tunnel public hostnames/DNS) is configured for 2 parts.  
 
-To correct this issue, ensure you set *HOSTNAME_PARTS* to 2 in the .env file and make sure to update your origin certificates using the configuration script so the certificate file names are propoerly updated for the 2-part domain. 
+To correct this issue, ensure you set *`HOSTNAME_PARTS`* to 2 in the .env file and make sure to update your origin certificates using the configuration script so the certificate file names are propoerly updated for the 2-part domain. 
 
 ### Viewer page Now playing/Up next not updating as expected
 
@@ -91,29 +97,32 @@ Oct 26 19:29:52 FPP fppd_boot_post[2128]: PHP Warning:  file_get_contents(https:
 
 To resolve, we can publish the plugins-api port and configure the FPP plugin to connect locally to plugins-api to avoid FPP from having to go out to the internet to reach the plugins-api:
 
-1. Modify the compose.yaml and update the plugins-api container to publish port 8083(if it is not already published):
+1. Modify the `compose.yaml` and update the plugins-api container to publish port 8083(if it is not already published):
 
-```
-  plugins-api:
-    build:
-      context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
-      args:
-        - OTEL_OPTS=
-    image: plugins-api
-    container_name: plugins-api
-    restart: always
-    ports:
-      - "8083:8083"
-```
+    ```yaml title="compose.yaml" linenums="50" hl_lines="9-10"
+      plugins-api:
+        build:
+          context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
+          args:
+            - OTEL_OPTS=
+        image: plugins-api
+        container_name: plugins-api
+        restart: always
+        ports:
+          - "8083:8083"
+    ```
 
-2. Restart the containers with ```sudo docker compose down``` and ```sudo docker compose up -d```
-3. ```sudo docker ps``` will show the plugins-api is now published on port 8083: 
+2. Restart the containers with `#!sh sudo docker compose down` and `#!sh sudo docker compose up -d`
+
+3. `#!sh sudo docker ps` will show the plugins-api is now published on port 8083: 
 ```
 ONTAINER ID   IMAGE                              COMMAND                  CREATED       STATUS       PORTS                                                 NAMES
 c3dc4de3a19b   plugins-api:fe7c932                "/bin/sh -c 'exec ja…"   5 hours ago   Up 5 hours   8080/tcp, 0.0.0.0:8083->8083/tcp, :::8083->8083/tcp   plugins-api
 ```
-5. In the FPP plugin settings update the Plugins API path to the IP address of your local self hosted RF instance: ```http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api```
-6. Reboot FPP.
+
+4. In the FPP plugin settings update the Plugins API path to the IP address of your local self hosted RF instance: `http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api`
+
+5. Reboot FPP.
 
 ## Troubleshooting Commands
 
@@ -121,21 +130,27 @@ c3dc4de3a19b   plugins-api:fe7c932                "/bin/sh -c 'exec ja…"   5 h
 
 Test the NGINX configuration file: 
 
-```sudo docker exec nginx nginx -t```
+```sh
+sudo docker exec nginx nginx -t
+```
 
 Show the NGINX configuration file that is being used:
 
-```sudo docker exec nginx nginx -T```
+```sh
+sudo docker exec nginx nginx -T
+```
 
 Display logs from the NGINX container (Or any other container by changing the 'nginx' name at the end):
 
-```sudo docker logs nginx```
+```sh
+sudo docker logs nginx
+```
 
 ### Cloudflared
 
 Display the status of the Cloudflare tunnel in the Cloudflared container. You will have to open the login link and login to Cloudflare before running the list command.
 
-  ```
+  ```sh
   sudo docker exec cloudflared cloudflared tunnel login
   sudo docker exec cloudflared cloudflared tunnel list
   ```
@@ -144,7 +159,7 @@ Display the status of the Cloudflare tunnel in the Cloudflared container. You wi
 
 Access mongo container CLI and mongo shell to run mongo shell commands:
 
-```
+```sh
 sudo docker exec -it mongo bash
 mongosh "mongodb://root:root@localhost:27017" 
 use remote-falcon
@@ -152,8 +167,12 @@ use remote-falcon
 	
 To find shows: 
 
-  ```db.show.find()```
+  ```sh
+  db.show.find()
+  ```
 
 To delete shows:
 
-  ```db.show.deleteOne( { showName: 'Test3' } )```
+  ```sh
+  db.show.deleteOne( { showName: 'Test3' } )
+  ```
