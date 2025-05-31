@@ -431,8 +431,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     socialmeta=${socialmeta:-$SOCIAL_META}
     sequencelimit=${sequencelimit:-$SEQUENCE_LIMIT}
   fi
-  # Moved service running check down below
-done
+  # Moved service running check down belo
 
   # Run the container update scripts if .env variables were 'accepted' and 'updated'. This doesn't mean they were changed, just accepted and written to the .env file.
   if update_env; then
@@ -441,6 +440,7 @@ done
       if sudo docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^$service$"; then
         ANY_SERVICE_RUNNING=true
       fi
+    done
     if [[ $ANY_SERVICE_RUNING == true ]]; then
       echo -e "${YELLOW}⚠️ Containers are running. Running 'docker compose up -d --force-recreate' to apply .env changes...${NC}"
       sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate 
