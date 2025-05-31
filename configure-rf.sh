@@ -172,8 +172,8 @@ run_updates() {
     echo -e "${RED}❌ Cloudflared token is missing or still set to a placeholder. Re-run configure-rf.sh to configure.${NC}"
     exit 1
   fi
-  if [[ "$DOMAIN" == "yourdomain.com" || -z "$DOMAIN" ]]; then
-    echo -e "${RED}❌ 'yourdomain.com' is a placeholder. Please enter a valid domain.${NC}"
+  if [[ "$DOMAIN" == "your_domain.com" || -z "$DOMAIN" ]]; then
+    echo -e "${RED}❌ 'your_domain.com' is a placeholder. Please enter a valid domain.${NC}"
     exit 1
   elif [[ ! "$DOMAIN" =~ ^([a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
     echo -e "${RED}❌ '$DOMAIN' is not a valid domain format.${NC}"
@@ -308,7 +308,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
 
   # get the Cloudflared tunnel token and validate input is not default, empty, or not in valid format
   while true; do
-    tunneltoken=$(get_input "🔐 Enter your Cloudflare tunnel token:" "$TUNNEL_TOKEN")
+    tunneltoken=$(get_input "🔐 Enter your Cloudflare sunnel token:" "$TUNNEL_TOKEN")
     if [[ -z "$tunneltoken" || "$tunneltoken" == "cloudflare_token" ]]; then
       echo -e "${RED}❌ Token is missing or still set to a placeholder.${NC}"
     else
@@ -319,8 +319,8 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   # Get domain name and validate input is not default, empty, or not in valid domain format
   while true; do
     domain=$(get_input "🌐 Enter your domain name (e.g., yourdomain.com):" "$DOMAIN")
-    if [[ "$domain" == "yourdomain.com" || -z "$domain" ]]; then
-      echo -e "${RED}❌ 'yourdomain.com' is a placeholder. Please enter a valid domain.${NC}"
+    if [[ "$domain" == "your_domain.com" || -z "$domain" ]]; then
+      echo -e "${RED}❌ 'your_domain.com' is a placeholder. Please enter a valid domain.${NC}"
     elif [[ ! "$domain" =~ ^([a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
       echo -e "${RED}❌ '$domain' is not a valid domain format.${NC}"
     else
