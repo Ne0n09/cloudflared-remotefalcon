@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.5.27.1
+# VERSION=2025.5.31.1
 
 # This script will check for and display updates for non-RF containers: cloudflared, nginx, mongo, and minio
 # ./update_containers.sh all
@@ -158,6 +158,20 @@ prompt_to_update() {
     esac
 }
 
+# Function to get the current compose tag
+get_compose_tag() {
+  local sed_command="$1"
+  local current_tag=$(sed -n $sed_command "$COMPOSE_FILE" | xargs)
+  echo "$current_tag"
+}
+
+# Function to update compose tag if they are set to 'latest' to allow rollback
+replace_compose_tags() {
+  local sed_command="$1"
+  # Replace image tag
+  sed -i.bak -E "$sed_command" "$COMPOSE_FILE"
+}
+
 # Function to backup the MongoDB database prior to updating the mongo container image
 backup_mongo() {
   # Define container name and backup directory
@@ -267,12 +281,18 @@ check_for_update() {
   # Update logic for each container: cloudflared, nginx, mongo, minio
   case "$service_name" in
       "cloudflared")
+        sed_command="s|cloudflare/$service_name:[^[:space:]]+|cloudflare/$service_name:$LATEST_VERSION|"
+        format="^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$"
         # Check if the current version is in the valid XXXX.XX.X XXXX.X.X format
-        check_format "$service_name" "$CURRENT_VERSION" "^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$" XXXX.XX.X
+        check_format "$service_name" "$CURRENT_VERSION" "^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$" "XXXX.XX.X"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
+          if [[ "$(get_compose_tag "$sed_command")" != "$format" ]]; then
+            # Update the tag in compose.yaml if it is not in the valid format
+            replace_compose_tags $sed_command
+          fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
           echo -e "${BLUE}🔗 https://github.com/cloudflare/cloudflared/compare/${CURRENT_VERSION}...${LATEST_VERSION}${NC}"
@@ -280,19 +300,25 @@ check_for_update() {
         fi
         ;;
       "nginx")
-        check_format "$service_name" "$CURRENT_VERSION" "^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,2}$" XX.XX.XX
+        sed_command="/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_VERSION|"
+        format="^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,2}$"
+        check_format "$service_name" "$CURRENT_VERSION" $format "XX.XX.XX"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
+          if [[ "$(get_compose_tag "$sed_command")" != "$format" ]]; then
+            # Update the tag in compose.yaml if it is not in the valid format
+            replace_compose_tags $sed_command
+          fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
           echo -e "${BLUE}🔗 https://nginx.org/en/CHANGES${NC}"
-          prompt_to_update $service_name $LATEST_VERSION "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_VERSION|"
+          prompt_to_update $service_name $LATEST_VERSION $sed_command
         fi
         ;;
       "mongo")
-        check_format "$service_name" "$CURRENT_VERSION" "^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" XX.X.XX
+        check_format "$service_name" "$CURRENT_VERSION" "^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" "XX.X.XX"
         # Function to extract the major version from a version string
         get_major_version() {
           echo "$1" | cut -d'.' -f1
@@ -308,6 +334,10 @@ check_for_update() {
           echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
           echo -e "🔹 Latest version: ${GREEN}$LATEST_SAME_MAJOR${NC}"
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
+          if [[ "$(get_compose_tag "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_SAME_MAJOR|")" != "^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" ]]; then
+            # Update the tag in compose.yaml if it is not in the valid format
+            replace_compose_tags "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_SAME_MAJOR|"
+          fi
         else
           echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
           echo -e "🔹 Latest current major version: ${GREEN}$LATEST_SAME_MAJOR${NC}"
@@ -328,11 +358,17 @@ check_for_update() {
         fi
         ;;
       "minio")
-        check_format "$service_name" "$CURRENT_VERSION" "^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$" RELEASE.YYYY-MM-DDTHH-MM-SSZ
+        sed_command="s|minio/minio:[^[:space:]]+|minio/minio:$LATEST_VERSION|"
+        format="^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$"
+        check_format "$service_name" "$CURRENT_VERSION" "^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$" "RELEASE.YYYY-MM-DDTHH-MM-SSZ"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
+          if [[ "$(get_compose_tag "$sed_command")" != "$format" ]]; then
+            # Update the tag in compose.yaml if it is not in the valid format
+            replace_compose_tags $sed_command
+          fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
           echo -e "${BLUE}🔗 https://github.com/minio/minio/compare/${CURRENT_VERSION}...${LATEST_VERSION}${NC}"

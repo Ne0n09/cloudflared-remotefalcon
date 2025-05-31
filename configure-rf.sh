@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.5.27.1
+# VERSION=2025.5.31.1
 
 #set -euo pipefail
 
@@ -36,22 +36,23 @@ download_file() {
 
 echo -e "${BLUE}⚙️ Running ${RED}RF${NC} configuration script...${NC}"
 
-# Download extra helper scripts if they do not exist and make them executable
+# Download and source shared functions
 download_file $SHARED_FUNCTIONS_URL "shared_functions.sh"
+chmod +x "shared_functions.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -f "$SCRIPT_DIR/shared_functions.sh" ]]; then
+  echo -e "${RED}❌ ERROR: shared_functions.sh does not exist in $SCRIPT_DIR.${NC}"
+  exit 1
+fi
+source "$SCRIPT_DIR/shared_functions.sh"
+
+# Download extra helper scripts if they do not exist and make them executable
 download_file $UPDATE_RF_CONTAINERS_URL "update_rf_containers.sh"
 download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
 download_file $HEALTH_CHECK_URL "health_check.sh"
 download_file $MINIO_INIT_URL "minio_init.sh"
 chmod +x "shared_functions.sh" "update_rf_containers.sh" "update_containers.sh" "health_check.sh" "minio_init.sh"
 
-# Source shared functions
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ ! -f "$SCRIPT_DIR/shared_functions.sh" ]]; then
-  echo -e "${RED}❌ ERROR: shared_functions.sh does not exist in $SCRIPT_DIR.${NC}"
-  exit 1
-fi
-
-source "$SCRIPT_DIR/shared_functions.sh"
 
 # Function to get user input for configuration questions
 get_input() {
@@ -351,23 +352,23 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   # This will create the cert/key in the current directory and append the domain name to the beginning of the file name
   if [[ -f "${domain}_origin_cert.pem" && -f "${domain}_origin_key.pem" ]]; then
     if [[ "$(get_input "❓ Update existing origin certificate and key? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-      read -p "Press any key to open nano to paste the origin certificate. Ctrl+X, y, and Enter to save."
+      read -p "Press ENTER to open nano to paste the origin certificate. Ctrl+X, y, and ENTER to save."
       nano "${domain}_origin_cert.pem"
-      read -p "Press any key to open nano to paste the origin private key. Ctrl+X, y, and Enter to save."
+      read -p "Press ENTER to open nano to paste the origin private key. Ctrl+X, y, and ENTER to save."
       nano "${domain}_origin_key.pem"
     fi
   else
     # If origin cert missing
     if [[ ! -f "${domain}_origin_cert.pem" ]]; then
-      echo -e "${YELLOW}Origin certificate ${domain}_origin_cert.pem not found. Please paste it now.${NC}"
-      read -p "Press any key to open nano to paste the origin certificate. Ctrl+X, y, and Enter to save."
+      echo -e "${YELLOW}⚠️ Origin certificate ${domain}_origin_cert.pem not found. Please paste it now.${NC}"
+      read -p "Press ENTER to open nano to paste the origin certificate. Ctrl+X, y, and ENTER to save."
       nano "${domain}_origin_cert.pem"
     fi
 
     # If origin key missing
     if [[ ! -f "${domain}_origin_key.pem" ]]; then
-      echo -e "${YELLOW}Origin private key ${domain}_origin_key.pem not found. Please paste it now.${NC}"
-      read -p "Press any key to open nano to paste the origin private key. Ctrl+X, y, and Enter to save."
+      echo -e "${YELLOW}⚠️ Origin private key ${domain}_origin_key.pem not found. Please paste it now.${NC}"
+      read -p "Press ENTER to open nano to paste the origin private key. Ctrl+X, y, and ENTER to save."
       nano "${domain}_origin_key.pem"
     fi
   fi
@@ -430,16 +431,16 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     socialmeta=${socialmeta:-$SOCIAL_META}
     sequencelimit=${sequencelimit:-$SEQUENCE_LIMIT}
   fi
-
-  for service in "${SERVICES[@]}"; do
-  if sudo docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^$service$"; then
-    ANY_SERVICE_RUNNING=true
-  fi
+  # Moved service running check down below
 done
 
   # Run the container update scripts if .env variables were 'accepted' and 'updated'. This doesn't mean they were changed, just accepted and written to the .env file.
   if update_env; then
     # Check if containers are running and then do 'docker compose up -d --force-recreate' to ensure .env changes are applied
+    for service in "${SERVICES[@]}"; do
+      if sudo docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^$service$"; then
+        ANY_SERVICE_RUNNING=true
+      fi
     if [[ $ANY_SERVICE_RUNING == true ]]; then
       echo -e "${YELLOW}⚠️ Containers are running. Running 'docker compose up -d --force-recreate' to apply .env changes...${NC}"
       sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate 

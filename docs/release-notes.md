@@ -1,24 +1,47 @@
 # Release Notes
 
+## 2025.05.31.1
+
+- configure-rf - Moved shared_functions.sh to source it earlier to ensure coloring takes effect.
+
+- configure-rf - Moved service running check to only run if env update is accepted
+
+- minio_init - Fixed parse_env_file "$ENV_FILE" to parse_env "$ENV_FILE" as this was causing duplicate variables.
+
+- update_containers - Update image tag if container version is on latest and the compose version is not in a valid version tag format(such as 'latest'). This will allow for rolling back to backed up compose file.
+
 ## 2025.05.27.1
 
 - Revamped pretty much everything! The configure-rf, update_containers, and update_rf_containers scripts have been updated to add colorization and simplification. 
+
 - Image checking in the update_rf_containers script has been updated.
+
 - Updated various things to include MinIO for object storage! This allows you to use the 'Image Hosting' tab in the Control Panel to locally store viewer page images.
+
 - Added minio_init script to assist in configuring the minio container for pretty much a hands off setup of MinIO.
+
 - Updated compose.yaml to include minio container.
+
 - Updated default.conf to add /remote-falcon-images path to point to minio container.
+
 - Updated update_containers.sh to check for minio container updates.
+
 - Added various variables to the .env file and moved some things in the compose.yaml to the .env file.
+
 - Updated health_check script to display MinIO server local LAN link, server status, and bucket object info.
+
 - Various other changes.
 
 ## 2025.05.12.1
 
 - Updated update_containers.sh
+
 - Removed the prompt to backup and just automatically backup Mongo.
+
 - Updated sed command in prompt_to_update().
+
 - Extract Mongo DB name, username, and password from MONGO_URI in the .env file.
+
 - Removed health_check from update_containers.sh to simplify the script.
 
 ## 2025.3.30.1
@@ -103,7 +126,11 @@ control-panel:
 - The health check will check/display the following:
 
   - sudo docker ps -a
+
   - Remote Falcon endpoints
+
   - SSL certificate and private key match validation
+
   - Nginx configuration
+
   - Any shows configured on Remote Falcon in the format of the show URL.

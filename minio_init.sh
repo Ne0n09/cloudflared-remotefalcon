@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.5.27.1
+# VERSION=2025.5.31.1
 
 #set -euo pipefail
 
@@ -16,7 +16,7 @@ fi
 source "$SCRIPT_DIR/shared_functions.sh"
 
 check_env_exists
-parse_env_file "$ENV_FILE"
+parse_env "$ENV_FILE"
 
 # Ensure required S3 variables are present in the .env file
 REQUIRED_S3_VARS=(
