@@ -308,7 +308,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
 
   # get the Cloudflared tunnel token and validate input is not default, empty, or not in valid format
   while true; do
-    tunneltoken=$(get_input "🔐 Enter your Cloudflare sunnel token:" "$TUNNEL_TOKEN")
+    tunneltoken=$(get_input "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
     if [[ -z "$tunneltoken" || "$tunneltoken" == "cloudflare_token" ]]; then
       echo -e "${RED}❌ Token is missing or still set to a placeholder.${NC}"
     else
