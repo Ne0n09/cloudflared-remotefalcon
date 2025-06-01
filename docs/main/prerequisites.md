@@ -1,23 +1,26 @@
-# Prerequisites
+You will need your own domain name and a server capable of running Docker and MongoDB.
 
-## Work in progress
+If you meet the prerequisites you can move on to the [installation](../main/install/index.md)!
 
-This guide assumes you already have a domain name and that you are running a fresh installation of 64-bit Debian or Ubuntu.
+## Domain Name
 
-The MongoDB container requires a 64-bit OS.
+I recommended [porkbun](https://porkbun.com/) if you do not already have a domain name.
 
-### Domain name
+## Server Hardware
 
-If you don't already have a domain name. I recommended [porkbun](https://porkbun.com/).
+- 2 CPUs/cores, minimum
 
-### Hardware
+- 4 GB RAM, minimum
 
-Supported hardware specs??
+- 80 GB disk storage, you may be able to get away with less but more is always better.
 
-### Software
+## Server OS
 
 - 64-bit Debian
 
 - 64-bit Ubuntu
 
-- Other 64-bit operating systems that can run Docker
+- Other 64-bit operating systems that can run Docker will require Docker to be manually installed if it is not already.
+
+- MongoDB requires a [64-bit OS](https://www.mongodb.com/docs/manual/installation/#supported-platforms) and a CPU that supports [AVX instructions](https://www.mongodb.com/community/forums/t/mongodb-5-0-cpu-intel-g4650-compatibility/116610).
+

@@ -1,4 +1,6 @@
-Below you will find a summary of each file that is downloaded into the 'remotefalcon' directory.
+Below you will find a summary of each file that is in the `remotefalcon` directory.
+
+The [configure-rf](../scripts/index.md#__tabbed_1_1){ data-preview } script will download these automatically if they do not exist.
 
 ## compose.yaml
 
@@ -40,9 +42,9 @@ The exceptions are plugins-api(8083:8083) and MinIO(9000:9000,9001:9001) which a
 
 The [.env](https://github.com/Ne0n09/cloudflared-remotefalcon/blob/main/remotefalcon/.env) file specifies all the variables that are used in the compose.yaml.
 
-Some of these are updated by [configure-rf](../scripts/index.md#__tabbed_1_1){ data-preview }
+Some of these are updated by the [configure-rf](../scripts/index.md#__tabbed_1_1){ data-preview } script.
 
-The .env file can be edited manually with `nano remotefalcon/.env`
+The .env file can be edited manually with `nano remotefalcon/.env`.
 
 ??? info ".env variables"
 

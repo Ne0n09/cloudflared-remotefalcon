@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.5.31.1
+# VERSION=2025.6.1.1
 
 #set -euo pipefail
 
@@ -469,5 +469,5 @@ else # User chose not to update the .env file
   fi
 fi
 
-echo -e "${GREEN}🎉 Done! Exiting ${RED}RF${NC} configuration script...${NC}"
+echo -e "${GREEN}🎉 Done! Exiting ${RED}RF${NC}${GREEN} configuration script...${NC}"
 exit 0

@@ -1,5 +1,9 @@
-Self hosted Remote Falcon with easy setup and configuration using Cloudflare Tunnels and your own server capable of running Docker.
+## cloudflared-remotefalcon
 
-[Remote Falcon](https://remotefalcon.com/) is an awesome project and I thought I would help give back by creating a simplified way to run Remote Falcon for those who would like to self host it beyond just these [ways](https://docs.remotefalcon.com/docs/developer-docs/running-it/methods)
+[Remote Falcon](https://remotefalcon.com/) is an awesome project and I thought I would help give back by creating a simplified way to run Remote Falcon for those who would like to self host beyond just these [ways](https://docs.remotefalcon.com/docs/developer-docs/running-it/methods).
+
+[cloudflared-remotefalcon](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main) helps you to self host [Remote Falcon](https://remotefalcon.com/) with guided setup and configuration using [Cloudflare Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) and your own server capable of running [Docker](https://www.docker.com/) through the use of various helper [scripts](../docs/scripts/).
+
+[Cloudflare](https://www.cloudflare.com/plans/free/) offers a lot for free in terms of monitoring and securing your site
 
 Are you ready to get [started](main/index.md)?

@@ -1,41 +1,22 @@
-WORK IN PROGRESS
+## Update or view the .env file manually outside of the configure-rf script
 
-## Health Check script
+The [configure-rf](../scripts/index.md#__tabbed_1_1) script isn't required to view or make updates to the [.env](../architecture/files.md#env) file. 
 
-The health check script runs automatically after the configure-rf script to display and check various things:
+You can manually edit the file, but the compose stack will have to be brought down manually and the Remote Falcon images rebuilt for some settings to take effect.
 
-- 'sudo docker ps -a' to display the status of all containers.
-- curl command is run against each Remote Falcon endpoint and the HTTP response code and endpoint status are displayed along with the endpoint links.
-- The certificate and private key are validated with openssl to confirm they match.
-- If nginx is running, 'sudo docker exec nginx nginx -t' to test the nginx configuration.
-- If mongo is running, any shows that are configured in Remote Falcon will be displayed in the format of https://showname.yourdomain.com
-- The main Remote Falcon link is displayed in the format of https://yourdomain.com
+- To view the .env file:
+    ```sh
+    cat remotefalcon/.env
+    ```
 
-```sh
-./health_check.sh
-```
-
-## Updating or viewing the .env file manually outside of the configuration script
-
-The configuration script isn't required to view or make updates to the .env file. You can manually edit the file, but the compose stack will have to be brought down manually and the Remote Falcon images rebuilt for some settings to take effect.
-
-To view the .env file:
-
-```sh
-cat remotefalcon/.env
-```
-
-To manually edit the .env file:
-
-```sh
-nano remotefalcon/.env
-```
+- To manually edit the .env file:
+    ```sh
+    nano remotefalcon/.env
+    ```
 
 ## External API
 
-Follow the steps below to get access to the external API for your self hosted RF.
-
-This requires that you have the *external-api* container running.
+Follow the steps below to get access to the external API for your self hosted Remote Falcon.
 
 1. From the Control Panel Dashboard click the *gear* icon on the top right
 
@@ -47,11 +28,11 @@ This requires that you have the *external-api* container running.
 
         Ignore the Unexpected Error or API Access Already Requested if you do not have email configured. The API token and secret will still be generated. 
 
-4.  Download the `#!sh generate_jwt.sh` script to your RF server, make it executable, and run it.
+4.  Copy the command below and paste it to download and run the [generate_jwt](../scripts/index.md#__tabbed_1_5) script:
 
     ```sh
-    curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/generate_jwt.sh
-    chmod +x generate_jwt.sh
+    curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/generate_jwt.sh; \
+    chmod +x generate_jwt.sh; \
     ./generate_jwt.sh
     ```
 
@@ -62,6 +43,8 @@ The script will look for a 'mongo' container and dump out all the API details th
 7. Enter your *apiAccessSecret* with no quotes ''
 
 The script will display your JWT that you can use as needed.
+
+### Testing External API access
 
 You can test your JWT with curl in Linux directly from your RF server.
 
@@ -87,24 +70,30 @@ If all went to plan you will see output similar to the below if you have a fresh
 
 References:
 
-[Remote Falcon SwaggerHub](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon)
+- [Remote Falcon SwaggerHub](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon)
 
-[Remote Falcon external-api-sample](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample)
+- [Remote Falcon external-api-sample](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample)
 
 ## Admin access
 
-This will provde a new Admin section on the left-hand menu on the Control Panel. It will let you search for show subdomains and let you basically view/edit the Mongo DB record.
+- This will provde a new Admin section on the left-hand menu on the Control Panel. 
 
-The `#!sh make_admin.sh` script will display any shows found on your RF and whether they are configured as a USER or ADMIN:
-   
-```sh
-curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/make_admin.sh
-chmod +x ./make_admin.sh
-./make_admin.sh
-```
+- It will let you search for show subdomains and let you basically view/edit the MongoDB record.
 
-After the running the script and getting the list of shows and their roles you can re-run the script to toggle the show from USER or ADMIN:
+- The [make_admin](../scripts/index.md#__tabbed_1_6) script will display any shows found and whether they are configured as a USER or ADMIN.
 
-```sh
-./make_admin.sh yourshowname
-```
+- Copy the command below and paste it to download and run the make_admin script:   
+
+    ```sh
+    curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/make_admin.sh; \
+    chmod +x ./make_admin.sh; \
+    ./make_admin.sh
+    ```
+
+- The script will run and dispaly a list of shows and their roles. You can re-run the script to toggle the show from USER or ADMIN:
+
+    ```sh
+    ./make_admin.sh yourshowname
+    ```
+
+- You may have to log out of Remote Falcon and back in again if you receive Unexpected Error when trying to serach for shuw subdomains.

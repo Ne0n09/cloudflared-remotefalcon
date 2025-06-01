@@ -1,34 +1,33 @@
-**WORK IN PROGRESS**
+## Updating and building new Remote Falcon images
 
-## Updating and pulling new Remote Falcon images
-
-Run the update_rf_containers.sh script:
+Run the [update_rf_containers](../scripts/index.md#__tabbed_1_2) script:
 
 ```sh
 ./update_rf_containers.sh
 ```
 
-If your images are tagged to the commit short hash the script will compare your current hash to the GitHub hash. If any changes are found they will be displayed along with a prompt to update the container(s). Otherwise, if they are current the script will let you know there are no updates.
+- The script tags images to the commit from the [Remote Falcon GitHub](https://github.com/Remote-Falcon).
 
-This allows for RF containers to be 'tagged' to a hash versus just being tagged to 'latest' which makes it difficult to tell if your containers are outdated and also allows for the ability to roll back the containers if a new update happens to cause something to break or not work as expected.
+- If any newer changes are found from the current container(s) commit tag they will be displayed along with a prompt to update the container(s).
+
+- If the tags are current the script will let you know there are no updates.
+
+- When an update is accepted, a backup of your current compose.yaml is created and place in the `remotefalcon-backups` directory.
+
+- This allows for versioning of the RF containers and the ability to roll back the [compose.yaml](../architecture/files.md#composeyaml) if an update breaks your Remote Falcon server.
 
 ## Updating Mongo, MinIO, NGINX, and Cloudflared containers
 
-Run the `#!sh update_containers.sh` script with no container name or 'all' at the end to cycle through updating all non-RF containers or specify the specific container:
+Run the [update_containers](../scripts/index.md#__tabbed_1_3) script: 
 
-```sh title="update_containers.sh"
-    # 1st argument: container name or all
-    # 2nd argument: dry-run - checks and displays updates only, auto-apply will automatically apply any updates, interactive prompts for update
-    # 3rd argument: health - add this at the end to automatically run the health check script after update
-    ./update_containers.sh [all|mongo|minio|nginx|cloudflared] [dry-run|auto-apply|interactive] [health]
-
+```sh 
+./update_containers.sh
 ```
 
-  ```sh
-  ./update_containers.sh 
-  ./update_containers.sh cloudflared
-  ./update_containers.sh nginx
-  ./update_containers.sh mongo
-  ```
+- The script will fetch the latest available releases for the containers.
 
-The script directly checks the versions in the containers themselves so it does not rely on the image tags in the compose.yaml.
+- If an update is available a prompt will be displayed to update along with a link to the release notes.
+
+- When an update is accepted, a backup of your current compose.yaml is created and place in the remotefalcon-backups directory.
+
+- The script directly checks the versions in the containers themselves so it does not rely on the image tags in the [compose.yaml](../architecture/files.md#composeyaml), but it does update the image tag in order to roll back.
