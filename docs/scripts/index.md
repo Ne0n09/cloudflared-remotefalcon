@@ -1,14 +1,54 @@
 **WORK IN PROGRESS**
 
-## Bash Scripts Details
+## Script Updates
+
+Currently there is no auto-update for the configure-rf or helper scripts so you may want to check for updates periodically.
+
+1. The `configure-rf` script will print the existing versions on your system when it runs:
+```sh
+📜 Existing script versions:
+🔸 configure-rf.sh           2025.6.2.1
+🔸 health_check.sh           2025.5.26.1
+🔸 minio_init.sh             2025.5.31.1
+🔸 update_containers.sh      2025.5.31.1
+🔸 update_rf_containers.sh   2025.5.27.1
+```
+
+You can check the [release notes](../release-notes.md) to see if there any updates or view the `.sh` files directly on [GitHub](https://github.com/Ne0n09/cloudflared-remotefalcon) looking for any `# VERSION` comments towards the top of each script.
+
+2. Remove the scripts:
+```sh
+rm configure-rf.sh health_check.sh minio_init.sh update_containers.sh update_rf_containers.sh
+```
+
+3. The command below will re-download the configure-rf script and run it which will then re-download the helper scripts:
+```sh
+curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/configure-rf.sh; \
+chmod +x configure-rf.sh; \
+./configure-rf.sh
+```
+
+    !!! note
+
+        To check for updates to compose.yaml, .env, and default.conf check the instructions [here](../main/updating.md#updating-composeyaml-env-and-defaultconf)
+
+## Scripts Details
+
+Click through the tabs below to view detailed information for each script.
 
 === "Configure RF"
 
     - This script is used for the initial setup and configuration of [cloudflared-remotefalcon](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main).
 
-    - The script guides on setting the required and some optional [.env](../architecture/files.md#env) variables.
+    - It guides you on setting the required and some optional [.env](../architecture/files.md#env) variables.
 
-    - The script can be re-run to call the update_rf_containers, update_containers, and health_check scripts.
+    - It can be re-run to view or update the variables or to run the container update or health check scripts.
+
+    - Automatically downloads other helper scripts if they are missing.
+
+    - Automatically creates the `remotefalcon` and `remotefalcon-backups` directories.
+
+    - Automatically downloads the [compose.yaml](../architecture/files.md#composeyaml), [.env](../architecture/files.md#.env), and [default.conf](../architecture/files.md#defaultconf) files if they are missing.
 
     ```sh title="Run the configure-rf script"
     ./configure-rf.sh
@@ -59,7 +99,7 @@
 
 === "Update RF Containers"
 
-    - This script will update your Remote Falcon containers to the latest available commit on the [Remote Falcon Github](https://github.com/Remote-Falcon).
+    - This script will update the Remote Falcon containers to the latest available commit on the [Remote Falcon Github](https://github.com/Remote-Falcon).
     
     - The [compose.yaml](../architecture/files.md#composeyaml) build context hash is updated to the latest commit for the container.
 
@@ -78,7 +118,7 @@
 
     - The script accepts two arguments:
 
-        1. [dry-run|auto-apply|interactive]
+        1. `[dry-run|auto-apply|interactive]`
 
             - `dry-run`: Displays if any updates are available or if up to date.
 
@@ -86,7 +126,7 @@
 
             - `interactive/no argument`: Display if update is available and prompt for confirmation before updating each container.
 
-        2. [health]
+        2. `[health]`
 
             - Add `health` after the first argument to automatically run the health_check script.
 
@@ -147,12 +187,60 @@
 
     This script updates the non-RF containers
 
-    ```sh title="update_containers.sh" linenums="1" hl_lines="3"
-    # To update Non-Remote Falcon containers run this script
-    # 1st argument: container name or all
-    # 2nd argument: dry-run - checks and displays updates only, auto-apply will automatically apply any updates, interactive prompts for update
-    # 3rd argument: health - add this at the end to automatically run the health check script after update
+    - This script will update the non-Remote Falcon containers to the latest available release.
+    
+    - The [compose.yaml](../architecture/files.md#composeyaml) container image tag is updated to the latest release.
+
+    - A backup of the compose.yaml is created when any of the containers are updated.
+
+    - The script accepts three arguments:
+
+        1. `[all|mongo|minio|nginx|cloudflared]`
+
+            - `container_name`: You can specify an individual container or all. If left blank with no other arguments it will check all containers in interactive mode.
+
+        2. `[dry-run|auto-apply|interactive]`: 
+
+            - `dry-run`: Displays if any updates are available or if up to date.
+
+            - `auto-apply`: Automatically update all RF containers if any updates are found.
+
+            - `interactive/no argument`: Display if update is available and prompt for confirmation before updating each container.
+
+        3. `[health]`
+
+            - Add `health` after the first two arguments to automatically run the health_check script.
+
+    ```sh title="update_containers script syntax examples" 
     ./update_containers.sh [all|mongo|minio|nginx|cloudflared] [dry-run|auto-apply|interactive] [health]
+    ./update_containers.sh
+    ./update_containers.sh all dry-run health
+    ./update_containers.sh all auto-apply
+    ```
+
+    ```sh title="Example output of ./update_containers.sh"
+    ⚙️ Checking for non-RF container updates...
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    🔄 Container: mongo
+    🔸 Current version: 8.0.9
+    🔹 Latest version: 8.0.9
+    ✅ mongo is up-to-date.
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    🔄 Container: minio
+    🔸 Current version: RELEASE.2025-05-24T17-08-30Z
+    🔹 Latest version: RELEASE.2025-05-24T17-08-30Z
+    ✅ minio is up-to-date.
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    🔄 Container: nginx
+    🔸 Current version: 1.27.5
+    🔹 Latest version: 1.27.5
+    ✅ nginx is up-to-date.
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    🔄 Container: cloudflared
+    🔸 Current version: 2025.5.0
+    🔹 Latest version: 2025.5.0
+    ✅ cloudflared is up-to-date.
+    🚀 Done. Non-RF container update process complete.
     ```
 
 === "Health Check"

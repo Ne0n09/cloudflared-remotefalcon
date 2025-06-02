@@ -1,6 +1,10 @@
 
-Esure you meet all the [prerequisites](prerequisites.md) in order to run Remote falcon self-hosted and then you can head on over to the [installation](../main/install/index.md) section!
+- Check the [prerequisites](prerequisites.md) in order to run Remote falcon self-hosted.
 
-After installation, be sure to check out the [cloudflared-remotefalcon release notes](../release-notes.md) and the [troubleshooting](../troubleshooting/index.md) sections.
+- After installation, review the [post-install](../main/post-install.md) section on how to configure FPP along with some other helpful tips.
 
-If you need help or run into any issues, feel free to send a message.
+- Be sure to check [cloudflared-remotefalcon release notes](../release-notes.md) for any new updates to the [scripts](../scripts/index.md) or [files](../architecture/files.md).
+
+- The [extra](../extra/index.md) section has other additional tips like using the [External API](../extra/index.md#external-api) or enabling [admin access](../extra/index.md#admin-access).
+
+- If you run into any issues head on over to the [troubleshooting](../troubleshooting/index.md) section which covers some known issues.

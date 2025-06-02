@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.1.1
+# VERSION=2025.6.2.1
 
 #set -euo pipefail
 
@@ -26,7 +26,7 @@ download_file() {
   if [ ! -f "$filename" ]; then
     echo -e "${YELLOW}⚠️ $filename does not exist. Downloading $filename...${NC}"
     if curl -O "$url"; then
-      echo -e "${GREEN}✔ Downloaded $filename successfully.${NC}"
+      echo -e "✔ ${GREEN}Downloaded $filename successfully.${NC}"
     else
       echo -e "${RED}❌ Failed to download $filename from $url.${NC}"
       exit 1
@@ -211,6 +211,35 @@ run_updates() {
   health_check health
 }
 
+# Function to list helper script versions
+list_script_versions() {
+  echo -e "${BLUE}📜 Existing script versions:${NC}"
+  grep -H '^# *VERSION=' ./*.sh | while IFS=: read -r file line; do
+    version=$(echo "$line" | sed -E 's/^# *VERSION=//')
+    filename=$(basename "$file")
+    printf "🔸 %-25s ${YELLOW}%s${NC}\n" "$filename" "$version"
+  done
+}
+
+# Function to list version of compose, .env, and default.conf files
+list_file_versions() {
+  echo -e "${BLUE}📜 Existing file versions:${NC}"
+  awk -v YELLOW="$YELLOW" -v NC="$NC" '
+    FILENAME ~ /compose.yaml$/ && $0 ~ /^[[:space:]]*#?[[:space:]]*COMPOSE_VERSION=/ {
+      gsub(/^[[:space:]]*#?[[:space:]]*COMPOSE_VERSION=[[:space:]]*/, "", $0)
+      printf "🔸 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
+    }
+    FILENAME ~ /\.env$/ && $0 ~ /^[[:space:]]*#?[[:space:]]*ENV_VERSION=/ {
+      gsub(/^[[:space:]]*#?[[:space:]]*ENV_VERSION=[[:space:]]*/, "", $0)
+      printf "🔸 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
+    }
+    FILENAME ~ /default.conf$/ && $0 ~ /^[[:space:]]*#?[[:space:]]*VERSION=/ {
+      gsub(/^[[:space:]]*#?[[:space:]]*VERSION=[[:space:]]*/, "", $0)
+      printf "🔸 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
+    }
+  ' compose.yaml .env default.conf
+}
+
 # Check if user is root or in the sudo group
 if [[ $EUID -eq 0 ]]; then
   # User is root, do nothing
@@ -266,6 +295,9 @@ if [ ! -x "$(command -v docker)" ]; then
   echo
 fi
 
+# Get the downloaded script versions and display them
+list_script_versions
+
 # Ensure the 'remotefalcon' directory exists
 if [ ! -d "$WORKING_DIR" ]; then
   echo -e "${YELLOW}⚠️ Directory '$RF_DIR' does not exist. Creating it in $SCRIPT_DIR...${NC}"
@@ -280,18 +312,22 @@ fi
 
 # Change to the 'remotefalcon' directory and download compose.yaml and default.conf if they do not exist
 cd "$WORKING_DIR" || { echo -e "${RED}❌ Failed to change directory to '$WORKING_DIR'. Exiting.${NC}"; exit 1; }
-echo "Working in directory: $(pwd)"
+echo "✔  Working in directory: $(pwd)"
 download_file $DOCKER_COMPOSE_URL "compose.yaml"
 download_file $NGINX_DEFAULT_URL "default.conf"
 
 # Print existing .env file, if it exists, otherwise download the default .env file
 if [ -f .env ]; then
-  echo "Found existing .env at $ENV_FILE."
+  echo "✔  Found existing .env at $ENV_FILE."
   echo "🔍 Parsing current .env variables:"
 else
   download_file $DEFAULT_ENV_URL ".env"
   echo "🔍 Parsing default .env variables:"
 fi
+
+# Get the file versions and display them
+list_file_versions
+
 # Read the .env file and export the variables and print them
 parse_env
 print_env

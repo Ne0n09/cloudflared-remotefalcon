@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.5.26.1
+# VERSION=2025.6.2.1
 
 #set -euo pipefail
 #set -x
@@ -91,8 +91,8 @@ if [[ -f $ENV_FILE ]]; then
       echo -e "${GREEN}✅ The certificate and private key match.${NC}"
     else
       echo -e "${RED}❌ The certificate and private key do NOT match.${NC}"
-      echo "  ${YELLOW}•${NC} Certificate: "$WORKING_DIR/$NGINX_CERT""
-      echo "  ${YELLOW}•${NC} Private key: "$WORKING_DIR/$NGINX_KEY""
+      echo -e "  ${YELLOW}•${NC} Certificate: "$WORKING_DIR/$NGINX_CERT""
+      echo -e "  ${YELLOW}•${NC} Private key: "$WORKING_DIR/$NGINX_KEY""
     fi
   fi
 

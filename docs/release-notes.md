@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2025.06.2.1
+
+- Fixed some coloring on output in health_check.sh and configure-rf
+- Moved mongo_backup function to shared_functions.sh.
+- configure-rf.sh now displays existing script versions to help keep track of updates.
+
 ## 2025.05.31.1
 
 - configure-rf - Moved shared_functions.sh to source it earlier to ensure coloring takes effect.

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.5.31.1
+# VERSION=2025.6.2.1
 
 # This script will check for and display updates for non-RF containers: cloudflared, nginx, mongo, and minio
 # ./update_containers.sh all
@@ -170,55 +170,6 @@ replace_compose_tags() {
   local sed_command="$1"
   # Replace image tag
   sed -i.bak -E "$sed_command" "$COMPOSE_FILE"
-}
-
-# Function to backup the MongoDB database prior to updating the mongo container image
-backup_mongo() {
-  # Define container name and backup directory
-  local service_name="$1"
-
-  # Load environment variables from .env file
-  if [ -f "$ENV_FILE" ]; then
-    parse_env
-  else
-    echo -e "${RED}❌ Error: $ENV_FILE not found.${NC}"
-    exit 1
-  fi
-
-  # Check if required variables are set
-  if [ -z "$MONGO_PATH" ]; then
-    echo -e "${RED}❌ Error: MONGO_PATH not set in the .env file.${NC}"
-    exit 1
-  fi
-
-  # Check MONGO_URI in the .env file is in the valid format
-  if [[ ! "$MONGO_URI" =~ ^mongodb:\/\/[^:@]+:[^:@]+@[^:\/]+:[0-9]+\/[^?]+(\?.*)?$ ]]; then
-    echo -e "${RED}❌ Error: MONGO_URI is not in the valid format (mongodb://user:pass@host:27017/dbname?authSource=admin).${NC}"
-    exit 1
-  fi
-
-  # Get the DB name from the MONGO_URI
-  db_name="${MONGO_URI##*/}"
-  db_name="${db_name%%\?*}"
-
-  # Generate a backup filename with date
-  mongo_backup_file="$BACKUP_DIR/mongo_$CURRENT_VERSION_${db_name}_backup_$(date +'%Y-%m-%d_%H-%M-%S').gz"
-
-  echo "Creating backup of the '$db_name' database from container '$service_name'..."
-
-  sudo docker exec "$(get_container_name "$service_name")" mongodump --archive=/tmp/backup.archive --gzip --db $db_name --username $MONGO_INITDB_ROOT_USERNAME --password $MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin
-
-  # Copy the backup file from the container to the local machine
-  sudo docker cp "$(get_container_name "$service_name")":/tmp/backup.archive $mongo_backup_file
-
-  # Confirm completion and cleanup
-  if [ -f "$mongo_backup_file" ]; then
-    echo -e "${GREEN}✔ Mongo DB '$db_name' backed up to $mongo_backup_file${NC}"
-    sudo docker exec "$(get_container_name "$service_name")" rm /tmp/backup.archive  # Clean up temporary backup file inside the container
-  else
-    echo -e "${RED}❌ Backup failed. Please check the container logs for more information.${NC  }"
-    exit 1
-  fi
 }
 
 # ========== Main update logic ==========
