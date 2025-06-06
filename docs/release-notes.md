@@ -1,9 +1,25 @@
 # Release Notes
 
+## 2025.06.6.1
+
+- Updated health_check errors and formatting for RF container checks.
+
+- Updated configure-rf list_file_versions placement in script.
+
+- Updated update_containers formatting.
+
+- Updated make_admin to allow selecting by number and updated formatting and coloring.
+
+- Updated generate_jwt to allow selecting by number and updated formatting and coloring.
+
+- Added revert script to assist with reverting back to previous compose.yaml, .env, or MongoDB backups. 
+
 ## 2025.06.2.1
 
-- Fixed some coloring on output in health_check.sh and configure-rf
+- Fixed some coloring on output in health_check.sh and configure-rf.
+
 - Moved mongo_backup function to shared_functions.sh.
+
 - configure-rf.sh now displays existing script versions to help keep track of updates.
 
 ## 2025.05.31.1

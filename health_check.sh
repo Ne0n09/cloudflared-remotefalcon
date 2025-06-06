@@ -1,11 +1,17 @@
 #!/bin/bash
 
-# VERSION=2025.6.2.1
+# VERSION=2025.6.6.1
 
 #set -euo pipefail
 #set -x
 
-SLEEP_TIME=20s
+SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo minio)
+HEALTHY=true
+SLEEP_TIME="${1:-}" # Optional sleep time in seconds, defaults to 20s if not provided
+
+if [[ -z "$SLEEP_TIME" ]]; then
+  SLEEP_TIME="20s"  # Default to 20s if not provided
+fi
 
 # Source shared functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,12 +22,29 @@ fi
 
 source "$SCRIPT_DIR/shared_functions.sh"
 
+# Function to check if container is running using compose 'service' name instead of 'container_name'
+is_container_running() {
+  local service="$1"
+  sudo docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^$service$"
+}
+
 echo -e "${BLUE}⚙️ Running health check script...${NC}"
-echo "Sleeping $SLEEP_TIME before running 'sudo docker ps -a' to verify the status of all containers."
-sleep $SLEEP_TIME
-sudo docker ps -a
-echo
-echo "Verify that all containers show 'running OR Up'. If not, check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose -f "$COMPOSE_FILE" up -d'"
+#echo "Sleeping $SLEEP_TIME before running health checks..."
+#sleep $SLEEP_TIME
+#sudo docker ps -a
+#echo
+#echo "Verify that all containers show 'running OR Up'. If not, check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose -f "$COMPOSE_FILE" up -d'"
+all_services_running=true
+
+for service in "${SERVICES[@]}"; do
+  if ! is_container_running $service; then
+    all_services_running=false
+  fi
+done
+if [[ $all_services_running == false ]]; then
+  echo "💤 Sleeping $SLEEP_TIME before running health checks..."
+  sleep $SLEEP_TIME
+fi
 
 # Check if env file exists, parse it, then check if domain is not yourdomain.com
 # Then run various health checks
@@ -31,12 +54,13 @@ if [[ -f $ENV_FILE ]]; then
   # Check if DOMAIN is set
   if [[ -z "$DOMAIN" || "$DOMAIN" == "your_domain.com" ]]; then
     echo -e "${RED}❌ Error: DOMAIN is not set in the .env file.${NC}"
-    exit 1
+    HEALTHY=false
+    #exit 1
   fi
 
   # Check each RF container endpoint to get its status or HTTP response code
   # Array of RF containers and endpoints
-  declare -A containers=(
+  declare -A rf_containers=(
     ["control-panel"]="https://$DOMAIN/remote-falcon-control-panel/actuator/health/"
     ["ui"]="https://$DOMAIN/health.json"
     ["viewer"]="https://$DOMAIN/remote-falcon-viewer/q/health"
@@ -47,28 +71,34 @@ if [[ -f $ENV_FILE ]]; then
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${CYAN}🔄 Checking Remote Falcon endpoints...${NC}"
 
-  # Iterate through each container and its endpoint
-  for container in "${!containers[@]}"; do
-    endpoint="${containers[$container]}"
+  # Iterate through each container and its endpoint if it is running
+  for rf_container in "${!rf_containers[@]}"; do
+    endpoint="${rf_containers[$rf-container]}"
 
-    # Fetch the response and HTTP status code
-    response=$(curl -s -o /tmp/curl_response -w "%{http_code}" "$endpoint")
-    http_code=$response
-    body=$(cat /tmp/curl_response)
-
-    # Extract the "status" field from the JSON-like response (handles compact and formatted JSON)
-    status=$(echo "$body" | grep -o '"status":[ ]*"UP"' | head -n1 | sed 's/.*"status":[ ]*"\([^"]*\)".*/\1/' || true)
-
-    # Check if the status is "UP" or handle errors
-    if [[ "$http_code" -eq 200 && "$status" == "UP" ]]; then
-        echo -e "  ${YELLOW}•${NC} ${GREEN}✅ $container endpoint ${BLUE}🔗 $endpoint${NC} ${GREEN}status is UP${NC}"
+    if ! is_container_running "$rf_container"; then
+      echo -e "${RED}❌ $rf_container is NOT running.${NC}"
+      HEALTHY=false
+      continue
     else
-        if [[ "$http_code" -ne 200 ]]; then
-            echo -e "  ${YELLOW}•${NC} ${RED}❌ $container HTTP Error: $http_code (Endpoint ${BLUE}🔗 $endpoint${NC} ${RED}may be down)${NC}"
-        else
-            echo -e "  ${YELLOW}•${NC} ${RED}❌ $container endpoint ${BLUE}🔗 $endpoint${NC} ${RED}status is NOT UP (Current status: $status)${NC}"
-            echo -e "${YELLOW}⚠️ Check the logs with 'sudo docker logs $container' for more information.${NC}"
-        fi
+      # Fetch the response and HTTP status code
+      response=$(curl -s -o /tmp/curl_response -w "%{http_code}" "$endpoint")
+      http_code=$response
+      body=$(cat /tmp/curl_response)
+
+      # Extract the "status" field from the JSON-like response (handles compact and formatted JSON)
+      status=$(echo "$body" | grep -o '"status":[ ]*"UP"' | head -n1 | sed 's/.*"status":[ ]*"\([^"]*\)".*/\1/' || true)
+
+      # Check if the status is "UP" or handle errors
+      if [[ "$http_code" -eq 200 && "$status" == "UP" ]]; then
+          echo -e "  ${YELLOW}•${NC} ${GREEN}✅ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${GREEN}status is UP${NC}"
+      else
+          if [[ "$http_code" -ne 200 ]]; then
+              echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container HTTP Error: $http_code (Endpoint ${BLUE}🔗 $endpoint${NC} ${RED}may be down)${NC}"
+          else
+              echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${RED}status is NOT UP (Current status: $status)${NC}"
+              echo -e "${YELLOW}⚠️ Check the logs with 'sudo docker logs $rf_container' for more information.${NC}"
+          fi
+      fi
     fi
   done
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -76,9 +106,10 @@ if [[ -f $ENV_FILE ]]; then
   # Check if the cert or the key do not exist and exit, else validate the cert and key with openssl
   echo -e "${CYAN}🔄 Checking certificate '$NGINX_CERT' and private key '$NGINX_KEY' file...${NC}"
   if [[ ! -f "$WORKING_DIR/$NGINX_CERT" || ! -f "$WORKING_DIR/$NGINX_KEY" ]]; then
-    echo -e "${RED}❌ Error: Certificate or private key file not found.${NC}"
-    echo "$WORKING_DIR/$NGINX_CERT"
-    echo "$WORKING_DIR/$NGINX_KEY"
+    echo -e "${RED}❌ Error: Certificate or private key file not found:${NC}"
+    HEALTHY=false
+    echo -e "  ${YELLOW}•${NC} Certificate: "$WORKING_DIR/$NGINX_CERT""
+    echo -e "  ${YELLOW}•${NC} Private key: "$WORKING_DIR/$NGINX_KEY""
   else
     # Extract the public key from the certificate
     cert_pub_key=$(openssl x509 -in "$NGINX_CERT" -pubkey -noout 2>/dev/null || true)
@@ -90,7 +121,8 @@ if [[ -f $ENV_FILE ]]; then
     if [[ "$cert_pub_key" == "$key_pub_key" ]]; then
       echo -e "${GREEN}✅ The certificate and private key match.${NC}"
     else
-      echo -e "${RED}❌ The certificate and private key do NOT match.${NC}"
+      echo -e "${RED}❌ The certificate and private key do NOT match:${NC}"
+      HEALTHY=false
       echo -e "  ${YELLOW}•${NC} Certificate: "$WORKING_DIR/$NGINX_CERT""
       echo -e "  ${YELLOW}•${NC} Private key: "$WORKING_DIR/$NGINX_KEY""
     fi
@@ -100,18 +132,19 @@ if [[ -f $ENV_FILE ]]; then
   container_name="nginx"
 
   # Check if the nginx container is running and test its configuration
-  if sudo docker ps --filter "name=$container_name" --filter "status=running" --format "{{.Names}}" | grep -q "^$container_name$"; then
+  if is_container_running $container_name; then
     echo -e "${CYAN}🔄 $container_name is running. Testing the configuration with 'sudo docker exec $container_name nginx -t'...${NC}"
     sudo docker exec $container_name nginx -t
   else
     echo -e "${RED}❌ $container_name is NOT running.${NC}"
+    HEALTHY=false
   fi
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   container_name="remote-falcon-images.minio"
 
   # Check if the minio container is running
-  if sudo docker ps --filter "name=$container_name" --filter "status=running" --format "{{.Names}}" | grep -q "^$container_name$"; then
+  if is_container_running $container_name; then
     echo -e "${CYAN}🔄 $container_name is running. Checking the status of the MinIO server...${NC}"
     lan_ip=$(ip route get 1 | awk '/src/ { for(i=1;i<=NF;i++) if ($i=="src") print $(i+1) }')
     echo -e "MinIO Console: ${BLUE}🔗 http://$lan_ip:9001${NC}"
@@ -167,7 +200,7 @@ if [[ -f $ENV_FILE ]]; then
   container_name="mongo"
 
   # If mongo exists, display show subdomain details from mongo in the format of https://subdomain.yourdomain.com
-  if sudo docker ps --filter "name=$container_name" --filter "status=running" --format "{{.Names}}" | grep -q "^$container_name$"; then
+  if is_container_running $container_name; then
     echo -e "${CYAN}🔄 $container_name is running. Finding any shows in Mongo container '$container_name'...${NC}"
 
     subdomains=$(sudo docker exec -it mongo bash -c "
@@ -193,10 +226,16 @@ if [[ -f $ENV_FILE ]]; then
     fi
   else
     echo -e "${RED}❌ $container_name is NOT running.${NC}"
+    HEALTHY=false
   fi
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-  echo
-  echo -e "If everything is running properly, ${RED}Remote Falcon${NC} should be accessible at: ${BLUE}🔗 https://$DOMAIN${NC}"
+  if [[ $HEALTHY == true ]]; then
+    echo -e "If everything is running properly, ${RED}Remote Falcon${NC} should be accessible at: ${BLUE}🔗 https://$DOMAIN${NC}"
+  else
+    echo -e "${RED}❌ Error: Some services are NOT running properly!${NC}"
+    echo -e "${YELLOW}⚠️ Check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose -f "$COMPOSE_FILE" down' and 'sudo docker compose -f "$COMPOSE_FILE" up -d'${NC}"
+  fi
 else
     echo -e "${RED}❌ Error: $ENV_FILE file not found.${NC}"
 fi

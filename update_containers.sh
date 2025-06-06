@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.2.1
+# VERSION=2025.6.6.1
 
 # This script will check for and display updates for non-RF containers: cloudflared, nginx, mongo, and minio
 # ./update_containers.sh all
@@ -184,7 +184,7 @@ check_for_update() {
     echo -e "${YELLOW}⚠️ $service_name does not exist or is not running.${NC}"
     echo -e "${BLUE}🔄 Attempting to start $service_name...${NC}"
     sudo docker compose -f "$COMPOSE_FILE" up -d "$service_name"
-    echo "Sleeping 10 seconds to let $service_name start in order to check its version directly..."
+    echo "💤 Sleeping 10 seconds to let $service_name start in order to check its version directly..."
     sleep 10s
   fi
 

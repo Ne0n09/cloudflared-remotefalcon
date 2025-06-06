@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.2.1
+# VERSION=2025.6.6.1
 
 #set -euo pipefail
 
@@ -316,6 +316,9 @@ echo "✔  Working in directory: $(pwd)"
 download_file $DOCKER_COMPOSE_URL "compose.yaml"
 download_file $NGINX_DEFAULT_URL "default.conf"
 
+# Get the file versions and display them
+list_file_versions
+
 # Print existing .env file, if it exists, otherwise download the default .env file
 if [ -f .env ]; then
   echo "✔  Found existing .env at $ENV_FILE."
@@ -324,9 +327,6 @@ else
   download_file $DEFAULT_ENV_URL ".env"
   echo "🔍 Parsing default .env variables:"
 fi
-
-# Get the file versions and display them
-list_file_versions
 
 # Read the .env file and export the variables and print them
 parse_env
@@ -424,7 +424,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   fi
 
     # ====== OPTIONAL variables ======
-  if [[ "$(get_input "❓ Update optional variables (y/n)" "n")" =~ ^[Yy]$ ]]; then
+  if [[ "$(get_input "❓ Update optional variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
     read -p "🗺️ Enter your Google maps key: [$GOOGLE_MAPS_KEY]: " googlemapskey
 
     # Ask if analytics env variables should be set for PostHog, Google Analytics, or Mixpanel
