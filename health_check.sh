@@ -73,7 +73,7 @@ if [[ -f $ENV_FILE ]]; then
 
   # Iterate through each container and its endpoint if it is running
   for rf_container in "${!rf_containers[@]}"; do
-    endpoint="${rf_containers[$rf-container]}"
+    endpoint="${rf_containers[$rf_container]}"
 
     if ! is_container_running "$rf_container"; then
       echo -e "${RED}❌ $rf_container is NOT running.${NC}"
@@ -141,7 +141,7 @@ if [[ -f $ENV_FILE ]]; then
   fi
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  container_name="remote-falcon-images.minio"
+  container_name="minio"
 
   # Check if the minio container is running
   if is_container_running $container_name; then
@@ -150,13 +150,13 @@ if [[ -f $ENV_FILE ]]; then
     echo -e "MinIO Console: ${BLUE}🔗 http://$lan_ip:9001${NC}"
 
     ALIAS_CMD="mc alias set $MINIO_ALIAS $S3_ENDPOINT $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD"
-    sudo docker exec "$container_name" $ALIAS_CMD
-    sudo docker exec "$container_name" mc admin info $MINIO_ALIAS
+    sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" $ALIAS_CMD
+    sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc admin info $MINIO_ALIAS
     echo
     # Print bucket and object information
     echo "Checking bucket '$BUCKET_NAME' and object information..."
-    #sudo docker exec "$container_name" mc du --recursive $MINIO_ALIAS
-    output=$(sudo docker exec "$container_name" mc du --recursive "$MINIO_ALIAS" 2>/dev/null || true)
+    #sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc du --recursive $MINIO_ALIAS
+    output=$(sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc du --recursive "$MINIO_ALIAS" 2>/dev/null || true)
     echo "$output"
     if echo "$output" | grep -qE '\bremote-falcon-images\b'; then
       echo -e "${GREEN}✅ Bucket '$BUCKET_NAME' found in $container_name${NC}"
@@ -164,13 +164,13 @@ if [[ -f $ENV_FILE ]]; then
       echo -e "${RED}❌ Bucket '$BUCKET_NAME' not found in $container_name. Re-run ./minio_init.sh${NC}"
     fi
 
-    if sudo docker exec "$container_name" mc anonymous get "$MINIO_ALIAS/$BUCKET_NAME" | grep -q "Access permission.*is.*public"; then
+    if sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc anonymous get "$MINIO_ALIAS/$BUCKET_NAME" | grep -q "Access permission.*is.*public"; then
       echo -e "${GREEN}✅ Bucket '$BUCKET_NAME' is public.${NC}"
     else
       echo -e "${RED}❌ Bucket '$BUCKET_NAME' is NOT public.${NC}"
     fi
     # Get the non-expiring access key (expiration == 1970-01-01T00:00:00Z)
-    minio_3_access_key=$(sudo docker exec $container_name mc admin accesskey ls --json $MINIO_ALIAS \
+    minio_3_access_key=$(sudo docker compose -f "$COMPOSE_FILE" exec $container_name mc admin accesskey ls --json $MINIO_ALIAS \
       | grep -B3 '"expiration":"1970-01-01T00:00:00Z"' \
       | grep '"accessKey"' \
       | head -n1 \
@@ -191,7 +191,7 @@ if [[ -f $ENV_FILE ]]; then
     fi
 
 
-   # sudo docker exec "$container_name" mc ls --summarize --recursive $MINIO_ALIAS
+   # sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc ls --summarize --recursive $MINIO_ALIAS
   else
     echo -e "${RED}❌ $container_name is NOT running.${NC}"
   fi

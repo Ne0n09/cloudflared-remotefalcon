@@ -73,18 +73,19 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
 1. Click Zero Trust
 2. Click Networks
-3. Create a tunnel
-4. Select Cloudflared and click Next
-5. Pick any name you would like for your tunnel. Example: rf-yourdomain
-6. Save tunnel
-7. Select Docker under choose your environment
-8. Copy the whole 'docker run cloudflare' command and paste it into a notepad
-9. Click Next
+3. Click Tunnels under Networks
+4. Create a tunnel
+5. Select Cloudflared and click Next
+6. Pick any name you would like for your tunnel. Example: rf-yourdomain
+7. Save tunnel
+8. Select Docker under choose your environment
+9. Copy the whole 'docker run cloudflare' command and paste it into a notepad
+10. Click Next
 
 !!! note
     Ensure you have copied the whole token. We will need it later in the configuration script.
 
-### Configure both public hostnames.
+### Configure both public hostnames
 
 ???+ info "Public Hostnames"
 
@@ -114,13 +115,13 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
             - HTTP2 connection: **On**
 
-        Click Save tunnel
+        Click Complete setup / Save tunnel
 
         ![tunnel_public_hostname_page_settings](https://github.com/user-attachments/assets/934a26aa-7f68-4f6e-b5bc-8cb515de91cb)
 
     1. Click the newly created tunnel and click Edit.
 
-    2. Click Public Hostname
+    2. Click Public Hostnames
 
     3. Click + Add a public hostname
 
@@ -146,7 +147,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
             - HTTP2 connection: **On**
 
-        Click Save hostname
+        Click Save
 
         ![tunnel_public_hostname_page_settings_wildcard](https://github.com/user-attachments/assets/1698a66f-6c13-4b62-9c82-ae4fbcf697e0)
 
