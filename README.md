@@ -7,3 +7,5 @@
 To get started check out the [documentation](https://ne0n09.github.io/cloudflared-remotefalcon/)!
 
 I try to keep release notes of updates I make to the scripts and files available [here](https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/)
+
+![Example configure-rf demo](docs/images/configure-rf-clean-install.gif)
