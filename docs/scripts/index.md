@@ -1,5 +1,3 @@
-**WORK IN PROGRESS**
-
 ## Script Updates
 
 Currently there is no auto-update for the configure-rf or helper scripts so you may want to check for updates periodically.
@@ -50,52 +48,11 @@ Click through the tabs below to view detailed information for each script.
 
     - Automatically downloads the [compose.yaml](../architecture/files.md#composeyaml), [.env](../architecture/files.md#.env), and [default.conf](../architecture/files.md#defaultconf) files if they are missing.
 
-    ```sh title="Run the configure-rf script"
+    ```sh title="Run configure-rf.sh"
     ./configure-rf.sh
     ```
 
-    ```sh title="Example output on first run"
-    ⚙️ Running RF configuration script...
-    Working in directory: /home/user/remotefalcon
-    Found existing .env at /home/user/remotefalcon/.env.
-    🔍 Parsing current .env variables:
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔹 TUNNEL_TOKEN=cloudflare_token
-    🔹 DOMAIN=your_domain.com
-    🔹 VIEWER_JWT_KEY=123456
-    🔹 USER_JWT_KEY=123456
-    🔹 HOSTNAME_PARTS=2
-    🔹 AUTO_VALIDATE_EMAIL=true
-    🔹 NGINX_CONF=./default.conf
-    🔹 NGINX_CERT=./origin_cert.pem
-    🔹 NGINX_KEY=./origin_key.pem
-    🔹 HOST_ENV=prod
-    🔹 VERSION=1.0.0
-    🔹 GOOGLE_MAPS_KEY=
-    🔹 PUBLIC_POSTHOG_KEY=
-    🔹 PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
-    🔹 GA_TRACKING_ID=1
-    🔹 MIXPANEL_KEY=
-    🔹 CLIENT_HEADER=CF-Connecting-IP
-    🔹 SENDGRID_KEY=
-    🔹 GITHUB_PAT=
-    🔹 SOCIAL_META=<meta property='og:url' content='https://remotefalcon.com/'/><meta property='og:title' content='Remote Falcon'/><meta property='og:description' content='Create a custom website where viewers can request or vote for sequences to watch on your light show.'/><meta property='og:image' content='https://remotefalcon.com/jukebox.png'/>
-    🔹 SEQUENCE_LIMIT=200
-    🔹 MONGO_PATH=/home/mongo-volume
-    🔹 MONGO_INITDB_ROOT_USERNAME=root
-    🔹 MONGO_INITDB_ROOT_PASSWORD=root
-    🔹 MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
-    🔹 MINIO_PATH=/home/minio-volume
-    🔹 MINIO_ROOT_USER=12345678
-    🔹 MINIO_ROOT_PASSWORD=12345678
-    🔹 S3_ENDPOINT=http://minio:9000
-    🔹 S3_ACCESS_KEY=123456
-    🔹 S3_SECRET_KEY=123456
-    🔹 OTEL_URI=
-    🔹 OTEL_OPTS=
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    ❓ Change the .env file variables? (y/n) [n]:
-    ```
+    ![Configure-rf demo](../images/configure-rf-clean-install.gif)
 
 === "Update RF Containers"
 
@@ -137,57 +94,11 @@ Click through the tabs below to view detailed information for each script.
     ./update_rf_containers.sh auto-apply
     ```
 
-    ```sh title="Example output on first run of ./update_rf_containers.sh"
-    ⚙️ Checking for Remote Falcon container updates...
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔄 Container: external-api
-    ⚠️ No context hash found for external-api; assuming update is needed.
-    - Current commit: (none)
-    🔹 Latest tag: f7e09fe - Latest commit: f7e09fe74b8e064867795cda080da8c8d665ddec
-    📜 external-api Changelog: (no previous context hash available)
-    🔗 GitHub: https://github.com/Remote-Falcon/remote-falcon-external-api/commits/main
-    ❓ Update external-api to f7e09fe? (y/n): y
-    ✔ Backed up /home/user/remotefalcon/compose.yaml to /home/user/remotefalcon-backups/compose.yaml.backup-2025-06-01_11-46-02
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔄 Container: ui
-    ⚠️ No context hash found for ui; assuming update is needed.
-    - Current commit: (none)
-    🔹 Latest tag: cb19864 - Latest commit: cb19864c25d42fd49aa4ec41cbe4f0af36497458
-    📜 ui Changelog: (no previous context hash available)
-    🔗 GitHub: https://github.com/Remote-Falcon/remote-falcon-ui/commits/main
-    ❓ Update ui to cb19864? (y/n): y
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔄 Container: plugins-api
-    ⚠️ No context hash found for plugins-api; assuming update is needed.
-    - Current commit: (none)
-    🔹 Latest tag: cc1593a - Latest commit: cc1593aab27dc195a4c55b5b1410ddc06e96a60c
-    📜 plugins-api Changelog: (no previous context hash available)
-    🔗 GitHub: https://github.com/Remote-Falcon/remote-falcon-plugins-api/commits/main
-    ❓ Update plugins-api to cc1593a? (y/n): y
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔄 Container: viewer
-    ⚠️ No context hash found for viewer; assuming update is needed.
-    - Current commit: (none)
-    🔹 Latest tag: b7cfb2d - Latest commit: b7cfb2d54ad44264df5d04148d1bcea2bb8bcb34
-    📜 viewer Changelog: (no previous context hash available)
-    🔗 GitHub: https://github.com/Remote-Falcon/remote-falcon-viewer/commits/main
-    ❓ Update viewer to b7cfb2d? (y/n): y
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔄 Container: control-panel
-    ⚠️ No context hash found for control-panel; assuming update is needed.
-    - Current commit: (none)
-    🔹 Latest tag: e6c110c - Latest commit: e6c110c38fb032f9399e841e3ef704e96b7b8ba9
-    📜 control-panel Changelog: (no previous context hash available)
-    🔗 GitHub: https://github.com/Remote-Falcon/remote-falcon-control-panel/commits/main
-    ❓ Update control-panel to e6c110c? (y/n): y
-    🛠️ Building containers with updated tags...
-    ```
+    ![Update RF containers demo](../images/update_rf_containers-clean-install.gif)
 
 === "Update Containers"
 
-    This script updates the non-RF containers
-
-    - This script will update the non-Remote Falcon containers to the latest available release.
+    - This script will check and update the non-Remote Falcon containers to their latest available release.
     
     - The [compose.yaml](../architecture/files.md#composeyaml) container image tag is updated to the latest release.
 
@@ -217,88 +128,105 @@ Click through the tabs below to view detailed information for each script.
     ./update_containers.sh all dry-run health
     ./update_containers.sh all auto-apply
     ```
-
-    ```sh title="Example output of ./update_containers.sh"
-    ⚙️ Checking for non-RF container updates...
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔄 Container: mongo
-    🔸 Current version: 8.0.9
-    🔹 Latest version: 8.0.9
-    ✅ mongo is up-to-date.
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔄 Container: minio
-    🔸 Current version: RELEASE.2025-05-24T17-08-30Z
-    🔹 Latest version: RELEASE.2025-05-24T17-08-30Z
-    ✅ minio is up-to-date.
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔄 Container: nginx
-    🔸 Current version: 1.27.5
-    🔹 Latest version: 1.27.5
-    ✅ nginx is up-to-date.
-    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    🔄 Container: cloudflared
-    🔸 Current version: 2025.5.0
-    🔹 Latest version: 2025.5.0
-    ✅ cloudflared is up-to-date.
-    🚀 Done. Non-RF container update process complete.
-    ```
+    ![Update containers demo](../images/update_containers-clean-install.gif)
 
 === "Health Check"
 
-    This script will perform a 'health check' and display issues that are found.
+    - This script will perform a 'health check' of various things and displays any issues that are found.
 
-    ```sh title="update_containers.sh" linenums="1" hl_lines="3"
-    # Run a health check directly:
-    
+    - Checks if containers are running.
+
+    - Checks Remote Falcon endpoints.
+
+    - Checks if the domain is not the default.
+
+    - Checks if the .env file exists.
+
+    - Checks if the Cloudflare Origin certificate and key exist and if they match.
+
+    - Checks NGINX configuration and tests it.
+
+    - Checks various MinIO configuration details for Image Hosting.
+
+    - Checks Mongo to search for any shows that are configured and provides their URL.
+
+    ```sh title="Run health_check.sh" 
     ./health_check.sh
     ```
 
+    ![Health check demo](../images/health_check-clean-install.gif)
+
 === "Generate JWT"
 
-    This is to be able to make use of the External API.
+    - This is to be able to make use of the External API.
 
-    Assists with getting your API access token and secret key from your Remote Falcon show in the MongoDB database if you don't have email configured(Sendgrid seems impossible to get an account created). 
+    - Assists with getting your API access token and secret key from your Remote Falcon show in the MongoDB database without having Sendgrid configured for email. 
 
-    Then the script generates a JWT for you to use.
+    - Then the script generates a JWT for you to use.
 
-    ```sh title="generate_jwt.sh" linenums="1" hl_lines="3"
-    # Retrieves external API access info and generates JWT:
-    
+    ```sh title="Download generate_jwt.sh"
+      curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/generate_jwt.sh; \
+      chmod +x generate_jwt.sh
+    ```
+
+    ```sh title="Run generate_jwt.sh"
     ./generate_jwt.sh
     ```
 
+    ![Generate_JWT demo](../images/generate_jwt.gif)
+
 === "Make Admin"
 
-    This script will display shows that have admin access and allow you to toggle admin access when the show subdomain is passed as an argument.
+    - This script will display shows that have admin access and allow you to toggle admin access when the show subdomain is passed as an argument.
 
-    Run the script with no arguments to display currently configured showRole(USER/ADMIN).
+    - Run the script with no arguments to display currently configured showRole(USER/ADMIN).
 
-    This basically lets you see and edit MongoDB information from within Remote Falcon.
+    - This basically lets you see and edit MongoDB information from within Remote Falcon.
 
-    ```sh title="make_admin.sh" linenums="1" hl_lines="3"
-    # ./make_admin.sh [yoursubdomain]:
-    
+    ```sh title="Download make_admin.sh"
+      curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/make_admin.sh; \
+      chmod +x make_admin.sh
+    ```
+
+    ```sh title="Run make_admin.sh"
     ./make_admin.sh
     ```
 
+    ![Make_admin demo](../images/make_admin.gif)
+
+=== "Revert"
+
+    - This script will allow you to revert to a previous backup of the .env, compose.yaml, or MongoDB.
+
+    - The script looks for backups in the 'remotefalcon-backups' directory.
+
+    ```sh title="Download revert.sh"
+      curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/revert.sh; \
+      chmod +x revert.sh
+    ```
+
+    ```sh title="Run revert.sh"
+    ./revert.sh
+    ```
+
+    ![Make_admin demo](../images/revert.gif)
+
 === "MinIO Init"
 
-    This script will configure MinIO. Minio is a lightweight object storage server.
+    - This script will configure MinIO. Minio is a lightweight object storage server.
 
-    The script is called when 'configure-rf.sh' is run and if certain default values are found in the .env file and is pretty much a hands-off configuration.
+    - The script is called when 'configure-rf.sh' is run and if certain default values are found in the .env file for a hands-off setup and configuration.
 
-    The minio container is configured for local direct access to the control-panel container.
+    - The minio container is configured for local direct access to the control-panel container.
 
-    This lets you use the Image Hosting tab in the Control Panel which allows you to self host your viewer page images.
+    - This lets you use the Image Hosting tab in the Control Panel which allows you to self host your viewer page images.
 
-    The script can be run again manually with no ill-effects to ensure MinIO is configured properly.
+    - The script can be run again manually with no ill-effects to ensure MinIO is configured properly.
 
-    ```sh title="minio_init.sh" linenums="1" hl_lines="3"
-    # ./minio_init.sh:
-    
-    ./minio_init.sh
-    ```
+    - The script is automatically downloaded by configure-rf.
+
+    ![Minio_init demo](../images/minio_init-clean-install.gif)
 
 === "Shared Functions"
 
-    This is a helper script for functions that are re-used across the other scripts. 
+    - This is a helper script for functions and variables that are re-used across the other scripts. 

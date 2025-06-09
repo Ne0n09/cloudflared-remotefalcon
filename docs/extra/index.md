@@ -36,13 +36,9 @@ Follow the steps below to get access to the external API for your self hosted Re
     ./generate_jwt.sh
     ```
 
-The script will look for a 'mongo' container and dump out all the API details that it finds in the database.
+    - The script will look for a 'mongo' container and list shows that have requested API access in the database.
 
-6. Enter your *apiAccessToken* with no quotes ''
-
-7. Enter your *apiAccessSecret* with no quotes ''
-
-The script will display your JWT that you can use as needed.
+    - The script will display your JWT that you can use as needed.
 
 ### Testing External API access
 
@@ -90,10 +86,10 @@ References:
     ./make_admin.sh
     ```
 
-- The script will run and dispaly a list of shows and their roles. You can re-run the script to toggle the show from USER or ADMIN:
+- The script will run and display a list of shows and their roles. 
 
-    ```sh
-    ./make_admin.sh yourshowname
-    ```
+- Select the number of the show to toggle the role.
 
-- You may have to log out of Remote Falcon and back in again if you receive Unexpected Error when trying to serach for shuw subdomains.
+- You can re-run the script to toggle the show from USER or ADMIN:
+
+- You may have to log out of Remote Falcon and back in again if you receive Unexpected Error when trying to serach for show subdomains.
