@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2025.6.2.1
+# SHARED_FUNCTIONS_VERSION=2025.6.9.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -132,7 +132,7 @@ backup_mongo() {
   db_name="${db_name%%\?*}"
 
   # Generate a backup filename with date
-  mongo_backup_file="$BACKUP_DIR/mongo_$CURRENT_VERSION_${db_name}_backup_$(date +'%Y-%m-%d_%H-%M-%S').gz"
+  mongo_backup_file="$BACKUP_DIR/mongo_${CURRENT_VERSION}_${db_name}_backup_$(date +'%Y-%m-%d_%H-%M-%S').gz"
 
   echo "Creating backup of the '$db_name' database from container '$service_name'..."
 

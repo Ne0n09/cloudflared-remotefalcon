@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.5.27.1
+# VERSION=2025.6.9.1
 
 # This script will check for and display updates for the Remote Falcon containers using the commit hash from the GitHub repo.
 # ./update_rf_containers.sh dry-run = Check for updates and show changelogs without applying any changes.
@@ -68,7 +68,7 @@ replace_compose_tags() {
 
   # Update or insert build context hash, accounting for if there is no existing # or hash
   sed -i -E "s|(context: https://github.com/Remote-Falcon/remote-falcon-${container_name}\.git)(#.*)?|\1#$full_hash|g" "$COMPOSE_FILE"
-  
+
   UPDATED=true
 }
 
@@ -119,7 +119,7 @@ run_updates() {
   latest_hash=$(git ls-remote "$repo" "$branch" | awk '{print $1}')
   short_hash=${latest_hash:0:7}
 
-  current_tag=$(sed -n "/$container:/,/image:/ s/image:.*:\(.*\)/\1/p" "$COMPOSE_FILE" | xargs)
+  current_tag=$(sed -n "/$container:/,/image:/ s/image:.*:\([a-zA-Z0-9_-]*\).*/\1/p" "$COMPOSE_FILE" | xargs)
   current_ctx=$(awk "/$container:/{found=1} found && /context:/ {
   if (match(\$0, /#([a-f0-9]{40})/, a)) print a[1];
   else print \"\";
@@ -152,7 +152,7 @@ run_updates() {
         echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $container to $short_hash"
         ;;
       auto-apply)
-    
+
         replace_compose_tags "$container" "$short_hash" "$latest_hash"
         ;;
       *)
@@ -179,9 +179,7 @@ finalize_compose() {
   fi
 
   if [[ "$UPDATED" == true ]]; then
-    echo -e "🛠️ ${BLUE}Building containers with updated tags...${NC}"
     update_rf_version
-    sudo docker compose -f "$COMPOSE_FILE" build
     echo -e "${BLUE}🔄 Restarting containers with updated tags...${NC}"
     sudo docker compose -f "$COMPOSE_FILE" up -d
   fi

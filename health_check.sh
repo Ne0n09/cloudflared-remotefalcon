@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.6.1
+# VERSION=2025.6.9.1
 
 #set -euo pipefail
 #set -x
@@ -8,6 +8,9 @@
 SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo minio)
 HEALTHY=true
 SLEEP_TIME="${1:-}" # Optional sleep time in seconds, defaults to 20s if not provided
+MAX_RETRIES=3 # Max retries for checking RF endpoints
+RETRY_DELAY=5  # Seconds to wait between retries
+
 
 if [[ -z "$SLEEP_TIME" ]]; then
   SLEEP_TIME="20s"  # Default to 20s if not provided
@@ -92,12 +95,38 @@ if [[ -f $ENV_FILE ]]; then
       if [[ "$http_code" -eq 200 && "$status" == "UP" ]]; then
           echo -e "  ${YELLOW}•${NC} ${GREEN}✅ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${GREEN}status is UP${NC}"
       else
-          if [[ "$http_code" -ne 200 ]]; then
-              echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container HTTP Error: $http_code (Endpoint ${BLUE}🔗 $endpoint${NC} ${RED}may be down)${NC}"
+        # Retry loop
+        attempt=1
+        while true; do
+          # Fetch the response and HTTP status code
+          response=$(curl -s -o /tmp/curl_response -w "%{http_code}" "$endpoint")
+          http_code=$response
+          body=$(cat /tmp/curl_response)
+
+          # Extract the "status" field from the JSON-like response (handles compact and formatted JSON)
+          status=$(echo "$body" | grep -o '"status":[ ]*"UP"' | head -n1 | sed 's/.*"status":[ ]*"\([^"]*\)".*/\1/' || true)
+
+          # Check if the status is "UP" or handle errors
+          if [[ "$http_code" -eq 200 && "$status" == "UP" ]]; then
+            echo -e "  ${YELLOW}•${NC} ${GREEN}✅ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${GREEN}status is UP${NC}"
+            break  # Success, exit retry loop
           else
-              echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${RED}status is NOT UP (Current status: $status)${NC}"
-              echo -e "${YELLOW}⚠️ Check the logs with 'sudo docker logs $rf_container' for more information.${NC}"
+            if [[ $attempt -lt $MAX_RETRIES ]]; then
+              echo -e "${YELLOW}⚠️ $rf_container endpoint status check attempt ($attempt/$MAX_RETRIES) failed. Retrying in $RETRY_DELAY seconds...${NC}"
+              sleep $RETRY_DELAY
+              ((attempt++))
+            else
+              # Final failure after retries
+              if [[ "$http_code" -ne 200 ]]; then
+                echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container HTTP Error: $http_code (Endpoint ${BLUE}🔗 $endpoint${NC} ${RED}may be down)${NC}"
+              else
+                echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${RED}status is NOT UP (Current status: $status)${NC}"
+                echo -e "${YELLOW}⚠️ Check the logs with 'sudo docker logs $rf_container' for more information.${NC}"
+              fi
+              break  # Give up after max retries
+            fi
           fi
+        done
       fi
     fi
   done
@@ -134,7 +163,13 @@ if [[ -f $ENV_FILE ]]; then
   # Check if the nginx container is running and test its configuration
   if is_container_running $container_name; then
     echo -e "${CYAN}🔄 $container_name is running. Testing the configuration with 'sudo docker exec $container_name nginx -t'...${NC}"
-    sudo docker exec $container_name nginx -t
+    nginx_test_output=$(sudo docker exec $container_name nginx -t 2>&1)
+    echo "$nginx_test_output"
+    if echo "$nginx_test_output" | grep -q "syntax is ok" && echo "$nginx_test_output" | grep -q "test is successful"; then
+      echo -e "${GREEN}✅ NGINX configuration test successful.${NC}"
+    else
+      echo -e "${RED}❌ NGINX configuration test FAILED. Check default.conf${NC}"
+    fi
   else
     echo -e "${RED}❌ $container_name is NOT running.${NC}"
     HEALTHY=false
@@ -203,14 +238,14 @@ if [[ -f $ENV_FILE ]]; then
   if is_container_running $container_name; then
     echo -e "${CYAN}🔄 $container_name is running. Finding any shows in Mongo container '$container_name'...${NC}"
 
-    subdomains=$(sudo docker exec -it mongo bash -c "
+    subdomains=$(sudo docker exec mongo bash -c "
     mongosh --quiet 'mongodb://root:root@localhost:27017' --eval '
         db = db.getSiblingDB(\"remote-falcon\");
         const subdomains = db.show.find({}, { showSubdomain: 1, _id: 0 }).toArray();
         let found = false;
         subdomains.forEach(doc => {
             if (doc.showSubdomain) {
-                print(\"https://\" + doc.showSubdomain + \".$DOMAIN\");
+                print(doc.showSubdomain);
                 found = true;
             }
         });
@@ -222,7 +257,9 @@ if [[ -f $ENV_FILE ]]; then
     if [[ "$subdomains" == *"No subdomains found"* ]]; then
       echo -e "${YELLOW}⚠️ No shows have been configured in ${NC}${RED}Remote Falcon${NC}${YELLOW}. Create a new account at:${NC} ${BLUE}🔗 https://$DOMAIN/signup${NC}"
     else
-      echo -e "${BLUE}$subdomains${NC}"
+        while read -r subdomain; do
+          echo -e "  ${YELLOW}•${NC} ${BLUE}🔗 https://$subdomain.$DOMAIN${NC}"
+        done <<< "$subdomains"
     fi
   else
     echo -e "${RED}❌ $container_name is NOT running.${NC}"

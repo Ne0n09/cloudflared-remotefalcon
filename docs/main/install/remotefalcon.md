@@ -44,16 +44,3 @@ If all looks OK you can then move on to [post install](../post-install.md) or if
 The configuration script can be re-run with `#!sh ./configure-rf.sh` to help make any changes if needed.
 
 You can also directly run the [health_check](../../scripts/index.md#__tabbed_1_4), [update_rf_containers](../../scripts/index.md#__tabbed_1_2), or [update_containers](../../scripts/index.md#__tabbed_1_3) helper scripts directly as well.
-
-!!! example "Example syntax for helper scripts"
-
-      ```
-      ./health_check.sh
-      ./update_rf_containers.sh
-      ./update_rf_containers.sh dry-run
-      ./update_rf_containers.sh auto-apply
-      ./update_containers.sh
-      ./update_containers.sh cloudflared auto-apply health
-      ./update_containers.sh nginx dry-run
-      ./update_containers.sh mongo
-      ```

@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2025.06.9.1
+
+- Updated health_check errors and formatting. Added retry for RF container checks.
+
+- Updated shared_functions to add MongoDB version during backup.
+
+- Fixed update_rf_containers not displaying current image tag.
+
 ## 2025.06.6.1
 
 - Updated health_check errors and formatting for RF container checks.
