@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.6.1
+# VERSION=2025.6.11.1
 
 #set -euo pipefail
 
@@ -8,6 +8,8 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/shared_functions.sh"
+
+parse_env
 
 # Name of the container to check
 container_name="mongo"
@@ -65,6 +67,12 @@ if sudo docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
     # Extract token/secret from selected show
     IFS='|' read -r selected_subdomain accessToken secretKey <<<"${SHOW_MAP[$selected_number]}"
 
+    # Output Access Token and Secret Key
+    echo -e "${GREEN}✅ Your Access Token is:${NC} "
+    echo -e "${YELLOW}$accessToken${NC}"
+    echo
+    echo -e "${GREEN}✅ Your Secret Key is:${NC} "
+    echo -e "${YELLOW}$secretKey${NC}"
     echo
     echo -e "${CYAN}🔄 Using apiAccessToken and apiAccessSecret to generate JWT for '$selected_subdomain'...${NC}"
 
@@ -88,10 +96,24 @@ if sudo docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
 
     # Create JWT
     jwt="$base64UrlHeader.$base64UrlPayload.$signature"
-
     # Output JWT
     echo -e "${GREEN}✅ Your JWT is:${NC} "
     echo -e "${YELLOW}$jwt${NC}"
+    echo
+    echo -e "🧪 ${YELLOW}Testing JWT with curl...${NC}"
+    echo -e "${BLUE}curl -X 'GET' 'https://$DOMAIN/remote-falcon-external-api/showDetails' -H 'accept: application/json' -H 'Authorization: Bearer $jwt'${NC}"
+    echo
+
+    response=$(curl -s -X 'GET' "https://$DOMAIN/remote-falcon-external-api/showDetails" -H 'accept: application/json' -H "Authorization: Bearer $jwt")
+
+    # Check if response starts with { or [
+    if echo "$response" | grep -qE '^\s*[\{\[]'; then
+      echo -e "${GREEN}✅ Success! Received valid-looking JSON.${NC}"
+      echo "$response"
+    else
+      echo -e "${RED}❌ Failed! Response is not valid JSON or JWT is invalid.${NC}"
+      echo "$response"
+    fi
   else
     echo -e "${RED}❌ Invalid selection.${NC}"
     exit 1
