@@ -120,6 +120,8 @@ services:
         - MIXPANEL_KEY=${MIXPANEL_KEY}
         - HOSTNAME_PARTS=${HOSTNAME_PARTS}
         - SOCIAL_META=${SOCIAL_META}
+        - SWAP_CP=${SWAP_CP}
+        - VIEWER_PAGE_SUBDOMAIN=${VIEWER_PAGE_SUBDOMAIN}
     image: ui:latest
     container_name: ui
     restart: always
