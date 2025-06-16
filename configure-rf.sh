@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.6.1
+# VERSION=2025.6.16.1
 
 #set -euo pipefail
 
@@ -316,15 +316,14 @@ echo "✔  Working in directory: $(pwd)"
 download_file $DOCKER_COMPOSE_URL "compose.yaml"
 download_file $NGINX_DEFAULT_URL "default.conf"
 
-# Get the file versions and display them
-list_file_versions
-
 # Print existing .env file, if it exists, otherwise download the default .env file
 if [ -f .env ]; then
   echo "✔  Found existing .env at $ENV_FILE."
+  list_file_versions
   echo "🔍 Parsing current .env variables:"
 else
   download_file $DEFAULT_ENV_URL ".env"
+  list_file_versions
   echo "🔍 Parsing default .env variables:"
 fi
 

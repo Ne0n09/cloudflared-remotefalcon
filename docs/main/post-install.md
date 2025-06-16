@@ -40,6 +40,98 @@
 
 5. You can now continue with configuring your viewer page and other settings. Reference the [Remote Falcon Docs](https://docs.remotefalcon.com/docs/docs/welcome) if needed.
 
+### FPP 9
+
+FPP 9 has some extra steps due to the addition of [Apache CSP](https://github.com/FalconChristmas/fpp/blob/master/docs/ApacheContentSecurityPolicy.md).
+
+You will have to manually add your site to the trusted list or the plugins page will not load with the custom *Plugins API Path*.
+
+1. In FPP go to Help -> :fontawesome-solid-terminal: SSH Shell
+
+2. Login. The default user and password is fpp/falcon.
+
+3. Set the `DOMAIN` variable directly on the FPP shell to `https://yourdomain.com` OR `http://localip.address.of.remote.falcon:8083` if you're using LAN access. 
+
+    Type or copy and paste it into the FPP shell.
+
+    ```sh title="Example, set one of these on the FPP shell"
+    DOMAIN=https://yourdomain.com
+    DOMAIN=http://localip.address.of.remote.falcon:8083
+    ```
+
+4. Copy and paste the command below to add your site to the trusted list by:
+    
+    Right-clicking the FPP shell window -> *Paste from browser* -> paste the command -> Click OK -> Enter to run:
+    ```sh title="Copy and past this to update Apache CSP with DOMAIN and to show the configuration"
+    sudo /opt/fpp/scripts/ManageApacheContentPolicy.sh add connect-src $DOMAIN;/opt/fpp/scripts/ManageApacheContentPolicy.sh show
+    ```
+
+    ```sh title="Example command output of Apache CSP add and show" hl_lines="11"
+    Domain 'http://localip.address.of.remote.falcon:8083' added under'connect-src'.
+    CSP header generated.
+    Apache configuration reloaded successfully.
+    {                                                             
+    "default-src": [],
+    "img-src": [],
+    "script-src": [],
+    "style-src": [],
+    "connect-src": [
+        "https://remotefalcon.com",
+        "http://localip.address.of.remote.falcon:8083"
+    ],
+    "object-src": []
+    }
+    ```
+
+5. Now you should be able to update the plugin settings normally. If you still have issues try rebooting or power cycling your FPP device.
+
+    !!!tip "Tip - Command to update both Apache CSP and Plugins API Path"
+
+        You can substitute this command below for steps 3 and 4 above to update both the Apache CSP and the *Plugins API Path*.
+
+        ```sh title="Example, set one of these on the FPP shell"
+        DOMAIN=https://yourdomain.com
+        DOMAIN=http://localip.address.of.remote.falcon:8083
+        ```
+
+        ```sh title="Command to update both Apache CSP and Plugins API Path"
+        echo;echo "Adding '$DOMAIN' to Apache CSP...";sudo /opt/fpp/scripts/ManageApacheContentPolicy.sh add connect-src $DOMAIN;echo "Displaying currently configured domains for Apache CSP:";/opt/fpp/scripts/ManageApacheContentPolicy.sh show;echo "Updating Plugins API Path with '$DOMAIN'...";sed -i 's|^pluginsApiPath = ".*"|pluginsApiPath = "'$DOMAIN'/remote-falcon-plugins-api"|' media/config/plugin.remote-falcon;echo "Printing Remote Falcon Plugin configuration:";cat media/config/plugin.remote-falcon
+
+        ```
+
+        ```sh title="Example output" hl_lines="13 26"
+        Adding 'http://localip.address.of.remote.falcon:8083' to Apache CSP...
+        Domain 'http://localip.address.of.remote.falcon:8083' added under 'connect-src'.
+        CSP header generated.
+        Apache configuration reloaded successfully.
+        Displaying currently configured domains for Apache CSP:
+        {
+        "default-src": [],
+        "img-src": [],
+        "script-src": [],
+        "style-src": [],
+        "connect-src": [
+            "https://remotefalcon.com",
+            "http://localip.address.of.remote.falcon:8083"
+        ],
+        "object-src": []
+        }
+        Updating Plugins API Path with 'http://localip.address.of.remote.falcon:8083'...
+        Printing Remote Falcon Plugin configuration:
+        pluginVersion = "2025.04.05.1"
+        remotePlaylist = ""
+        interruptSchedule = "false"
+        remoteToken = ""
+        requestFetchTime = "3"
+        additionalWaitTime = "0"
+        fppStatusCheckTime = "1"
+        pluginsApiPath = "http://localip.address.of.remote.falcon:8083/remote-falcon-plugins-api"
+        verboseLogging = "false"
+        remoteFalconListenerEnabled = "true"
+        remoteFalconListenerRestarting = "false"
+        init = "true"
+        ```
+
 ## Remote Falcon Image hosting
 
 If [minio-init](../scripts/index.md#__tabbed_1_7){ data-preview } script ran successfully and configured MinIO then you are able to make use of the Image Hosting page in the Control Panel.

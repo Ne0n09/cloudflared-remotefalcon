@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.9.1
+# VERSION=2025.6.16.1
 
 # This script will check for and display updates for the Remote Falcon containers using the commit hash from the GitHub repo.
 # ./update_rf_containers.sh dry-run = Check for updates and show changelogs without applying any changes.
@@ -120,11 +120,19 @@ run_updates() {
   short_hash=${latest_hash:0:7}
 
   current_tag=$(sed -n "/$container:/,/image:/ s/image:.*:\([a-zA-Z0-9_-]*\).*/\1/p" "$COMPOSE_FILE" | xargs)
-  current_ctx=$(awk "/$container:/{found=1} found && /context:/ {
-  if (match(\$0, /#([a-f0-9]{40})/, a)) print a[1];
-  else print \"\";
-  exit
+  current_ctx=$(sed -n "/^[[:space:]]*$container:/,/^[^[:space:]]/{
+    /context:/ {
+      s/.*#\([a-f0-9]\{40\}\).*/\1/
+      t print
+      s/.*/_EMPTY_/
+      :print
+      p
+      q
+    }
   }" "$COMPOSE_FILE")
+
+  # If there is no commit hash, convert placeholder to empty string
+  [[ $current_ctx == "_EMPTY_" ]] && current_ctx=""
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${BLUE}🔄 Container: $container${NC}"

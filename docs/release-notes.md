@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2025.06.16.1
+
+- Updated configure-rf .env file version would not display if .env didn't already exist.
+
+- Added FPP 9 configuration steps [here](/docs/main/post-install.md).
+
+- Updated update_rf_containers again to fix the current_ctx not being found properly.
+
 ## 2025.06.9.1
 
 - Updated health_check errors and formatting. Added retry for RF container checks.
