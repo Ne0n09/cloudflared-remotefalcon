@@ -1,0 +1,103 @@
+site_name: cloudflared-remotefalcon docs
+site_url: https://ne0n09.github.io/cloudflared-remotefalcon/docs/
+repo_url: https://github.com/Ne0n09/cloudflared-remotefalcon
+docs_dir: docs
+theme:
+  name: material
+  font:
+#    text: Source Serif 4
+    code: Red Hat Mono
+  icon:
+    logo: material/github
+  features:
+    - navigation.top
+    - navigation.instant
+#    - navigation.instant.preview
+    - navigation.tracking
+    - navigation.indexes
+#    - navigation.tabs
+    - search.suggest
+    - search.highlight
+    - search.share
+#    - content.action.edit
+    - content.code.copy
+#    - navigation.footer
+    - header.autohide
+    - announce.dismiss
+
+
+  palette: 
+  # Dark Mode
+    - scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Dark Mode
+      primary: indigo
+      accent: red
+  # Light Mode
+    - scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Light Mode
+      primary: blue
+      accent: deep orange  
+
+nav:
+  - 'About':
+    - 'About': index.md
+    - 'Release Notes': release-notes.md
+    - 'Architecture': 
+      - 'Architecture': architecture/index.md
+      - 'Files': architecture/files.md
+      - 'Containers': architecture/containers.md
+  - 'Getting Started': 
+    - 'Getting Started': main/index.md
+    - 'Prerequisites': main/prerequisites.md
+    - 'Installation': 
+      - 'Installation': main/install/index.md
+      - 'Cloudflare': main/install/cloudflare.md
+      - 'Remote Falcon': main/install/remotefalcon.md
+    - 'Post-Install': main/post-install.md
+    - 'Updating': main/updating.md
+  - 'Scripts':
+    - 'Scripts': scripts/index.md
+  - 'Extra':
+    - 'Extra': extra/index.md
+  - 'Troubleshooting': troubleshooting/index.md
+
+
+markdown_extensions:
+  - attr_list
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.highlight
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - tables
+  - def_list
+
+plugins:
+  - glightbox
+  - search
+  - git-revision-date-localized
+
+extra:
+  social:
+    - icon: simple/github
+      link: https://github.com/Ne0n09/cloudflared-remotefalcon
+
+copyright: Copyright &copy; 2025
