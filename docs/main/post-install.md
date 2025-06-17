@@ -163,21 +163,21 @@ This makes your Viewer Page accessible at `https://your_domain.com` and the Cont
 
 The [configure-rf](../scripts/index.md#__tabbed_1_1) script offers to modify these variables under the OPTIONAL variables section.
 
-    ```sh title="Enable SWAP_CP and set VIEWER_PAGE_SUBDOMAIN"
-    ❓ Update OPTIONAL variables? (y/n) [n]: y
-    ...
-    ...
-    🔁 Would you like to swap the Control Panel and Viewer Page URLs? (y/n) [n]: y
-    🌐 Enter your Viewer Page Subdomain []: enteryourshownamehere
-    ```
+```sh title="Enable SWAP_CP and set VIEWER_PAGE_SUBDOMAIN"
+❓ Update OPTIONAL variables? (y/n) [n]: y
+...
+...
+🔁 Would you like to swap the Control Panel and Viewer Page URLs? (y/n) [n]: y
+🌐 Enter your Viewer Page Subdomain []: enteryourshownamehere
+```
 
 To undo these changes, re-run the configure-rf script and answer `y` at the REVERT question.
 
 This will make the Control Panel accessible at `https://your_domain.com`.
 
-    ```sh title="DIsable SWAP_CP"
-    ❓ Update OPTIONAL variables? (y/n) [n]: y
-    ...
-    ...
-    🔁 Would you like to REVERT the Control Panel and Viewer Page URLs back to the default? (y/n) [n]: y
-    ```
+```sh title="Disable SWAP_CP"
+❓ Update OPTIONAL variables? (y/n) [n]: y
+...
+...
+🔁 Would you like to REVERT the Control Panel and Viewer Page URLs back to the default? (y/n) [n]: y
+```
