@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2025.06.17.1
+
+- Updated configure-rf to add validation for VIEWER_PAGE_SUBDOMAIN.
+
+- Fixed some optional variables going missing after running configure-rf.
+
+- Updated health_check to validate VIEWER_PAGE_SUBDOMAIN exists in MongoDB and to display if SWAP_CP is enabled or disabled.
+
 ## 2025.06.16.2
 
 - Updated configure-rf to allow for swapping the viewer page with the control panel. This is configured under OPTIONAL variables.

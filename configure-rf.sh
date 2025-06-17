@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.16.3
+# VERSION=2025.6.17.1
 
 #set -euo pipefail
 
@@ -79,7 +79,7 @@ update_env() {
     ["NGINX_KEY"]="./${domain}_origin_key.pem"
 #    ["HOST_ENV"]="$HOST_ENV"
 #    ["VERSION"]="$VERSION"
-    ["GOOGLE_MAPS_KEY"]="$GOOGLE_MAPS_KEY"
+    ["GOOGLE_MAPS_KEY"]="$googlemapskey"
     ["PUBLIC_POSTHOG_KEY"]="$publicposthogkey"
 #    ["PUBLIC_POSTHOG_HOST"]="$PUBLIC_POSTHOG_HOST"
     ["GA_TRACKING_ID"]="$gatrackingid"
@@ -447,7 +447,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     # Ask if SEQUENCE_LIMIT variable should be updated
     while true; do
       sequencelimit=$(get_input "🎶 Enter desired sequence limit:" "$SEQUENCE_LIMIT")
-        if [[ "$sequencelimit" =~ ^[1-9][0-9]*$ ]]; then
+      if [[ "$sequencelimit" =~ ^[1-9][0-9]*$ ]]; then
         break
       else
         echo -e "${RED}❌ Please enter a valid whole number greater than 0.${NC}"
@@ -456,19 +456,46 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
 
     # Ask if the user wants to switch the Viewer Page and Control Panel URLs
     if [[ -z "$SWAP_CP" || "$SWAP_CP" == false ]]; then
-      if [[ "$(get_input "🔁 Would you like to swap the Control Panel and Viewer Page URLs? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      if [[ "$(get_input "🔁 Would you like to swap the Control Panel and Viewer Page Subdomain URLs? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         SWAP_CP=true
       fi
     else
-      if [[ "$(get_input "🔁 Would you like to REVERT the Control Panel and Viewer Page URLs back to the default? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      if [[ "$(get_input "🔁 Would you like to REVERT the Control Panel and Viewer Page Subdomain URLs back to the default? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         SWAP_CP=false
       fi
     fi
 
+    # If SWAP_CP is set to true ask to update the Viewer Page Subdomain
     if [[ $SWAP_CP == true ]]; then
-      read -p "🌐 Enter your Viewer Page Subdomain: [$VIEWER_PAGE_SUBDOMAIN]: " viewerPageSubdomain
-    fi
+      while true; do
+        read -p "🌐 Enter your Viewer Page Subdomain [${VIEWER_PAGE_SUBDOMAIN}]: " viewerPageSubdomain
 
+        # Use default if nothing entered
+        viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
+
+        # Remove all whitespace (leading, trailing, and internal)
+        viewerPageSubdomain=$(echo "$viewerPageSubdomain" | tr -d '[:space:]')
+
+        # Convert to lowercase
+        viewerPageSubdomain=$(echo "$viewerPageSubdomain" | tr '[:upper:]' '[:lower:]')
+
+        # Validate: only lowercase letters and digits
+        if [[ -z "$viewerPageSubdomain" ]]; then
+          echo -e "${RED}❌ Subdomain cannot be empty.${NC}"
+        elif [[ "$viewerPageSubdomain" =~ [^a-z0-9] ]]; then
+          echo -e "${RED}❌ Subdomain must contain only lowercase letters and numbers (no spaces, symbols, or hyphens).${NC}"
+        else
+          break
+        fi
+      done
+    fi
+    # Ensure optional variables are set to the current values if they weren't updated
+    googlemapskey=${googlemapskey:-$GOOGLE_MAPS_KEY}
+    publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
+    gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
+    mixpanelkey=${mixpanelkey:-$MIXPANEL_KEY}
+    socialmeta=${socialmeta:-$SOCIAL_META}
+    sequencelimit=${sequencelimit:-$SEQUENCE_LIMIT}
     viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
     swapCP=${swapCP:-$SWAP_CP}
   else

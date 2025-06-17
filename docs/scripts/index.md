@@ -16,7 +16,7 @@ You can check the [release notes](../release-notes.md) to see if there any updat
 
 2. Remove the scripts:
 ```sh
-rm configure-rf.sh health_check.sh minio_init.sh update_containers.sh update_rf_containers.sh
+rm configure-rf.sh health_check.sh minio_init.sh update_containers.sh update_rf_containers.sh shared_functions.sh
 ```
 
 3. The command below will re-download the configure-rf script and run it which will then re-download the helper scripts:

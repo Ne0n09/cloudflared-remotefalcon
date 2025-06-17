@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.9.1
+# VERSION=2025.6.17.1
 
 #set -euo pipefail
 #set -x
@@ -194,7 +194,7 @@ if [[ -f $ENV_FILE ]]; then
     output=$(sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc du --recursive "$MINIO_ALIAS" 2>/dev/null || true)
     echo "$output"
     if echo "$output" | grep -qE '\bremote-falcon-images\b'; then
-      echo -e "${GREEN}✅ Bucket '$BUCKET_NAME' found in $container_name${NC}"
+      echo -e "${GREEN}✅ Bucket '$BUCKET_NAME' found in $container_name.${NC}"
     else
       echo -e "${RED}❌ Bucket '$BUCKET_NAME' not found in $container_name. Re-run ./minio_init.sh${NC}"
     fi
@@ -213,9 +213,9 @@ if [[ -f $ENV_FILE ]]; then
 
     # Compare to the S3_SECRET_KEY
     if [[ "$minio_3_access_key" == "$S3_ACCESS_KEY" ]]; then
-      echo -e "${GREEN}✅ S3 access key matches S3_ACCESS_KEY in $ENV_FILE${NC}"
+      echo -e "${GREEN}✅ S3 access key matches S3_ACCESS_KEY in $ENV_FILE.${NC}"
     else
-      echo -e "${RED}❌ S3 access key does NOT match S3_ACCESS_KEY in $ENV_FILE${NC}"
+      echo -e "${RED}❌ S3 access key does NOT match S3_ACCESS_KEY in $ENV_FILE.${NC}"
       echo -e "${YELLOW}MinIO Key: ${minio_3_access_key}${NC}"
       echo -e "${YELLOW}S3_ACCESS_KEY: ${S3_ACCESS_KEY}${NC}"
     fi
@@ -236,7 +236,7 @@ if [[ -f $ENV_FILE ]]; then
 
   # If mongo exists, display show subdomain details from mongo in the format of https://subdomain.yourdomain.com
   if is_container_running $container_name; then
-    echo -e "${CYAN}🔄 $container_name is running. Finding any shows in Mongo container '$container_name'...${NC}"
+    echo -e "${CYAN}🔄 $container_name is running. 🔍 Finding any shows in MongoDB container '$container_name'...${NC}"
 
     subdomains=$(sudo docker exec mongo bash -c "
     mongosh --quiet 'mongodb://root:root@localhost:27017' --eval '
@@ -268,7 +268,19 @@ if [[ -f $ENV_FILE ]]; then
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
   if [[ $HEALTHY == true ]]; then
-    echo -e "If everything is running properly, ${RED}Remote Falcon${NC} should be accessible at: ${BLUE}🔗 https://$DOMAIN${NC}"
+    if [[ $SWAP_CP == true ]]; then
+      echo -e "${CYAN}🔄 SWAP_CP is enabled! Checking if Viewer Page Subdomain exists in MongoDB...${NC}"
+      if echo "$subdomains" | grep -Fxq "$VIEWER_PAGE_SUBDOMAIN"; then
+        echo -e "${GREEN}✅ Viewer Page Subdomain ${YELLOW}$VIEWER_PAGE_SUBDOMAIN${GREEN} found in MongoDB.${NC}"
+        echo -e "  ${YELLOW}•${NC} If everything is running properly, ${BLUE}🔗 https://$VIEWER_PAGE_SUBDOMAIN.$DOMAIN${NC} is accessible at: ${BLUE}🔗 https://$DOMAIN${NC}"
+      else
+        echo -e "  ${YELLOW}•${NC} ${RED}❌ Viewer Page Subdomain ${YELLOW}$VIEWER_PAGE_SUBDOMAIN${RED} is not found in MongoDB! You must create a show named ${YELLOW}$VIEWER_PAGE_SUBDOMAIN${RED} for it to be accessible at: ${BLUE}🔗 https://$DOMAIN${NC}"
+      fi
+      echo -e "  ${YELLOW}•${NC} The ${RED}Remote Falcon${NC} Control Panel is accessible at: ${BLUE}🔗 https://controlpanel.$DOMAIN${NC}"
+    else
+      echo -e "SWAP_CP is disabled."
+      echo -e "If everything is running properly, ${RED}Remote Falcon${NC} is accessible at: ${BLUE}🔗 https://$DOMAIN${NC}"
+    fi
   else
     echo -e "${RED}❌ Error: Some services are NOT running properly!${NC}"
     echo -e "${YELLOW}⚠️ Check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose -f "$COMPOSE_FILE" down' and 'sudo docker compose -f "$COMPOSE_FILE" up -d'${NC}"

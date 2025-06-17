@@ -180,6 +180,14 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     :   This is used for OpenTelemry. 
 
+    `SWAP_CP`
+
+    :   Set to true or false. When true, it allows for swapping the Viewer Page Subdomain that is set with VIEWER_PAGE_SUBDOMAIN with the Control Panel so that the Viewer Page is accessible at `https://your_domain.com` and the Control Panel is accessible at `https:\\controlpanel.your_domain.com`.
+
+    `VIEWER_PAGE_SUBDOMAIN`
+
+    :   Set to a valid show name. Must be all lower case with no spaces.
+
 ## default.conf
 
 The [default.conf](https://github.com/Ne0n09/cloudflared-remotefalcon/blob/main/remotefalcon/default.conf) is used for [NGINX](containers.md#nginx){ data-preview } and defines its configuration.
