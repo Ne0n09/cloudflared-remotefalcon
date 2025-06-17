@@ -417,12 +417,19 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     sed -i "s|^VIEWER_JWT_KEY=.*|VIEWER_JWT_KEY=$VIEWER_JWT_KEY|" "$ENV_FILE"
     
   # Ask if the user wants to switch the Viewer Page and Control Panel URLs
-  if [[ "$(get_input "WOuld you like to swap the Control Panel and Viewer Page URLs? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-    read -p "Enter your Viewer Page Subdomain: [$VIEWER_PAGE_SUBDOMAIN]: " viewerPageSubdomain
+  if [[ -z "$SWAP_CP" || "$SWAP_CP" == false ]]; then
+    if [[ "$(get_input "Would you like to swap the Control Panel and Viewer Page URLs? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      read -p "Enter your Viewer Page Subdomain: [$VIEWER_PAGE_SUBDOMAIN]: " viewerPageSubdomain
+      SWAP_CP=true
+    fi
+  else
+    if [[ "$(get_input "Would you like to REVERT the Control Panel and Viewer Page URLs back to the default? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      SWAP_CP=false
+    fi
   fi
 
   viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
-  swapCP=true
+  swapCP=${swapCP:-$SWAP_CP}
 
   # Ask if analytics env variables should be set for PostHog, Google Analytics, or Mixpanel
   if [[ "$(get_input "Update analytics variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
