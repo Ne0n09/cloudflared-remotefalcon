@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.16.1
+# VERSION=2025.6.16.2
 
 #set -euo pipefail
 
@@ -89,6 +89,8 @@ update_env() {
 #    ["GITHUB_PAT"]="$GITHUB_PAT"
     ["SOCIAL_META"]="$socialmeta"
     ["SEQUENCE_LIMIT"]="$sequencelimit"
+    ["SWAP_CP"]="$swapCP"
+    ["VIEWER_PAGE_SUBDOMAIN"]="$viewerPageSubdomain"
   )
 
   # Detect if any values would change
@@ -413,6 +415,27 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     #echo -e "${YELLOW}⚠️ VIEWER_JWT_KEY is set to default value 123456. Generating a random key and writing it to $ENV_FILE...${NC}"
     VIEWER_JWT_KEY=$(openssl rand -base64 32)
     sed -i "s|^VIEWER_JWT_KEY=.*|VIEWER_JWT_KEY=$VIEWER_JWT_KEY|" "$ENV_FILE"
+    
+  # Ask if the user wants to switch the Viewer Page and Control Panel URLs
+  if [[ -z "$SWAP_CP" || "$SWAP_CP" == false ]]; then
+    if [[ "$(get_input "Would you like to swap the Control Panel and Viewer Page URLs? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      read -p "Enter your Viewer Page Subdomain: [$VIEWER_PAGE_SUBDOMAIN]: " viewerPageSubdomain
+      SWAP_CP=true
+    fi
+  else
+    if [[ "$(get_input "Would you like to REVERT the Control Panel and Viewer Page URLs back to the default? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      SWAP_CP=false
+    fi
+  fi
+
+  viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
+  swapCP=${swapCP:-$SWAP_CP}
+
+  # Ask if analytics env variables should be set for PostHog, Google Analytics, or Mixpanel
+  if [[ "$(get_input "Update analytics variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+    read -p "Enter your PostHog key - https://posthog.com/: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
+    read -p "Enter your Google Analytics Measurement ID - https://analytics.google.com/: [$GA_TRACKING_ID]: " gatrackingid
+    read -p "Enter your Mixpanel key - https://mixpanel.com/: [$MIXPANEL_KEY]: " mixpanelkey
   fi
 
   # Check USER_JWT_KEY .env variable and generate a random Base64 value  if set to default 123456

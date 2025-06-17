@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2025.5.27.1
+# COMPOSE_VERSION=2025.6.16.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -120,6 +120,8 @@ services:
         - MIXPANEL_KEY=${MIXPANEL_KEY}
         - HOSTNAME_PARTS=${HOSTNAME_PARTS}
         - SOCIAL_META=${SOCIAL_META}
+        - SWAP_CP=${SWAP_CP}
+        - VIEWER_PAGE_SUBDOMAIN=${VIEWER_PAGE_SUBDOMAIN}
     image: ui:latest
     container_name: ui
     restart: always
