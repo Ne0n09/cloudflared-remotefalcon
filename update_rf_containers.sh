@@ -1,37 +1,34 @@
 #!/bin/bash
 
-SCRIPT_VERSION=2025.3.6.1
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RF_DIR="remotefalcon"
-WORKING_DIR="$SCRIPT_DIR/$RF_DIR"
-COMPOSE_FILE="$WORKING_DIR/compose.yaml"
-ENV_FILE="$WORKING_DIR/.env"
-HEALTH_CHECK_SCRIPT="$SCRIPT_DIR/health_check.sh"
-NO_HEALTH=$1
+# VERSION=2025.6.16.1
 
-# Check if compose file exists
-if [[ ! -f "$COMPOSE_FILE" ]]; then
-  echo "Error: $COMPOSE_FILE not found."
-  exit 1
+# This script will check for and display updates for the Remote Falcon containers using the commit hash from the GitHub repo.
+# ./update_rf_containers.sh dry-run = Check for updates and show changelogs without applying any changes.
+# ./update_containers.sh auto-apply = Check for updates and apply them automatically.
+# ./update_containers.sh = Check for updates and prompt for confirmation before applying changes.
+# Include 'health' as the second argument to run the health check script after updating.
+# Usage: ./update_rf_containers.sh [dry-run|auto-apply|interactive] [health]
+
+#set -euo pipefail
+
+# ========== Config ==========
+# Source shared functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/shared_functions.sh"
+MODE="${1:-}"  # Options: dry-run, auto-apply, or interactive
+HEALTH_CHECK="${2:-}" # Options: health or empty
+UPDATED=false # Flag to track if any updates were made during the run
+BACKED_UP=false # Flag to track if a backup was made
+
+if [[ -z "$MODE" ]]; then
+  MODE="interactive"  # Default to interactive mode if not provided
 fi
 
-# Health check function to call health check script with override to do --no-health to avoid repeated health checks in the main configure-rf script
-health_check() {
-  # Check if the --no-health argument is passed
-  if [[ "$NO_HEALTH" == "--no-health" ]]; then
-    return 0  # Skip the health check and continue the script
-  fi
+if [[ -z "$HEALTH_CHECK" ]]; then
+  HEALTH_CHECK=false  # Default to false if not provided
+fi
 
-  # Check if the health check script exists and is executable
-  if [[ -x "$HEALTH_CHECK_SCRIPT" ]]; then
-    "$HEALTH_CHECK_SCRIPT"
-  else
-    echo "Error: Health check script not found or not executable at $HEALTH_CHECK_SCRIPT"
-    exit 0 # Continue running anyway
-  fi
-}
-
-# Array of RF containers and their GitHub repos in order to check for updates and compare changes
+# Remote Falcon containers and their repos
 CONTAINERS=(
   "external-api|https://github.com/Remote-Falcon/remote-falcon-external-api.git|main"
   "ui|https://github.com/Remote-Falcon/remote-falcon-ui.git|main"
@@ -40,153 +37,166 @@ CONTAINERS=(
   "control-panel|https://github.com/Remote-Falcon/remote-falcon-control-panel.git|main"
 )
 
-# Function to check if a container running
-container_running() {
-  local container_name="$1"
-  sudo docker ps --filter "name=$container_name" --format '{{.Names}}' | grep -q "$container_name"
-}
+# ========== Functions ==========
 
-# Function to update VERSION variable in .env in the YYYY.MM.DD format
-update_env_version() {
+# Updates the VERSION in the .env file so you can see the current version on the RF control panel
+update_rf_version() {
   NEW_VERSION=$(date +'%Y.%m.%-d')
-
-  # Check if .env file exists
   if [[ -f "$ENV_FILE" ]]; then
-      # Update or add the VERSION variable in the .env file
-      if grep -q "^VERSION=" "$ENV_FILE"; then
-          sed -i "s/^VERSION=.*/VERSION=$NEW_VERSION/" "$ENV_FILE"
-      else
-          echo "VERSION=$NEW_VERSION" >> "$ENV_FILE"
-      fi
-      echo "Updated VERSION in $ENV_FILE to $NEW_VERSION"
+    if grep -q "^VERSION=" "$ENV_FILE"; then
+      sed -i "s/^VERSION=.*/VERSION=$NEW_VERSION/" "$ENV_FILE"
+    else
+      echo "VERSION=$NEW_VERSION" >> "$ENV_FILE"
+    fi
   fi
 }
 
-update_tag_and_build_container() {
+# Updates the container image tag from the shortened commit hash and updates the build context hash in the compose.yaml
+replace_compose_tags() {
   local container_name="$1"
-  local short_latest_hash="$2"
-  local latest_hash="$3"
-  # Update the image tag in the compose.yaml with the latest short hash
-  sed -i "s|image:.*$container_name:.*|image: $container_name:$short_latest_hash|g" "$COMPOSE_FILE"
-  # Update the container build context with the actual hash 
-  sed -i "s|\(\s*context: https://github.com/Remote-Falcon/remote-falcon-$container_name.git\)\(#[^[:space:]]*\)\?|\1#$latest_hash|g" "$COMPOSE_FILE"
+  local short_hash="$2"
+  local full_hash="$3"
 
-  # Build the new container image with the context set to the hash and tag the image to the short hash
-  echo
-  echo "Building new '$container_name' image tagged with hash '$short_latest_hash' using 'sudo docker compose build $container_name'"
-  sudo docker compose -f "$COMPOSE_FILE" build "$container_name"
-  # Update the version variable in the .env file
-  update_env_version
+  if [[ $BACKED_UP == false ]]; then
+    # Backup the compose file if not already backed up
+    backup_file "$COMPOSE_FILE"
+    BACKED_UP=true
+  fi
+
+  # Replace image tag
+  sed -i "s|image:.*$container_name:.*|image: $container_name:$short_hash|g" "$COMPOSE_FILE"
+
+  # Update or insert build context hash, accounting for if there is no existing # or hash
+  sed -i -E "s|(context: https://github.com/Remote-Falcon/remote-falcon-${container_name}\.git)(#.*)?|\1#$full_hash|g" "$COMPOSE_FILE"
+
+  UPDATED=true
 }
 
-echo
-echo "Running update script for Remote Falcon containers..."
+# Displays the changes from the current commit to the latest commit in the Remote Falcon repo along with a compare link
+show_changelog() {
+  local name="$1"
+  local from_hash="$2"
+  local to_hash="$3"
+  local repo="$4"
+  local branch="$5"
 
-# Loop through each RF container, check its tags in compose.yaml and update the tag as appropriate
-declare -A UPDATE_INFO
-echo "Checking Remote Falcon container images in '$COMPOSE_FILE'..."
-for container_info in "${CONTAINERS[@]}"; do
-  IFS='|' read -r CONTAINER_NAME REPO_URL BRANCH <<< "$container_info"
-#  echo "Checking container '$CONTAINER_NAME'..."
-  # Get the image tag of the container from the compose.yaml
-  CURRENT_COMPOSE_TAG=$(sed -n "/$CONTAINER_NAME:/,/image:/ s/image:.*:\(.*\)/\1/p" "$COMPOSE_FILE" | xargs | tr -d '\r\n')
-  CURRENT_COMPOSE_CONTEXT=$(sed -nE "s|^[[:space:]]*context:[[:space:]]+https://github.com/Remote-Falcon/remote-falcon-${CONTAINER_NAME}.git#([a-fA-F0-9]{6,})\r?$|\1|p" "$COMPOSE_FILE")
-#  echo $CONTAINER_NAME - $CURRENT_COMPOSE_TAG - $CURRENT_COMPOSE_CONTEXT
+  local temp_dir
+  temp_dir=$(mktemp -d)
+  git clone --quiet --branch "$branch" "$repo" "$temp_dir" || return 1
 
-  # Fetch the latest commit hash for the branch
-  LATEST_HASH=$(git ls-remote "$REPO_URL" "$BRANCH" | awk '{print $1}')
-  if [[ -z $LATEST_HASH ]]; then
-    echo "Failed to retrieve the latest commit hash for $CONTAINER_NAME."
-    continue
+  cd "$temp_dir" || return
+  local diff_output
+  if git merge-base --is-ancestor "$from_hash" "$to_hash" 2>/dev/null; then
+    diff_output=$(git log --oneline "$from_hash..$to_hash")
+  else
+    echo -e "${YELLOW}⚠️ One of the commits (${from_hash:0:7} or ${to_hash:0:7}) is not found in history${NC}"
+    cd - >/dev/null
+    rm -rf "$temp_dir"
+    return
   fi
-  # Convert the latest commit hash to a short hash
-  SHORT_LATEST_HASH=$(echo "$LATEST_HASH" | cut -c 1-7)
+  cd - >/dev/null
+  rm -rf "$temp_dir"
 
-  # Check the current compose tag is in the valid short hash format 'abc1234'
-  if [[ "$CURRENT_COMPOSE_TAG" =~ ^[a-f0-9]{7}$ ]]; then
-#    echo "Container '$CONTAINER_NAME' has a valid short hash: $CURRENT_COMPOSE_TAG"
-    # Download changes from current short hash image tag to the latest short hash in order to display changes later
-    if [[ ! "$CURRENT_COMPOSE_TAG" == "$SHORT_LATEST_HASH" ]]; then
-      # Clone the repository to view commit history
-      TEMP_DIR=$(mktemp -d)
-      git clone --quiet --branch "$BRANCH" "$REPO_URL" "$TEMP_DIR"
+  if [[ -n "$diff_output" ]]; then
+    echo -e "${CYAN}📜 $name Changelog (${from_hash:0:7} → ${to_hash:0:7}):${NC}"
+    echo -e "${BLUE}🔗 https://github.com/Remote-Falcon/remote-falcon-$name/compare/${from_hash}...${to_hash}${NC}"
 
-      if [[ $? -ne 0 ]]; then
-        echo "Failed to clone the repository for '$CONTAINER_NAME'"
-        rm -rf "$TEMP_DIR"
-        continue
-      fi
-
-      cd "$TEMP_DIR"
-      COMMIT_HISTORY=$(git log --oneline --pretty=format:"%h %s%n%B" "$CURRENT_COMPOSE_TAG..$LATEST_HASH")
-      echo "Container '$CONTAINER_NAME' current version: $CURRENT_COMPOSE_TAG - latest version: $SHORT_LATEST_HASH"
-      cd - >/dev/null
-
-      # Store update information
-      UPDATE_INFO["$CONTAINER_NAME"]="$SHORT_LATEST_HASH|$COMMIT_HISTORY"
-
-      # Clean up the temporary directory
-      rm -rf "$TEMP_DIR"
-    else
-      echo -e "✅ Container '$CONTAINER_NAME' is at the latest version: $SHORT_LATEST_HASH"
-    fi
-  else # Image tag in compose is not a valid short hash - either new or existing setups that do not use the 'abc1234' hash format
-    # Check if container is running and ask to update to latest hash tag or if container is not running update to the latest hash tag
-    echo "Container '$CONTAINER_NAME' does not have a valid short hash image tag: $CURRENT_COMPOSE_TAG"
-    if container_running "$CONTAINER_NAME"; then
-      echo "Container '$CONTAINER_NAME' is running."
-      read -p "Would you like to update the image tag for '$CONTAINER_NAME' to '$SHORT_LATEST_HASH' and rebuild the container? (y/n): " CONFIRM
-      if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-        update_tag_and_build_container "$CONTAINER_NAME" "$SHORT_LATEST_HASH" "$LATEST_HASH"
-      else
-        echo "Container '$CONTAINER_NAME' image tag not updated. Current image tag remains: $CURRENT_COMPOSE_TAG"
-      fi
-    else
-      # Container is not running and the image tag is not a hash, auto update the compose tag for the container with the latest short hash and start the container
-      update_tag_and_build_container "$CONTAINER_NAME" "$SHORT_LATEST_HASH" "$LATEST_HASH"
-    fi
+    echo "$diff_output" | while read -r line; do
+      echo -e "  ${YELLOW}•${NC} $line"
+    done
   fi
-#  echo
-done
-echo "Done checking Remote Falcon container image tags."
+}
 
-# Display no updates detected if UPDATE_INFO is empty or display all the available updates and prompt to update
-if [[ ${#UPDATE_INFO[@]} -eq 0 ]]; then
-  echo "Done checking for Remote Falcon container updates."
-  echo "No updates detected for any Remote Falcon containers."
-else
-  # Display all updates and prompt to update the image tag for each container
-  echo "Updates detected for the following Remote Falcon containers:"
-  for CONTAINER_NAME in "${!UPDATE_INFO[@]}"; do
-    SHORT_LATEST_HASH=$(echo "${UPDATE_INFO["$CONTAINER_NAME"]}" | sed -n '1s/^\(.......\).*/\1/p')
-    COMMIT_HISTORY=$(echo "${UPDATE_INFO["$CONTAINER_NAME"]}" | cut -d'|' -f2-)
-    # Get the image tag of the container from the compose.yaml
-    CURRENT_COMPOSE_TAG=$(sed -n "/$CONTAINER_NAME:/,/image:/ s/image:.*:\(.*\)/\1/p" "$COMPOSE_FILE" | xargs)
+# Run the update check for each container
+run_updates() {
+  local mode="$1"
+  declare -A updates
 
-    echo
-    echo "Container '$CONTAINER_NAME' - (Repo: $REPO_URL, Branch: $BRANCH)"
-    echo "Commit history:"
-    echo "$COMMIT_HISTORY"
-    echo
-    read -p "Would you like to update the version for container '$CONTAINER_NAME' to '$SHORT_LATEST_HASH'? (y/n): " CONFIRM
-    if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-      echo "Updating container '$CONTAINER_NAME' to image tag '$SHORT_LATEST_HASH' in $COMPOSE_FILE..."
-      update_tag_and_build_container "$CONTAINER_NAME" "$SHORT_LATEST_HASH" "$LATEST_HASH"
+  echo -e "${BLUE}⚙️ Checking for Remote Falcon container updates...${NC}"
+
+  for entry in "${CONTAINERS[@]}"; do
+  IFS='|' read -r container repo branch <<< "$entry"
+  latest_hash=$(git ls-remote "$repo" "$branch" | awk '{print $1}')
+  short_hash=${latest_hash:0:7}
+
+  current_tag=$(sed -n "/$container:/,/image:/ s/image:.*:\([a-zA-Z0-9_-]*\).*/\1/p" "$COMPOSE_FILE" | xargs)
+  current_ctx=$(sed -n "/^[[:space:]]*$container:/,/^[^[:space:]]/{
+    /context:/ {
+      s/.*#\([a-f0-9]\{40\}\).*/\1/
+      t print
+      s/.*/_EMPTY_/
+      :print
+      p
+      q
+    }
+  }" "$COMPOSE_FILE")
+
+  # If there is no commit hash, convert placeholder to empty string
+  [[ $current_ctx == "_EMPTY_" ]] && current_ctx=""
+
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${BLUE}🔄 Container: $container${NC}"
+  if [[ -z "$current_ctx" ]]; then
+      echo -e "${YELLOW}⚠️ No context hash found for $container; assuming update is needed.${NC}"
+      current_ctx="(none)"
+      updates["$container"]="$short_hash|$latest_hash|$repo|$branch"
+    elif [[ "$short_hash" != "$current_tag" || "$latest_hash" != "$current_ctx" ]]; then
+      updates["$container"]="$short_hash|$latest_hash|$repo|$branch"
+  fi
+
+  echo -e "🔸 Current tag: ${YELLOW}$current_tag${NC} - Current commit: ${YELLOW}$current_ctx${NC}"
+  echo -e "🔹 Latest tag: ${GREEN}$short_hash${NC} - Latest commit: ${GREEN}$latest_hash${NC}"
+
+  if [[ "$short_hash" != "$current_tag" || "$latest_hash" != "$current_ctx" ]]; then
+    if [[ "$current_ctx" == "(none)" ]]; then
+      echo -e "${CYAN}📜 $container Changelog: (no previous context hash available)${NC}"
+      echo -e "${BLUE}🔗 GitHub: ${BLUE}${repo%.git}/commits/$branch${NC}"
+    else
+      show_changelog "$container" "$current_ctx" "$latest_hash" "$repo" "$branch"
     fi
-  done
-fi
 
-echo "Bringing up any stopped/missing Remote Falcon containers..."
+    case "$mode" in
+      dry-run)
+        echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $container to $short_hash"
+        ;;
+      auto-apply)
 
-# Bring all RF containers up with 'sudo docker compose up -d' after checking/updating image tags above
-# This ensure all containers are brought up whether they were updated or not
-for container_info in "${CONTAINERS[@]}"; do
-  IFS='|' read -r CONTAINER_NAME REPO_URL BRANCH <<< "$container_info"
-#  echo "Bringing container '$CONTAINER_NAME' up 'sudo docker compose up -d $CONTAINER_NAME..."
-  sudo docker compose -f "$COMPOSE_FILE" up -d "$CONTAINER_NAME"
+        replace_compose_tags "$container" "$short_hash" "$latest_hash"
+        ;;
+      *)
+        read -p "❓ Update $container to $short_hash? (y/n): " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+          replace_compose_tags "$container" "$short_hash" "$latest_hash"
+        else
+          echo -e "⏭️ Skipped $container update."
+        fi
+        ;;
+    esac
+  else
+    echo -e "${GREEN}✅ $container is up-to-date.${NC}"
+  fi
 done
+}
 
-echo "Done checking for Remote Falcon container updates."
-health_check
-echo "Done! Exiting update Remote Falcon containers script..."
+# Finalize updates by building new images and restarting containers
+finalize_compose() {
+  local mode="$1"
+  if [[ "$mode" == "dry-run" ]]; then
+    echo -e "${YELLOW}⚠️ Dry-run mode: No changes will be applied.${NC}"
+    return
+  fi
+
+  if [[ "$UPDATED" == true ]]; then
+    update_rf_version
+    echo -e "${BLUE}🔄 Restarting containers with updated tags...${NC}"
+    sudo docker compose -f "$COMPOSE_FILE" up -d
+  fi
+}
+
+# ========== Run ==========
+run_updates "$MODE"
+finalize_compose "$MODE"
+health_check "$HEALTH_CHECK"
+
+echo -e "${GREEN}🚀 Done. Remote Falcon container update process complete.${NC}"
 exit 0
