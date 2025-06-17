@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.16.2
+# VERSION=2025.6.16.3
 
 #set -euo pipefail
 
@@ -122,10 +122,6 @@ update_env() {
 
   # Write the variables to the .env file if answer is y
   if [[ "$(get_input "❓ Update the .env file with the above values? (y/n)" "n" )" =~ ^[Yy]$ ]]; then
-    # Refresh the JWT keys when the prompt above is accepted
-    new_env_vars["VIEWER_JWT_KEY"]="$(openssl rand -base64 32)"
-    new_env_vars["USER_JWT_KEY"]="$(openssl rand -base64 32)"
-
     # Backup the existing .env file in case roll-back is needed
     timestamp=$(date +'%Y-%m-%d_%H-%M-%S')
     if [[ ! -d "$BACKUP_DIR" ]]; then
@@ -134,6 +130,15 @@ update_env() {
     else
       cp .env "$BACKUP_DIR/.env.backup-$timestamp"
       echo -e "${GREEN}✔ Backed up current .env to $BACKUP_DIR/.env.backup-$timestamp${NC}"
+    fi
+
+    # Refresh the JWT keys when the prompt above is accepted
+    new_env_vars["VIEWER_JWT_KEY"]="$(openssl rand -base64 32)"
+    new_env_vars["USER_JWT_KEY"]="$(openssl rand -base64 32)"
+
+    # Ensure .env ends with a newline before appending
+    if [ -s .env ] && [ "$(tail -c1 .env)" != "" ]; then
+      echo >> .env
     fi
 
     # Update the .env file
@@ -333,7 +338,7 @@ fi
 parse_env
 print_env
 
-# Ask to configure .env values ## Update to proceed if certain values are set to defaults that require updated values
+# Ask to configure .env values
 if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ ]]; then
   # Configuration walkthrough questions. Questions will pull existing or default values from the sourced .env file
   echo
@@ -341,7 +346,9 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   echo "Press ENTER to accept the existing values that are between the brackets [ ]."
   echo "You will be asked to confirm the changes before the file is modified."
   echo
-  # ====== REQUIRED variables ======
+  # ====== START variable questions ======
+
+  # ====== START REQUIRED variables ======
 
   # get the Cloudflared tunnel token and validate input is not default, empty, or not in valid format
   while true; do
@@ -409,44 +416,10 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       nano "${domain}_origin_key.pem"
     fi
   fi
+  # ====== END REQUIRED variables ======
 
-  # Check VIEWER_JWT_KEY .env variable and generate a random Base64 value if set to default 123456
-  if [[ $VIEWER_JWT_KEY == "123456" ]]; then
-    #echo -e "${YELLOW}⚠️ VIEWER_JWT_KEY is set to default value 123456. Generating a random key and writing it to $ENV_FILE...${NC}"
-    VIEWER_JWT_KEY=$(openssl rand -base64 32)
-    sed -i "s|^VIEWER_JWT_KEY=.*|VIEWER_JWT_KEY=$VIEWER_JWT_KEY|" "$ENV_FILE"
-    
-  # Ask if the user wants to switch the Viewer Page and Control Panel URLs
-  if [[ -z "$SWAP_CP" || "$SWAP_CP" == false ]]; then
-    if [[ "$(get_input "Would you like to swap the Control Panel and Viewer Page URLs? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-      read -p "Enter your Viewer Page Subdomain: [$VIEWER_PAGE_SUBDOMAIN]: " viewerPageSubdomain
-      SWAP_CP=true
-    fi
-  else
-    if [[ "$(get_input "Would you like to REVERT the Control Panel and Viewer Page URLs back to the default? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-      SWAP_CP=false
-    fi
-  fi
-
-  viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
-  swapCP=${swapCP:-$SWAP_CP}
-
-  # Ask if analytics env variables should be set for PostHog, Google Analytics, or Mixpanel
-  if [[ "$(get_input "Update analytics variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-    read -p "Enter your PostHog key - https://posthog.com/: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
-    read -p "Enter your Google Analytics Measurement ID - https://analytics.google.com/: [$GA_TRACKING_ID]: " gatrackingid
-    read -p "Enter your Mixpanel key - https://mixpanel.com/: [$MIXPANEL_KEY]: " mixpanelkey
-  fi
-
-  # Check USER_JWT_KEY .env variable and generate a random Base64 value  if set to default 123456
-  if [[ $USER_JWT_KEY == "123456" ]]; then
-    #echo -e "${YELLOW}⚠️ USER_JWT_KEY is set to default value 123456. Generating a random key and writing it to $ENV_FILE...${NC}"
-    USER_JWT_KEY=$(openssl rand -base64 32)
-    sed -i "s|^USER_JWT_KEY=.*|USER_JWT_KEY=$USER_JWT_KEY|" "$ENV_FILE"
-  fi
-
-    # ====== OPTIONAL variables ======
-  if [[ "$(get_input "❓ Update optional variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+  # ====== START OPTIONAL variables ======
+  if [[ "$(get_input "❓ Update OPTIONAL variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
     read -p "🗺️ Enter your Google maps key: [$GOOGLE_MAPS_KEY]: " googlemapskey
 
     # Ask if analytics env variables should be set for PostHog, Google Analytics, or Mixpanel
@@ -480,6 +453,24 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
         echo -e "${RED}❌ Please enter a valid whole number greater than 0.${NC}"
       fi
     done
+
+    # Ask if the user wants to switch the Viewer Page and Control Panel URLs
+    if [[ -z "$SWAP_CP" || "$SWAP_CP" == false ]]; then
+      if [[ "$(get_input "🔁 Would you like to swap the Control Panel and Viewer Page URLs? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+        SWAP_CP=true
+      fi
+    else
+      if [[ "$(get_input "🔁 Would you like to REVERT the Control Panel and Viewer Page URLs back to the default? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+        SWAP_CP=false
+      fi
+    fi
+
+    if [[ $SWAP_CP == true ]]; then
+      read -p "🌐 Enter your Viewer Page Subdomain: [$VIEWER_PAGE_SUBDOMAIN]: " viewerPageSubdomain
+    fi
+
+    viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
+    swapCP=${swapCP:-$SWAP_CP}
   else
     # Ensure optional variables are set to the current values if they weren't updated
     googlemapskey=${googlemapskey:-$GOOGLE_MAPS_KEY}
@@ -488,8 +479,25 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     mixpanelkey=${mixpanelkey:-$MIXPANEL_KEY}
     socialmeta=${socialmeta:-$SOCIAL_META}
     sequencelimit=${sequencelimit:-$SEQUENCE_LIMIT}
+    viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
+    swapCP=${swapCP:-$SWAP_CP}
   fi
-  # Moved service running check down belo
+  # ====== END OPTIONAL variables ======
+
+  # ====== START Automatically configured variables ======
+
+  # Check VIEWER_JWT_KEY and USER_JWT_KEY .env variables and generate a random Base64 value if set to default 123456
+  if [[ $VIEWER_JWT_KEY == "123456" ]]; then
+    VIEWER_JWT_KEY=$(openssl rand -base64 32)
+    sed -i "s|^VIEWER_JWT_KEY=.*|VIEWER_JWT_KEY=$VIEWER_JWT_KEY|" "$ENV_FILE"
+  fi
+  if [[ $USER_JWT_KEY == "123456" ]]; then
+    USER_JWT_KEY=$(openssl rand -base64 32)
+    sed -i "s|^USER_JWT_KEY=.*|USER_JWT_KEY=$USER_JWT_KEY|" "$ENV_FILE"
+  fi
+  # ====== END Automatically configured variables ======
+
+  # ====== END variable questions ======
 
   # Run the container update scripts if .env variables were 'accepted' and 'updated'. This doesn't mean they were changed, just accepted and written to the .env file.
   if update_env; then
@@ -499,9 +507,9 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
         ANY_SERVICE_RUNNING=true
       fi
     done
-    if [[ $ANY_SERVICE_RUNING == true ]]; then
-      echo -e "${YELLOW}⚠️ Containers are running. Running 'docker compose up -d --force-recreate' to apply .env changes...${NC}"
-      sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate 
+    if [[ $ANY_SERVICE_RUNNING == true ]]; then
+      echo -e "${YELLOW}⚠️ Containers are running. Running 'docker compose up -d --build --force-recreate' to apply .env changes...${NC}"
+      sudo docker compose -f "$COMPOSE_FILE" up -d --build --force-recreate 
       # Prompt to check updates after applying new .env values to existing containers
       if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         run_updates

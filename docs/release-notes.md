@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2025.06.16.2
+
+- Updated configure-rf to allow for swapping the viewer page with the control panel. This is configured under OPTIONAL variables.
+
+- Updated .env to add SWAP_CP and VIEWER_PAGE_SUBDOMAIN.
+
+- Updated compose.yaml to add SWAP_CP and VIEWER_PAGE_SUBDOMAIN under ui.
+
 ## 2025.06.16.1
 
 - Updated configure-rf .env file version would not display if .env didn't already exist.
