@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2025.6.16.1
+# COMPOSE_VERSION=2025.7.28.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -52,12 +52,15 @@ services:
       context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
       args:
         - OTEL_OPTS=${OTEL_OPTS}
+        - OTEL_URI=${OTEL_URI}
+        - MONGO_URI=${MONGO_URI}
     image: plugins-api:latest
     container_name: plugins-api
     restart: always
     ports:
       - "8083:8083"
     environment:
+      - quarkus.http.port=8083
       - server.port=8083
       - spring.data.mongodb.uri=${MONGO_URI}
       - server.servlet.context-path=/remote-falcon-plugins-api

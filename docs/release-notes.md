@@ -1,5 +1,15 @@
 # Release Notes
 
+## 2025.07.28.1
+
+- Updated compose.yaml plugins-api section for the quarkus updates in c46138a to add quarkus.http.port=8083. 
+
+- Updated default.conf plugins-api entry to allow access to /q/health endpoint.
+
+- Updated health_check to check the /remote-falcon-plugins-api/q/health endpoint.
+
+- If the FPP plugin is accessing RF via LAN, after updating plugins-api to c46138a or later you will need to remove the /remote-falcon-plugins-api path and just specify http://localip.address.of.remote.falcon:8083
+
 ## 2025.06.17.1
 
 - Updated configure-rf to add validation for VIEWER_PAGE_SUBDOMAIN.

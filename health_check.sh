@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.17.1
+# VERSION=2025.7.28.1
 
 #set -euo pipefail
 #set -x
@@ -67,7 +67,8 @@ if [[ -f $ENV_FILE ]]; then
     ["control-panel"]="https://$DOMAIN/remote-falcon-control-panel/actuator/health/"
     ["ui"]="https://$DOMAIN/health.json"
     ["viewer"]="https://$DOMAIN/remote-falcon-viewer/q/health"
-    ["plugins-api"]="https://$DOMAIN/remote-falcon-plugins-api/actuator/health/"
+#    ["plugins-api"]="https://$DOMAIN/remote-falcon-plugins-api/actuator/health/"
+    ["plugins-api"]="https://$DOMAIN/remote-falcon-plugins-api/q/health"
     ["external-api"]="https://$DOMAIN/remote-falcon-external-api/actuator/health/"
   )
 

@@ -38,6 +38,12 @@
           |--------------------|----------------------------------------------------------------------|
           | Plugins API Path   |   http://localip.address.of.remote.falcon:8083/remote-falcon-plugins-api  |
 
+          Or if plugins-api is on c46138a or later remove the /remote-falcon-plugins-api:
+
+          |                    | Developer Settings                                                   |
+          |--------------------|----------------------------------------------------------------------|
+          | Plugins API Path   |   http://localip.address.of.remote.falcon:8083                       |
+
 5. You can now continue with configuring your viewer page and other settings. Reference the [Remote Falcon Docs](https://docs.remotefalcon.com/docs/docs/welcome) if needed.
 
 ### FPP 9
