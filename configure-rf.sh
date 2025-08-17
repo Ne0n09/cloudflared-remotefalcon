@@ -1,20 +1,20 @@
 #!/bin/bash
 
-# VERSION=2025.6.17.1
+# VERSION=2025.8.13.1
 
 #set -euo pipefail
 
-CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/configure-rf.sh"
+CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/configure-rf.sh"
 
 # Set the URLs to download the compose.yaml, NGINX default.conf, and default .env files
-SHARED_FUNCTIONS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/shared_functions.sh"
-DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/compose.yaml"
-NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/default.conf"
-DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/.env"
-UPDATE_RF_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_rf_containers.sh"
-UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_containers.sh"
-HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/health_check.sh"
-MINIO_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/minio_init.sh"
+SHARED_FUNCTIONS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/shared_functions.sh"
+DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/remotefalcon/compose.yaml"
+NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/remotefalcon/default.conf"
+DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/remotefalcon/.env"
+UPDATE_RF_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/update_rf_containers.sh"
+UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/update_containers.sh"
+HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/health_check.sh"
+MINIO_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/minio_init.sh"
 SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo minio)
 ANY_SERVICE_RUNNING=false
 
@@ -70,8 +70,6 @@ update_env() {
   declare -A new_env_vars=(
     ["TUNNEL_TOKEN"]="$tunneltoken"
     ["DOMAIN"]="$domain"
-#    ["VIEWER_JWT_KEY"]="$viewerjwtkey"
-#    ["USER_JWT_KEY"]="$userjwtkey"
 #    ["HOSTNAME_PARTS"]="$hostnameparts"
     ["AUTO_VALIDATE_EMAIL"]="$autovalidateemail"
 #    ["NGINX_CONF"]="$NGINX_CONF"
@@ -81,7 +79,6 @@ update_env() {
 #    ["VERSION"]="$VERSION"
     ["GOOGLE_MAPS_KEY"]="$googlemapskey"
     ["PUBLIC_POSTHOG_KEY"]="$publicposthogkey"
-#    ["PUBLIC_POSTHOG_HOST"]="$PUBLIC_POSTHOG_HOST"
     ["GA_TRACKING_ID"]="$gatrackingid"
     ["MIXPANEL_KEY"]="$mixpanelkey"
 #    ["CLIENT_HEADER"]="$CLIENT_HEADER"
@@ -535,8 +532,8 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       fi
     done
     if [[ $ANY_SERVICE_RUNNING == true ]]; then
-      echo -e "${YELLOW}⚠️ Containers are running. Running 'docker compose up -d --build --force-recreate' to apply .env changes...${NC}"
-      sudo docker compose -f "$COMPOSE_FILE" up -d --build --force-recreate 
+      echo -e "${YELLOW}⚠️ Containers are running. Running 'docker compose up -d --force-recreate' to apply .env changes...${NC}"
+      sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate 
       # Prompt to check updates after applying new .env values to existing containers
       if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         run_updates
