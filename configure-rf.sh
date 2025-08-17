@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.8.13.1
+# VERSION=2025.8.17.1
 
 #set -euo pipefail
 
@@ -11,7 +11,6 @@ SHARED_FUNCTIONS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remot
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/remotefalcon/compose.yaml"
 NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/remotefalcon/default.conf"
 DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/remotefalcon/.env"
-UPDATE_RF_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/update_rf_containers.sh"
 UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/update_containers.sh"
 HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/health_check.sh"
 MINIO_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/minio_init.sh"
@@ -47,11 +46,10 @@ fi
 source "$SCRIPT_DIR/shared_functions.sh"
 
 # Download extra helper scripts if they do not exist and make them executable
-download_file $UPDATE_RF_CONTAINERS_URL "update_rf_containers.sh"
 download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
 download_file $HEALTH_CHECK_URL "health_check.sh"
 download_file $MINIO_INIT_URL "minio_init.sh"
-chmod +x "shared_functions.sh" "update_rf_containers.sh" "update_containers.sh" "health_check.sh" "minio_init.sh"
+chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "minio_init.sh"
 
 
 # Function to get user input for configuration questions
@@ -187,19 +185,11 @@ run_updates() {
   echo -e "${YELLOW}⚠️ Checking for container updates...${NC}"
   case "$update_mode" in
     auto-apply)
-      bash "$SCRIPT_DIR/update_containers.sh" "mongo" "auto-apply" # Start with Mongo first since the RF containers depend on it.
-      bash "$SCRIPT_DIR/update_rf_containers.sh" "auto-apply"
-      bash "$SCRIPT_DIR/update_containers.sh" "minio" "auto-apply"
-      bash "$SCRIPT_DIR/update_containers.sh" "nginx" "auto-apply" # Start nginx 2nd to last or it will throw errors if other containers are not up yet.
-      bash "$SCRIPT_DIR/update_containers.sh" "cloudflared" "auto-apply" # Start cloudflared last or it will throw errors if nginx isn't running
+      bash "$SCRIPT_DIR/update_containers.sh" "all" "auto-apply"
       ;;
     *)
       # Interactive mode, default
-      bash "$SCRIPT_DIR/update_containers.sh" "mongo" # Start with Mongo first since the RF containers depend on it.
-      bash "$SCRIPT_DIR/update_rf_containers.sh"
-      bash "$SCRIPT_DIR/update_containers.sh" "minio"
-      bash "$SCRIPT_DIR/update_containers.sh" "nginx" # Start nginx 2nd to last or it will throw errors if other containers are not up yet.
-      bash "$SCRIPT_DIR/update_containers.sh" "cloudflared" # Start cloudflared last or it will throw errors if nginx isn't running
+      bash "$SCRIPT_DIR/update_containers.sh" "all" 
       ;;
   esac
 

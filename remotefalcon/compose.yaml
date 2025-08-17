@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2025.8.13.1
+# COMPOSE_VERSION=2025.8.17.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -91,7 +91,7 @@ services:
     depends_on:
       - mongo
   ui:
-    image: ghcr.io/sh-rf/remote-falcon-ui:2025.08.13
+    image: ghcr.io/sh-rf/remote-falcon-ui:latest
     container_name: ui
     restart: always
     environment:

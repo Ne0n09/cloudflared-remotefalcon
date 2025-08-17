@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# VERSION=2025.6.6.1
+# VERSION=2025.8.17.1
 
-# This script will check for and display updates for non-RF containers: cloudflared, nginx, mongo, and minio
+# This script will check for and display updates for containers: cloudflared, nginx, mongo,  minio, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
 # ./update_containers.sh cloudflared
 # ./update_containers.sh nginx
@@ -23,7 +23,7 @@ SERVICE_NAME="${1:-}" # Options: all, mongo, minio, nginx, cloudflared
 MODE="${2:-}"  # Options: dry-run, auto-apply, or interactive, defaults to interactive if not provided
 HEALTH_CHECK="${3:-}" # Options: health or empty
 # CONTAINERS defines the order that the containers will be updated in if no name is provided
-CONTAINERS=("mongo" "minio" "nginx" "cloudflared")
+CONTAINERS=("mongo" "minio" "plugins-api" "control-panel" "viewer" "ui" "external-api" "nginx" "cloudflared" )
 BACKED_UP=false # Flag to track if a backup was made
 
 if [[ -z "$SERVICE_NAME" ]]; then
@@ -81,6 +81,9 @@ fetch_current_version() {
     "minio")
       sudo docker exec "$(get_container_name "$service_name")" minio --version | sed -n 's/^minio version \(RELEASE\.[^ ]\+\).*/\1/p'
       ;;
+    plugins-api|control-panel|viewer|ui|external-api)
+      sudo docker ps --filter "name=$(get_container_name "$service_name")" --format '{{.Image}}' | sed -E 's|.*/[^:]+:||'
+      ;;
     *)
       echo -e "${RED}❌ Failed to fetch current version. Unsupported container: $service_name${NC}" >&2
       exit 1
@@ -104,6 +107,9 @@ fetch_latest_version() {
       ;;
     "minio")
       grep -oP '"tag_name":\s*"\KRELEASE\.\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z' | head -n 1
+      ;;
+    plugins-api|control-panel|viewer|ui|external-api)
+      grep -oP '"tag_name":\s*"\K[0-9.\-]+' | head -n1
       ;;
     *)
       echo -e "${RED}❌ Failed to fetch latest version. Unsupported container: $service_name${NC}" >&2
@@ -209,6 +215,9 @@ check_for_update() {
     "minio")
       RELEASE_NOTES_URL="https://api.github.com/repos/minio/minio/releases"
       ;;
+    plugins-api|control-panel|viewer|ui|external-api)
+      RELEASE_NOTES_URL="https://api.github.com/repos/SH-RF/remote-falcon-${service_name}/releases"
+      ;;
     *)
       echo -e "${RED}❌ Unsupported container: $service_name${NC}" >&2
       exit 1
@@ -311,7 +320,7 @@ check_for_update() {
       "minio")
         sed_command="s|minio/minio:[^[:space:]]+|minio/minio:$LATEST_VERSION|"
         format="^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$"
-        check_format "$service_name" "$CURRENT_VERSION" "^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$" "RELEASE.YYYY-MM-DDTHH-MM-SSZ"
+        check_format "$service_name" "$CURRENT_VERSION" $format "RELEASE.YYYY-MM-DDTHH-MM-SSZ"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
@@ -323,13 +332,31 @@ check_for_update() {
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
           echo -e "${BLUE}🔗 https://github.com/minio/minio/compare/${CURRENT_VERSION}...${LATEST_VERSION}${NC}"
-          prompt_to_update "minio" $LATEST_VERSION "s|minio/minio:[^[:space:]]+|minio/minio:$LATEST_VERSION|"
+          prompt_to_update "minio" $LATEST_VERSION $sed_command
+        fi
+        ;;
+      plugins-api|control-panel|viewer|ui|external-api)
+        sed_command="s|ghcr.io/sh-rf/remote-falcon-$service_name:[^[:space:]]+|ghcr.io/sh-rf/remote-falcon-$service_name:$LATEST_VERSION|"
+        format="^[0-9]{4}\.[0-9]{2}\.[0-9]{2}$"
+        check_format "$service_name" "$CURRENT_VERSION" $format "YYYY.MM.DD"
+        echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
+        echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
+        if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
+          echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
+          if [[ "$(get_compose_tag "$sed_command")" != "$format" ]]; then
+            # Update the tag in compose.yaml if it is not in the valid format
+            replace_compose_tags $sed_command
+          fi
+        else
+          echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
+          echo -e "${BLUE}🔗 https://github.com/SH-RF/remote-falcon-${service_name}/compare/${CURRENT_VERSION}...${LATEST_VERSION}${NC}"
+          prompt_to_update "$service_name" "$LATEST_VERSION" $sed_command
         fi
         ;;
       *)
         echo -e "${RED}❌ Unsupported container: $service_name${NC}" >&2
         echo "Usage:"
-        echo "./update_containers.sh [all|mongo|minio|nginx|cloudflared] [dry-run|auto-apply|interactive] [health]"
+        echo "./update_containers.sh [all|mongo|minio|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api] [dry-run|auto-apply|interactive] [health]"
         echo "./update_containers.sh all"
         echo "./update_containers.sh cloudflared auto-apply"
         echo "./update_containers.sh nginx dry-run"
@@ -344,11 +371,11 @@ check_for_update() {
 check_compose_exists
 # If script is run with 'all', loop through all containers by calling the check_for_update function otherwise just check the specified container
 if [ "$SERVICE_NAME" == "all" ]; then
-  echo -e "${BLUE}⚙️ Checking for non-RF container updates...${NC}"
+  echo -e "${BLUE}⚙️ Checking for container updates...${NC}"
   for container in "${CONTAINERS[@]}"; do
     check_for_update "$container"
   done
-  echo -e "${GREEN}🚀 Done. Non-RF container update process complete.${NC}"
+  echo -e "${GREEN}🚀 Done. Container update process complete.${NC}"
 else # If a specific container is provided, check for updates for that container and auto-apply or prompt for confirmation or dry-run
   # Validate the container name
   if [[ ! " ${CONTAINERS[*]} " =~ " $SERVICE_NAME " ]]; then
