@@ -39,6 +39,20 @@ if [[ -z "$HEALTH_CHECK" ]]; then
 fi
 
 # ========== Functions ==========
+
+# Updates the VERSION in the .env file so you can see the current version on the RF control panel
+# This would be the last time any of the RF containers were updated
+update_rf_version() {
+  NEW_VERSION=$(date +'%Y.%m.%-d')
+  if [[ -f "$ENV_FILE" ]]; then
+    if grep -q "^VERSION=" "$ENV_FILE"; then
+      sed -i "s/^VERSION=.*/VERSION=$NEW_VERSION/" "$ENV_FILE"
+    else
+      echo "VERSION=$NEW_VERSION" >> "$ENV_FILE"
+    fi
+  fi
+}
+
 # Function to match compose service name with container name to handle the special case of minio
 get_container_name() {
   local service_name="$1"
@@ -118,6 +132,31 @@ fetch_latest_version() {
   esac
 }
 
+# Function to perform the update to compose.yaml and restart the container
+# If the service is mongo, it will also backup the mongo data before updating
+perform_update() {
+  local service_name="$1"
+  local latest_version="$2"
+  local sed_command="$3"
+
+  if [[ $service_name == "mongo" ]]; then
+    backup_mongo "mongo"
+  fi
+  if [[ $BACKED_UP == false ]]; then
+    backup_file "$COMPOSE_FILE"
+    BACKED_UP=true
+  fi
+  if [[ $service_name == "plugins-api" || $service_name == "control-panel" || $service_name == "viewer" || $service_name == "ui" || $service_name == "external-api" ]]; then
+    update_rf_version
+  fi
+
+  # Update the tag in compose.yaml
+  sed -i.bak -E "$sed_command" "$COMPOSE_FILE"
+  echo -e "✔ Updated $service_name image tag to version $latest_version in $COMPOSE_FILE..."
+  echo -e "${BLUE}🔄 Restarting $service_name with the $latest_version image...${NC}"
+  sudo docker compose -f "$COMPOSE_FILE" up -d "$service_name"
+}
+
 # Function to check the $MODE and update the container image tag in the compose.yaml if auto-apply is selected or if the user confirms
 prompt_to_update() {
   local service_name="$1"
@@ -129,34 +168,12 @@ prompt_to_update() {
       echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $latest_version"
       ;;
     "auto-apply")
-      if [[ $service_name == "mongo" ]]; then
-        backup_mongo "mongo"
-      fi
-      if [[ $BACKED_UP == false ]]; then
-        backup_file "$COMPOSE_FILE"
-        BACKED_UP=true
-      fi
-      # Update the tag
-      sed -i.bak -E "$sed_command" "$COMPOSE_FILE"
-      echo -e "✔ Updated $service_name image tag to version $latest_version in $COMPOSE_FILE..."
-      echo -e "${BLUE}🔄 Restarting $service_name with the $latest_version image...${NC}"
-      sudo docker compose -f "$COMPOSE_FILE" up -d "$service_name"
+      perform_update "$service_name" "$latest_version" "$sed_command"
       ;;
     *)
       read -p "❓ Update $service_name to $latest_version? (y/n): " confirm
       if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        if [[ $service_name == "mongo" ]]; then
-          backup_mongo "mongo"
-        fi
-        if [[ $BACKED_UP == false ]]; then
-          backup_file "$COMPOSE_FILE"
-          BACKED_UP=true
-        fi
-        # Update the tag
-        sed -i.bak -E "$sed_command" "$COMPOSE_FILE"
-        echo -e "✔ Updated $service_name image tag to version $latest_version in $COMPOSE_FILE..."
-        echo -e "${BLUE}🔄 Restarting $service_name with the $latest_version image...${NC}"
-        sudo docker compose -f "$COMPOSE_FILE" up -d "$service_name"
+        perform_update "$service_name" "$latest_version" "$sed_command"
       else
         echo -e "⏭️ Skipped $service_name update."
       fi
@@ -190,14 +207,21 @@ check_for_update() {
     echo -e "${YELLOW}⚠️ $service_name does not exist or is not running.${NC}"
     echo -e "${BLUE}🔄 Attempting to start $service_name...${NC}"
     sudo docker compose -f "$COMPOSE_FILE" up -d "$service_name"
-    echo "💤 Sleeping 10 seconds to let $service_name start in order to check its version directly..."
-    sleep 10s
   fi
 
-  # Fetch the current version directly from the running container
-  CURRENT_VERSION=$(fetch_current_version "$service_name")
+  # Retry up to 10 times to get the current version
+  CURRENT_VERSION=""
+  for i in {1..10}; do
+    CURRENT_VERSION=$(fetch_current_version "$service_name")
+    if [[ -n "$CURRENT_VERSION" ]]; then
+      break
+    fi
+    echo -e "${YELLOW}⏳ Waiting for $service_name to be ready (attempt $i/10)...${NC}"
+    sleep 1
+  done
+
   if [[ -z "$CURRENT_VERSION" ]]; then
-    echo -e "${RED}❌ Failed to fetch the current version for $service_name${NC}"
+    echo -e "${RED}❌ Failed to fetch the current version for $service_name after 10 attempts.${NC}"
     exit 1
   fi
 

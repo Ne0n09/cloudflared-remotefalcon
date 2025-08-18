@@ -48,7 +48,7 @@ services:
       - MINIO_DOMAIN=minio
     command: ["server", "/data", "--console-address", ":9001"]
   plugins-api:
-    image: ghcr.io/sh-rf/remote-falcon-plugins-api:latest
+    image: ghcr.io/${REPO}/remote-falcon-plugins-api:latest
     container_name: plugins-api
     restart: always
     ports:
@@ -56,12 +56,10 @@ services:
     environment:
       - quarkus.http.port=8083
       - sequence-limit=${SEQUENCE_LIMIT}
-      - OTEL_URI=${OTEL_URI}
-      - MONGO_URI=${MONGO_URI}
     depends_on:
       - mongo
   control-panel:
-    image: ghcr.io/sh-rf/remote-falcon-control-panel:latest
+    image: ghcr.io/${REPO}/remote-falcon-control-panel:latest
     container_name: control-panel
     restart: always
     environment:
@@ -70,55 +68,37 @@ services:
       - auto-validate-email=${AUTO_VALIDATE_EMAIL}
       - jwt.user=${USER_JWT_KEY}
       - spring.data.mongodb.uri=${MONGO_URI}
-      - github.pat=${GITHUB_PAT}
+      - github.pat=
       - sendgrid.key=${SENDGRID_KEY}
       - client.header=${CLIENT_HEADER}
       - s3.endpoint=${S3_ENDPOINT}
       - s3.accessKey=${S3_ACCESS_KEY}
       - s3.secretKey=${S3_SECRET_KEY}
-      - OTEL_OPTS=${OTEL_OPTS}
     depends_on:
       - mongo
   viewer:
-    image: ghcr.io/sh-rf/remote-falcon-viewer:latest
+    image: ghcr.io/${REPO}/remote-falcon-viewer:latest
     container_name: viewer
     restart: always
     environment:
       - quarkus.http.port=8082
       - client.header=${CLIENT_HEADER}
-      - OTEL_URI=${OTEL_URI}
-      - MONGO_URI=${MONGO_URI}
     depends_on:
       - mongo
   ui:
-    image: ghcr.io/sh-rf/remote-falcon-ui:latest
+    image: ghcr.io/${REPO}/remote-falcon-ui:latest
     container_name: ui
     restart: always
-    environment:
-      - HOST_ENV=${HOST_ENV}
-      - VERSION=${VERSION}
-      - CONTROL_PANEL_API=https://${DOMAIN}/remote-falcon-control-panel
-      - VIEWER_API=https://${DOMAIN}/remote-falcon-viewer
-      - VIEWER_JWT_KEY=${VIEWER_JWT_KEY}
-      - GOOGLE_MAPS_KEY=${GOOGLE_MAPS_KEY}
-      - PUBLIC_POSTHOG_KEY=${PUBLIC_POSTHOG_KEY}
-      - GA_TRACKING_ID=${GA_TRACKING_ID}
-      - MIXPANEL_KEY=${MIXPANEL_KEY}
-      - HOSTNAME_PARTS=${HOSTNAME_PARTS}
-      - SWAP_CP=${SWAP_CP}
-      - VIEWER_PAGE_SUBDOMAIN=${VIEWER_PAGE_SUBDOMAIN}
-      - SOCIAL_META=${SOCIAL_META}
     depends_on:
       - control-panel
       - viewer
   external-api:
-    image: ghcr.io/sh-rf/remote-falcon-external-api:latest
+    image: ghcr.io/${REPO}/remote-falcon-external-api:latest
     container_name: external-api
     restart: always
     environment:
       - server.port=8084
       - spring.data.mongodb.uri=${MONGO_URI}
       - viewer.api.url=https://${DOMAIN}/remote-falcon-viewer
-      - OTEL_OPTS=${OTEL_OPTS}
     depends_on:
       - mongo

@@ -1,0 +1,100 @@
+name: Build and Push Remote-Falcon Containers
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Comma-separated list of services to build (plugins-api,control-panel,viewer,ui,external-api)"
+        required: true
+        default: "plugins-api,control-panel,viewer,ui,external-api"
+      target_repo:
+        description: "GitHub repo where the built image should be pushed (username/repo)"
+        required: true
+      refs:
+        description: "Optional comma-separated refs for each service in the same order as services (branch, tag, or commit SHA). Leave blank to use default branch."
+        required: false
+        default: ""
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      ref_map: ${{ steps.set-matrix.outputs.ref_map }}
+    steps:
+      - id: set-matrix
+        run: |
+          # Convert CSV of services to JSON array
+          matrix_json="[\"$(echo '${{ github.event.inputs.services }}' | sed 's/,/\",\"/g')\"]"
+          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+
+          # Convert refs CSV into a JSON object mapping service -> ref
+          IFS=',' read -ra services <<< "${{ github.event.inputs.services }}"
+          IFS=',' read -ra refs <<< "${{ github.event.inputs.refs }}"
+          ref_json="{"
+          for i in "${!services[@]}"; do
+            svc="${services[$i]}"
+            ref="${refs[$i]:-main}"  # default to main if no ref provided
+            ref_json+="\"$svc\":\"$ref\","
+          done
+          ref_json="${ref_json%,}}"
+          echo "ref_map=$ref_json" >> $GITHUB_OUTPUT
+
+  build:
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+      max-parallel: 5
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          repository: Remote-Falcon/remote-falcon-${{ matrix.service }}
+          ref: ${{ fromJson(needs.prepare-matrix.outputs.ref_map)[matrix.service] }}
+          path: ${{ matrix.service }}
+
+      - name: Get short commit hash
+        id: vars
+        run: echo "short_sha=$(git -C ${{ matrix.service }} rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Normalize target repo
+        id: normalize
+        run: echo "target_repo=$(echo '${{ github.event.inputs.target_repo }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:${{ steps.vars.outputs.short_sha }}
+            ${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:latest
+          build-args: |
+            VERSION=${{ steps.vars.outputs.short_sha }}
+            HOST_ENV=${{ secrets.HOST_ENV }}
+            DOMAIN=${{ secrets.DOMAIN }}
+            VIEWER_JWT_KEY=${{ secrets.VIEWER_JWT_KEY }}
+            GOOGLE_MAPS_KEY=${{ secrets.GOOGLE_MAPS_KEY }}
+            PUBLIC_POSTHOG_HOST=${{ secrets.PUBLIC_POSTHOG_HOST }}
+            PUBLIC_POSTHOG_KEY=${{ secrets.PUBLIC_POSTHOG_KEY }}
+            GA_TRACKING_ID=${{ secrets.GA_TRACKING_ID }}
+            MIXPANEL_KEY=${{ secrets.MIXPANEL_KEY }}
+            HOSTNAME_PARTS=${{ secrets.HOSTNAME_PARTS }}
+            SOCIAL_META=${{ secrets.SOCIAL_META }}
+            SWAP_CP=${{ secrets.SWAP_CP }}
+            VIEWER_PAGE_SUBDOMAIN=${{ secrets.VIEWER_PAGE_SUBDOMAIN }}
+
+      - name: Add to summary
+        run: |
+          echo "| Service | Commit | Image Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ${{ matrix.service }} | ${{ steps.vars.outputs.short_sha }} | ${{ github.event.inputs.target_repo }}/${{ matrix.service }}:${{ steps.vars.outputs.short_sha }} |" >> $GITHUB_STEP_SUMMARY
