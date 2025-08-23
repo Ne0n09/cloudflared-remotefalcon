@@ -84,6 +84,8 @@ services:
       - s3.endpoint=${S3_ENDPOINT}
       - s3.accessKey=${S3_ACCESS_KEY}
       - s3.secretKey=${S3_SECRET_KEY}
+      - wattson.endpoint=
+      - wattson.key=
     depends_on:
       - mongo
   viewer:
