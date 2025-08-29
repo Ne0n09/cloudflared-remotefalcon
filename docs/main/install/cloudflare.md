@@ -143,7 +143,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
         === "TLS"
 
-            - Origin Server name: `.yourdomain.com`
+            - Origin Server name: `*.yourdomain.com`
 
             - HTTP2 connection: **On**
 
