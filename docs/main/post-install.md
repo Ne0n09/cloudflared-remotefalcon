@@ -12,7 +12,7 @@
 
 4. Click the :material-content-copy: button to copy your `Show Token`.
 
-## Update the FPP plugin settings
+## FPP 9 and below - Update the FPP plugin settings
 
 1. In FPP go to Content Setup -> Remote Falcon
 
@@ -32,21 +32,15 @@
 
           If you have LAN access to your FPP player and Remote Falcon you can directly connect to the plugins-api container to avoid your FPP player from having to reach out to the internet and back:
 
-          `http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api`
+          `http://ip.address.of.remote.falcon:8083`
 
           |                    | Developer Settings                                                   |
           |--------------------|----------------------------------------------------------------------|
-          | Plugins API Path   |   http://localip.address.of.remote.falcon:8083/remote-falcon-plugins-api  |
-
-          Or if plugins-api is on c46138a or later remove the /remote-falcon-plugins-api:
-
-          |                    | Developer Settings                                                   |
-          |--------------------|----------------------------------------------------------------------|
-          | Plugins API Path   |   http://localip.address.of.remote.falcon:8083                       |
+          | Plugins API Path   |   http://localip.address.of.remote.falcon:8083  |
 
 5. You can now continue with configuring your viewer page and other settings. Reference the [Remote Falcon Docs](https://docs.remotefalcon.com/docs/docs/welcome) if needed.
 
-### FPP 9
+## FPP 9 and above - Update the FPP plugin settings
 
 FPP 9 has some extra steps due to the addition of [Apache CSP](https://github.com/FalconChristmas/fpp/blob/master/docs/ApacheContentSecurityPolicy.md).
 
@@ -56,87 +50,142 @@ You will have to manually add your site to the trusted list or the plugins page 
 
 2. Login. The default user and password is fpp/falcon.
 
-3. Set the `DOMAIN` variable directly on the FPP shell to `https://yourdomain.com` OR `http://localip.address.of.remote.falcon:8083` if you're using LAN access. 
 
-    Type or copy and paste it into the FPP shell.
+=== "DOMAIN"
 
-    ```sh title="Example, set one of these on the FPP shell"
-    DOMAIN=https://yourdomain.com
-    DOMAIN=http://localip.address.of.remote.falcon:8083
-    ```
-
-4. Copy and paste the command below to add your site to the trusted list by:
+    Follow this if you want to use your domain name to connect to the plugin.
     
-    Right-clicking the FPP shell window -> *Paste from browser* -> paste the command -> Click OK -> Enter to run:
-    ```sh title="Copy and past this to update Apache CSP with DOMAIN and to show the configuration"
-    sudo /opt/fpp/scripts/ManageApacheContentPolicy.sh add connect-src $DOMAIN;/opt/fpp/scripts/ManageApacheContentPolicy.sh show
-    ```
+    Select the other tab above to use your LAN IP as the commands are a bit different.
 
-    ```sh title="Example command output of Apache CSP add and show" hl_lines="11"
-    Domain 'http://localip.address.of.remote.falcon:8083' added under'connect-src'.
-    CSP header generated.
-    Apache configuration reloaded successfully.
-    {                                                             
-    "default-src": [],
-    "img-src": [],
-    "script-src": [],
-    "style-src": [],
-    "connect-src": [
-        "https://remotefalcon.com",
-        "http://localip.address.of.remote.falcon:8083"
-    ],
-    "object-src": []
-    }
-    ```
+    1. Set the `DOMAIN` and `TOKEN` variable directly on the FPP shell to `https://yourdomain.com` and `yourshowtoken`.
 
-5. Now you should be able to update the plugin settings normally. If you still have issues try rebooting or power cycling your FPP device.
+        1. Click the :material-content-copy: button to copy the command below to a notepad and replace the default values `https://yourdomain.com` and `yourshowtoken` with your values next to `DOMAIN=` and `TOKEN=`.
+        2. Copy your updated command string from notepad.
+        3. Right-click the FPP shell window and click *Paste from browser*.
+        4. Paste the command and click OK.
+        5. Press Enter to run the command. 
+        The command will print your values to the shell so that you can verify they are set properly.
 
-    !!!tip "Tip - Command to update both Apache CSP and Plugins API Path"
-
-        You can substitute this command below for steps 3 and 4 above to update both the Apache CSP and the *Plugins API Path*.
-
-        ```sh title="Example, set one of these on the FPP shell"
-        DOMAIN=https://yourdomain.com
-        DOMAIN=http://localip.address.of.remote.falcon:8083
+        ```sh title="Copy this to a notepad and replace the default values"
+        DOMAIN=https://yourdomain.com;TOKEN=yourshowtoken;echo -e "DOMAIN=$DOMAIN\nTOKEN=$TOKEN"
         ```
 
-        ```sh title="Command to update both Apache CSP and Plugins API Path"
-        echo;echo "Adding '$DOMAIN' to Apache CSP...";sudo /opt/fpp/scripts/ManageApacheContentPolicy.sh add connect-src $DOMAIN;echo "Displaying currently configured domains for Apache CSP:";/opt/fpp/scripts/ManageApacheContentPolicy.sh show;echo "Updating Plugins API Path with '$DOMAIN'...";sed -i 's|^pluginsApiPath = ".*"|pluginsApiPath = "'$DOMAIN'/remote-falcon-plugins-api"|' media/config/plugin.remote-falcon;echo "Printing Remote Falcon Plugin configuration:";cat media/config/plugin.remote-falcon
+        !!! example "Example output of setting variables"
+            ```sh
+            fpp@FPP:~ $ DOMAIN=https://yourdomain.com;TOKEN=yourshowtoken;echo -e "DOMAIN=$DOMAIN\nTOKEN=$TOKEN"
+            DOMAIN=https://yourdomain.com                                                                                                                         
+            TOKEN=yourshowtoken
+            ```
 
+    2. Click the :material-content-copy: button below, paste in the FPP shell, and run the commands to add your site to the trusted list and update the plugin settings:
+
+        ```sh title="Copy and paste this into the FPP shell to update everything"
+        echo;echo "Adding '$DOMAIN' to Apache CSP...";sudo /opt/fpp/scripts/ManageApacheContentPolicy.sh add connect-src $DOMAIN;echo "Displaying currently configured domains for Apache CSP:";/opt/fpp/scripts/ManageApacheContentPolicy.sh show;echo "Updating Plugins API Path with '$DOMAIN'...";sed -i 's|^pluginsApiPath = ".*"|pluginsApiPath = '$DOMAIN/remote-falcon-plugins-api'|' media/config/plugin.remote-falcon;echo "Updating show token with '$TOKEN'...";sed -i "/^remoteToken =/c\remoteToken = ${TOKEN}" media/config/plugin.remote-falcon || echo "remoteToken = ${TOKEN}" >> media/config/plugin.remote-falcon;sed -i -e '/^init =/c\init = "true"' -e '$!b' -e '$a\init = "true"' media/config/plugin.remote-falcon;echo "Printing Remote Falcon Plugin configuration:";cat media/config/plugin.remote-falcon
+        ```
+        
+        !!! example "Example output for yourdomain.com"
+            ```sh hl_lines="13 22 26"
+            Adding 'https://yourdomain.com' to Apache CSP...
+            Domain 'https://yourdomain.com' added under 'connect-src'.
+            CSP header generated. 
+            Apache configuration reloaded successfully.
+            Displaying currently configured domains for Apache CSP:
+            {
+            "default-src": [],
+            "img-src": [],
+            "script-src": [],
+            "style-src": [],
+            "connect-src": [
+                "https://remotefalcon.com",
+                "https://yourdomain.com"
+            ],
+            "object-src": []
+            }
+            Updating Plugins API Path with 'https://yourdomain.com'...
+            Printing Remote Falcon Plugin configuration:
+            pluginVersion = "2025.08.18.1"
+            remotePlaylist = ""
+            interruptSchedule = "false"
+            remoteToken = "yourshowtoken"
+            requestFetchTime = "3"
+            additionalWaitTime = "0"
+            fppStatusCheckTime = "1"
+            pluginsApiPath = "https://yourdomain.com/remote-falcon-plugins-api"
+            verboseLogging = "false"
+            remoteFalconListenerEnabled = "true"
+            remoteFalconListenerRestarting = "false"
+            init = "true"
+            ```
+
+    3. Now you should be able to update the plugin settings normally in FPP. If you still have issues try rebooting or power cycling your FPP device.
+
+=== "LAN"
+
+    Follow this if you want to use your LAN IP to connect to the plugin. 
+    
+    Select the other tab above to use your domain as the commands are a bit different.
+
+    1. Set the `DOMAIN` and `TOKEN` variable directly on the FPP shell to `http://localip.address.of.remote.falcon:8083` and `yourshowtoken`.
+
+        1. Click the :material-content-copy: button to copy the command below to a notepad and replace the default values `http://localip.address.of.remote.falcon:8083` and `yourshowtoken` with your values next to `DOMAIN=` and `TOKEN=`.
+        2. Copy your updated command string from notepad.
+        3. Right-click the FPP shell window and click *Paste from browser*.
+        4. Paste the command and click OK.
+        5. Press Enter to run the command. 
+        The command will print your values to the shell so that you can verify they are set properly.
+
+        ```sh title="Copy this to a notepad and replace the default values"
+        DOMAIN=http://localip.address.of.remote.falcon:8083;TOKEN=yourshowtoken;echo -e "DOMAIN=$DOMAIN\nTOKEN=$TOKEN"
         ```
 
-        ```sh title="Example output" hl_lines="13 26"
-        Adding 'http://localip.address.of.remote.falcon:8083' to Apache CSP...
-        Domain 'http://localip.address.of.remote.falcon:8083' added under 'connect-src'.
-        CSP header generated.
-        Apache configuration reloaded successfully.
-        Displaying currently configured domains for Apache CSP:
-        {
-        "default-src": [],
-        "img-src": [],
-        "script-src": [],
-        "style-src": [],
-        "connect-src": [
-            "https://remotefalcon.com",
-            "http://localip.address.of.remote.falcon:8083"
-        ],
-        "object-src": []
-        }
-        Updating Plugins API Path with 'http://localip.address.of.remote.falcon:8083'...
-        Printing Remote Falcon Plugin configuration:
-        pluginVersion = "2025.04.05.1"
-        remotePlaylist = ""
-        interruptSchedule = "false"
-        remoteToken = ""
-        requestFetchTime = "3"
-        additionalWaitTime = "0"
-        fppStatusCheckTime = "1"
-        pluginsApiPath = "http://localip.address.of.remote.falcon:8083/remote-falcon-plugins-api"
-        verboseLogging = "false"
-        remoteFalconListenerEnabled = "true"
-        remoteFalconListenerRestarting = "false"
-        init = "true"
+        !!! example "Example output of setting variables"
+            ```sh
+            fpp@FPP:~ $ DOMAIN=http://localip.address.of.remote.falcon:8083;TOKEN=yourshowtoken;echo -e "DOMAIN=$DOMAIN\nTOKEN=$TOKEN"
+            DOMAIN=http://localip.address.of.remote.falcon:8083                                                                                                                       
+            TOKEN=yourshowtoken
+            ```
+
+    2. Click the :material-content-copy: button below, paste in the FPP shell, and run the commands to add your site to the trusted list and update the plugin settings:
+
+        ```sh title="Copy and paste this into the FPP shell to update everything"
+        echo;echo "Adding '$DOMAIN' to Apache CSP...";sudo /opt/fpp/scripts/ManageApacheContentPolicy.sh add connect-src $DOMAIN;echo "Displaying currently configured domains for Apache CSP:";/opt/fpp/scripts/ManageApacheContentPolicy.sh show;echo "Updating Plugins API Path with '$DOMAIN'...";sed -i 's|^pluginsApiPath = ".*"|pluginsApiPath = '$DOMAIN/remote-falcon-plugins-api'|' media/config/plugin.remote-falcon;echo "Updating show token with '$TOKEN'...";sed -i "/^remoteToken =/c\remoteToken = ${TOKEN}" media/config/plugin.remote-falcon || echo "remoteToken = ${TOKEN}" >> media/config/plugin.remote-falcon;sed -i -e '/^init =/c\init = "true"' -e '$!b' -e '$a\init = "true"' media/config/plugin.remote-falcon;echo "Printing Remote Falcon Plugin configuration:";cat media/config/plugin.remote-falcon
         ```
+        
+        !!! example "Example output for http://localip.address.of.remote.falcon:8083"
+            ```sh hl_lines="13 22 26"
+            Adding 'http://localip.address.of.remote.falcon:8083' to Apache CSP...
+            Domain 'http://localip.address.of.remote.falcon:8083' added under 'connect-src'.
+            CSP header generated. 
+            Apache configuration reloaded successfully.
+            Displaying currently configured domains for Apache CSP:
+            {
+            "default-src": [],
+            "img-src": [],
+            "script-src": [],
+            "style-src": [],
+            "connect-src": [
+                "https://remotefalcon.com",
+                "http://localip.address.of.remote.falcon:8083"
+            ],
+            "object-src": []
+            }
+            Updating Plugins API Path with 'http://localip.address.of.remote.falcon:8083'...
+            Printing Remote Falcon Plugin configuration:
+            pluginVersion = "2025.08.18.1"
+            remotePlaylist = ""
+            interruptSchedule = "false"
+            remoteToken = "yourshowtoken"
+            requestFetchTime = "3"
+            additionalWaitTime = "0"
+            fppStatusCheckTime = "1"
+            pluginsApiPath = "http://localip.address.of.remote.falcon:8083"
+            verboseLogging = "false"
+            remoteFalconListenerEnabled = "true"
+            remoteFalconListenerRestarting = "false"
+            init = "true"
+            ```
+
+    3. Now you should be able to update the plugin settings normally in FPP. If you still have issues try rebooting or power cycling your FPP device.
 
 ## Remote Falcon Image hosting
 
@@ -160,30 +209,3 @@ Substite `https://your_domain.com/remote-falcon-images` instead and you will get
 !!! example "Example image path for an image hosted from MinIO"
 
     `https://your_domain.com/remote-falcon-images/yourshowname/sl3gtwl.png`
-
-## Swap Viewer Page Subdomain
-
-The Control Panel is normally accessible at `https://your_domain.com` but can be swapped with a Viewer Page when `SWAP_CP` is set to true and `VIEWER_PAGE_SUBDOMAIN` is set to a valid Viewer Page Subdomain in the [.env](../architecture/files.md#env) file.
-
-This makes your Viewer Page accessible at `https://your_domain.com` and the Control Panel accessible at `https://controlpanel.your_domain.com`. 
-
-The [configure-rf](../scripts/index.md#__tabbed_1_1) script offers to modify these variables under the OPTIONAL variables section.
-
-```sh title="Enable SWAP_CP and set VIEWER_PAGE_SUBDOMAIN"
-❓ Update OPTIONAL variables? (y/n) [n]: y
-...
-...
-🔁 Would you like to swap the Control Panel and Viewer Page URLs? (y/n) [n]: y
-🌐 Enter your Viewer Page Subdomain []: enteryourshownamehere
-```
-
-To undo these changes, re-run the configure-rf script and answer `y` at the REVERT question.
-
-This will make the Control Panel accessible at `https://your_domain.com`.
-
-```sh title="Disable SWAP_CP"
-❓ Update OPTIONAL variables? (y/n) [n]: y
-...
-...
-🔁 Would you like to REVERT the Control Panel and Viewer Page URLs back to the default? (y/n) [n]: y
-```

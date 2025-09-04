@@ -89,6 +89,7 @@ markdown_extensions:
   - pymdownx.details
   - tables
   - def_list
+  - sane_lists
 
 plugins:
   - glightbox
