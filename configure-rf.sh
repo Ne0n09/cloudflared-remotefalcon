@@ -567,8 +567,9 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   fi
   if [[ "$(get_input "❓ Update GitHub configuration for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
     # If REPO is not blank or not the default ask to disable it, else ask to configure it
-    if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
-      if [[ "$(get_input "❓ GitHub repository $REPO found. Would you like to disable it and build images locally? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+    if [[ -n "$repo" && "$repo" != "username/repo" ]]; then
+      echo -e "${YELLOW}⚠️ Existing GitHub repository configuration found: $repo${NC}"
+      if [[ "$(get_input "❓ Would you like to disable it and build images locally? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}⚠️ GITHUB_PAT and REPO will be set to default values if .env changes are accepted.${NC}"
         githubpat=" "
         repo="username/repo"
