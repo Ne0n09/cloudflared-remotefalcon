@@ -1,10 +1,13 @@
-# COMPOSE_VERSION=2025.7.28.1
+# COMPOSE_VERSION=2025.9.5.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
 # minio port 9001 is published for direct LAN access to the MinIO server
 # nginx confg will use the container_name in default.conf
 # Cloudflare tunnel public hostnames and catch-all rule will need to use the nginx container_name 'nginx'
+# Default for Remote Falcon images is to build locally via build context and args defined in .env
+# If REPO is defined in .env then the update_containers.sh script will update the image: line to include ghcr.io/${REPO}/ to pull images from GitHub Container Registry if they exist
+
 services:
   nginx:
     image: nginx:latest
@@ -54,16 +57,13 @@ services:
         - OTEL_OPTS=${OTEL_OPTS}
         - OTEL_URI=${OTEL_URI}
         - MONGO_URI=${MONGO_URI}
-    image: plugins-api:latest
+    image: ghcr.io/${REPO}/plugins-api:latest
     container_name: plugins-api
     restart: always
     ports:
       - "8083:8083"
     environment:
       - quarkus.http.port=8083
-      - server.port=8083
-      - spring.data.mongodb.uri=${MONGO_URI}
-      - server.servlet.context-path=/remote-falcon-plugins-api
       - sequence-limit=${SEQUENCE_LIMIT}
     depends_on:
       - mongo
@@ -72,7 +72,7 @@ services:
       context: https://github.com/Remote-Falcon/remote-falcon-control-panel.git
       args:
         - OTEL_OPTS=${OTEL_OPTS}
-    image: control-panel:latest
+    image: ghcr.io/${REPO}/control-panel:latest
     container_name: control-panel
     restart: always
     environment:
@@ -81,7 +81,7 @@ services:
       - auto-validate-email=${AUTO_VALIDATE_EMAIL}
       - jwt.user=${USER_JWT_KEY}
       - spring.data.mongodb.uri=${MONGO_URI}
-      - github.pat=${GITHUB_PAT}
+      - github.pat=
       - sendgrid.key=${SENDGRID_KEY}
       - client.header=${CLIENT_HEADER}
       - s3.endpoint=${S3_ENDPOINT}
@@ -98,14 +98,11 @@ services:
         - OTEL_OPTS=${OTEL_OPTS}
         - OTEL_URI=${OTEL_URI}
         - MONGO_URI=${MONGO_URI}
-    image: viewer:latest
+    image: ghcr.io/${REPO}/viewer:latest
     container_name: viewer
     restart: always
     environment:
       - quarkus.http.port=8082
-      - server.port=8082
-      - jwt.viewer=${VIEWER_JWT_KEY}
-      - spring.data.mongodb.uri=${MONGO_URI}
       - client.header=${CLIENT_HEADER}
     depends_on:
       - mongo
@@ -127,7 +124,7 @@ services:
         - SOCIAL_META=${SOCIAL_META}
         - SWAP_CP=${SWAP_CP}
         - VIEWER_PAGE_SUBDOMAIN=${VIEWER_PAGE_SUBDOMAIN}
-    image: ui:latest
+    image: ghcr.io/${REPO}/ui:latest
     container_name: ui
     restart: always
     depends_on:
@@ -138,7 +135,7 @@ services:
       context: https://github.com/Remote-Falcon/remote-falcon-external-api.git
       args:
         - OTEL_OPTS=${OTEL_OPTS}
-    image: external-api:latest
+    image: ghcr.io/${REPO}/external-api:latest
     container_name: external-api
     restart: always
     environment:

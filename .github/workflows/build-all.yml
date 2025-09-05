@@ -1,0 +1,161 @@
+# VERSION=2025.8.25.1
+name: Build All Remote-Falcon Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugins-api:
+        description: "Commit SHA for plugins-api"
+        required: false
+        default: main
+      control-panel:
+        description: "Commit SHA for control-panel"
+        required: false
+        default: main
+      viewer:
+        description: "Commit SHA for viewer"
+        required: false
+        default: main
+      ui:
+        description: "Commit SHA for ui"
+        required: false
+        default: main
+      external-api:
+        description: "Commit SHA for external-api"
+        required: false
+        default: main
+  schedule:
+    - cron: '0 4 * * *'   # Runs daily at 11:00 PM CST to check for any new commits to build new images with existing secrets.
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [plugins-api, control-panel, viewer, ui, external-api]
+    name: Build ${{ matrix.service }}
+
+    steps:
+      - name: Resolve Ref for ${{ matrix.service }}
+        id: ref
+        run: |
+          case "${{ matrix.service }}" in
+            plugins-api)    echo "ref=${{ github.event.inputs.plugins-api || 'main' }}" >> $GITHUB_OUTPUT ;;
+            control-panel)  echo "ref=${{ github.event.inputs.control-panel || 'main' }}" >> $GITHUB_OUTPUT ;;
+            viewer)         echo "ref=${{ github.event.inputs.viewer || 'main' }}" >> $GITHUB_OUTPUT ;;
+            ui)             echo "ref=${{ github.event.inputs.ui || 'main' }}" >> $GITHUB_OUTPUT ;;
+            external-api)   echo "ref=${{ github.event.inputs.external-api || 'main' }}" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Checkout Remote-Falcon Repo
+        uses: actions/checkout@v4
+        with:
+          repository: Remote-Falcon/remote-falcon-${{ matrix.service }}
+          ref: ${{ steps.ref.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Get short SHA + Commit Date
+        id: version
+        run: |
+          short_sha=$(git rev-parse --short HEAD)
+          commit_date=$(git log -1 --format=%cd --date=format:'%Y.%m.%d')
+          echo "short_sha=$short_sha" >> $GITHUB_OUTPUT
+          echo "commit_date=$commit_date" >> $GITHUB_OUTPUT
+
+      - name: Normalize Target Repo(lowercase)
+        id: normalize
+        run: echo "target_repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}        
+
+      # 🔹 Only check GCHR if scheduled run. Otherwise, build if manual run.
+      - name: Check if image already exists
+        if: github.event_name == 'schedule'
+        id: check
+        env:
+          IMAGE: ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}
+          TAG: ${{ steps.version.outputs.short_sha }}
+        run: |
+          echo "🔍 Checking for existing image: $IMAGE:$TAG"
+
+          # Manifest inspect returns 0 if the tag exists
+          if docker manifest inspect "$IMAGE:$TAG" > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Image $IMAGE:$TAG already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Image $IMAGE:$TAG does not exist"
+          fi
+
+      # 🔹 Manual: always build & push (overwrite allowed)
+      - name: Build and Push Image (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: docker/build-push-action@v5
+        env:
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:${{ steps.version.outputs.short_sha }}
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:${{ steps.version.outputs.commit_date }}
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:latest
+          build-args: |
+            HOST_ENV=${{ secrets.HOST_ENV }}
+            VERSION=${{ secrets.VERSION }}
+            CONTROL_PANEL_API=${{ secrets.CONTROL_PANEL_API }}
+            VIEWER_API=${{ secrets.VIEWER_API }}
+            VIEWER_JWT_KEY=${{ secrets.VIEWER_JWT_KEY }}
+            GOOGLE_MAPS_KEY=${{ secrets.GOOGLE_MAPS_KEY }}
+            PUBLIC_POSTHOG_KEY=${{ secrets.PUBLIC_POSTHOG_KEY }}
+            PUBLIC_POSTHOG_HOST=${{ secrets.PUBLIC_POSTHOG_HOST }}			
+            GA_TRACKING_ID=${{ secrets.GA_TRACKING_ID }}
+            MIXPANEL_KEY=${{ secrets.MIXPANEL_KEY }}
+            HOSTNAME_PARTS=${{ secrets.HOSTNAME_PARTS }}
+            SOCIAL_META=${{ secrets.SOCIAL_META }}
+            SWAP_CP=${{ secrets.SWAP_CP }}
+            VIEWER_PAGE_SUBDOMAIN=${{ secrets.VIEWER_PAGE_SUBDOMAIN }}			
+            OTEL_OPTS=${{ secrets.OTEL_OPTS }}
+            OTEL_URI=${{ secrets.OTEL_URI }}
+            MONGO_URI=${{ secrets.MONGO_URI }}
+
+      # 🔹 Scheduled: build only if tag doesn't exist
+      - name: Build and Push Image (scheduled run)
+        if: github.event_name == 'schedule' && steps.check.outputs.exists == 'false'
+        uses: docker/build-push-action@v5
+        env:
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:${{ steps.version.outputs.short_sha }}
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:${{ steps.version.outputs.commit_date }}
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:latest
+          build-args: |
+            HOST_ENV=${{ secrets.HOST_ENV }}
+            VERSION=${{ secrets.VERSION }}
+            CONTROL_PANEL_API=${{ secrets.CONTROL_PANEL_API }}
+            VIEWER_API=${{ secrets.VIEWER_API }}
+            VIEWER_JWT_KEY=${{ secrets.VIEWER_JWT_KEY }}
+            GOOGLE_MAPS_KEY=${{ secrets.GOOGLE_MAPS_KEY }}
+            PUBLIC_POSTHOG_KEY=${{ secrets.PUBLIC_POSTHOG_KEY }}
+            PUBLIC_POSTHOG_HOST=${{ secrets.PUBLIC_POSTHOG_HOST }}			
+            GA_TRACKING_ID=${{ secrets.GA_TRACKING_ID }}
+            MIXPANEL_KEY=${{ secrets.MIXPANEL_KEY }}
+            HOSTNAME_PARTS=${{ secrets.HOSTNAME_PARTS }}
+            SOCIAL_META=${{ secrets.SOCIAL_META }}
+            SWAP_CP=${{ secrets.SWAP_CP }}
+            VIEWER_PAGE_SUBDOMAIN=${{ secrets.VIEWER_PAGE_SUBDOMAIN }}			
+            OTEL_OPTS=${{ secrets.OTEL_OPTS }}
+            OTEL_URI=${{ secrets.OTEL_URI }}
+            MONGO_URI=${{ secrets.MONGO_URI }}

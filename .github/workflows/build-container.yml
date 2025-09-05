@@ -1,0 +1,86 @@
+# VERSION=2025.8.25.1
+name: Build Single Remote-Falcon Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Select which service to build"
+        required: true
+        type: choice
+        options:
+          - plugins-api
+          - control-panel
+          - viewer
+          - ui
+          - external-api
+      ref:
+        description: "Branch, tag, or commit SHA to build from (default: main)"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build ${{ github.event.inputs.service }}
+    steps:
+      - name: Checkout Remote-Falcon repo
+        uses: actions/checkout@v4
+        with:
+          repository: Remote-Falcon/remote-falcon-${{ github.event.inputs.service }}
+          ref: ${{ github.event.inputs.ref }}
+          fetch-depth: 0
+
+      - name: Get short SHA + Commit Date
+        id: version
+        run: |
+          short_sha=$(git rev-parse --short HEAD)
+          commit_date=$(git log -1 --format=%cd --date=format:'%Y.%m.%d')
+          echo "short_sha=$short_sha" >> $GITHUB_OUTPUT
+          echo "commit_date=$commit_date" >> $GITHUB_OUTPUT
+
+      - name: Normalize Target Repository(lowercase)
+        id: normalize
+        run: echo "target_repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Image to GitHub Container Registry
+        uses: docker/build-push-action@v5
+        env:
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ github.event.inputs.service }}:${{ steps.version.outputs.short_sha }}
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ github.event.inputs.service }}:${{ steps.version.outputs.commit_date }}
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ github.event.inputs.service }}:latest
+          build-args: |
+            HOST_ENV=${{ secrets.HOST_ENV }}
+            VERSION=${{ secrets.VERSION }}
+            CONTROL_PANEL_API=${{ secrets.CONTROL_PANEL_API }}
+            VIEWER_API=${{ secrets.VIEWER_API }}
+            VIEWER_JWT_KEY=${{ secrets.VIEWER_JWT_KEY }}
+            GOOGLE_MAPS_KEY=${{ secrets.GOOGLE_MAPS_KEY }}
+            PUBLIC_POSTHOG_KEY=${{ secrets.PUBLIC_POSTHOG_KEY }}
+            PUBLIC_POSTHOG_HOST=${{ secrets.PUBLIC_POSTHOG_HOST }}
+            GA_TRACKING_ID=${{ secrets.GA_TRACKING_ID }}
+            MIXPANEL_KEY=${{ secrets.MIXPANEL_KEY }}
+            HOSTNAME_PARTS=${{ secrets.HOSTNAME_PARTS }}
+            SOCIAL_META=${{ secrets.SOCIAL_META }}
+            SWAP_CP=${{ secrets.SWAP_CP }}
+            VIEWER_PAGE_SUBDOMAIN=${{ secrets.VIEWER_PAGE_SUBDOMAIN }}			
+            OTEL_OPTS=${{ secrets.OTEL_OPTS }}
+            OTEL_URI=${{ secrets.OTEL_URI }}
+            MONGO_URI=${{ secrets.MONGO_URI }}
