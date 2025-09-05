@@ -1,21 +1,21 @@
 #!/bin/bash
 
-# VERSION=2025.9.3.1
+# VERSION=2025.9.5.1
 
 #set -euo pipefail
 
-CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/configure-rf.sh"
+CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/configure-rf.sh"
 
 # Set the URLs to download the compose.yaml, NGINX default.conf, and default .env files
-SHARED_FUNCTIONS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/shared_functions.sh"
-DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/remotefalcon/compose.yaml"
-NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/remotefalcon/default.conf"
-DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/remotefalcon/.env"
-UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/update_containers.sh"
-HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/health_check.sh"
-MINIO_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/minio_init.sh"
-RUN_WORKFLOW_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/run_workflow.sh"
-SYNC_REPO_SECRETS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/prebuilt/sync_repo_secrets.sh"
+SHARED_FUNCTIONS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/shared_functions.sh"
+DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/remotefalcon/compose.yaml"
+NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/remotefalcon/default.conf"
+DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/remotefalcon/.env"
+UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/update_containers.sh"
+HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/health_check.sh"
+MINIO_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/minio_init.sh"
+RUN_WORKFLOW_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/run_workflow.sh"
+SYNC_REPO_SECRETS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/gh-builder/sync_repo_secrets.sh"
 SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo minio)
 ANY_SERVICE_RUNNING=false
 TEMPLATE_REPO="Ne0n09/remote-falcon-image-builder" # Template repo for image builder workflows
