@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2025.9.5.1
+# SHARED_FUNCTIONS_VERSION=2025.9.6.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -290,4 +290,143 @@ memory_check() {
     return 0
   fi
 }
+
+# Function to match compose service name with container name to handle the special case of minio
+get_container_name() {
+  local service_name="$1"
+  case "$service_name" in
+    minio)
+      echo "remote-falcon-images.minio"
+      ;;
+    *)
+      echo "$service_name"
+      ;;
+  esac
+}
+
+# Function to fetch current version directly from the container when it is running.
+get_current_version() {
+  local service_name=$1
+
+  case "$service_name" in
+    plugins-api|control-panel|viewer|ui|external-api)
+      sudo docker ps --filter "name=$(get_container_name "$service_name")" --format '{{.Image}}' | sed -E 's|^.*:||'
+      ;;
+    cloudflared)
+      sudo docker exec "$(get_container_name "$service_name")" cloudflared --version | sed -n 's/^cloudflared version \([0-9.]*\).*/\1/p'
+      ;;
+    nginx)
+      sudo docker exec "$(get_container_name "$service_name")" nginx -v 2>&1 | sed -n 's/^nginx version: nginx\///p'
+      ;;
+    mongo)
+      sudo docker exec "$(get_container_name "$service_name")" bash -c "mongod --version | grep -oP 'db version v\\K[\\d\\.]+'" | tr -d '[:space:]'
+      ;;
+    minio)
+      sudo docker exec "$(get_container_name "$service_name")" minio --version | sed -n 's/^minio version \(RELEASE\.[^ ]\+\).*/\1/p'
+      ;;
+    *)
+      echo -e "${RED}❌ Failed to get current version. Unsupported container: $service_name${NC}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# Function to get the current compose tag
+get_current_compose_tag() {
+  local service_name="$1"
+  local current_tag
+
+  current_tag=$(grep -m1 -E "^[[:space:]]*image:.*${service_name}:" "$COMPOSE_FILE" | sed -E "s|.*${service_name}:([^\" ]+).*|\1|")
+
+  if [[ -z "$current_tag" ]]; then
+    echo "undetermined"
+  else
+    echo "$current_tag"
+  fi
+}
+
+# Function to replace the compose tag with version for a given service
+replace_compose_tag() {
+  local service_name="$1"
+  local tag="$2"
+
+  case "$service_name" in
+    plugins-api|control-panel|viewer|ui|external-api)
+      # If full commit is passed then update the build context line in compose.yaml to allow local builds from the correct commit
+      if (( ${#tag} > 7 )); then
+        sed -i.bak -E "s|(context: https://github.com/Remote-Falcon/remote-falcon-${service_name}\.git)(#.*)?|\1#$tag|g" "$COMPOSE_FILE"
+      fi
+
+      tag=${tag:0:7} # Ensures that we use short sha for image tag if full commit is passed
+      sed -i -E "s|(^[[:space:]]*image:[[:space:]]*\"?)([^\"[:space:]]*${service_name}):[^\"[:space:]]+(\"?)|\1\2:${tag}\3|" "$COMPOSE_FILE"
+      ;;
+    cloudflared)
+      sed -i.bak -E "s|cloudflare/$service_name:[^[:space:]]+|cloudflare/$service_name:$tag|" "$COMPOSE_FILE"
+      ;;
+    nginx)
+      sed -i.bak -E "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$tag|" "$COMPOSE_FILE"
+      ;;
+    mongo)
+      sed -i.bak -E "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$tag|" "$COMPOSE_FILE"
+      ;;
+    minio)
+      sed -i.bak -E "s|minio/minio:[^[:space:]]+|minio/minio:$tag|" "$COMPOSE_FILE"
+      ;;
+    *)
+      echo -e "${RED}❌ Failed to replace compose tags. Unsupported container: $service_name${NC}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# Check the version is in the valid version format and not set to 'latest' or other invalid formats
+check_tag_format() {
+  local service_name="$1"
+  local tag="$2"
+  local format_regex
+  local format
+
+  case "$service_name" in
+    plugins-api|control-panel|viewer|ui|external-api)
+      format_regex="\b[0-9a-f]{7}\b"
+      format="abcd123"
+      ;;
+    cloudflared)
+      format_regex="^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$"
+      format="XXXX.XX.X"
+      ;;
+    nginx)
+      format_regex="^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,2}$"
+      format="XX.XX.XX"
+      ;;
+    mongo)
+      format_regex="^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" 
+      format="XX.X.XX"
+      ;;
+    minio)
+      format_regex="^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$"
+      format="RELEASE.YYYY-MM-DDTHH-MM-SSZ"
+      ;;
+    *)
+      echo -e "${RED}❌ Failed to check version format. Unsupported container: $service_name${NC}" >&2
+      exit 1
+      ;;
+  esac
+
+  if [[ $tag =~ $format_regex ]]; then
+    # Return valid format
+    return 0
+  else
+    # Return invalid format
+    echo -e "${YELLOW}⚠️ $service_name current version $tag is not in the valid format ($format).${NC}"
+    return 1
+  fi
+}
+
+is_container_running() {
+  local service_name="$1"
+  
+  sudo docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^${service_name}$"
+}
+
 # ========== END Shared Functions ==========

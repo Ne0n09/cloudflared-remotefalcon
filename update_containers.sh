@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.5.1
+# VERSION=2025.9.6.1
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo,  minio, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -99,64 +99,15 @@ check_image_exists() {
 }
 
 # Function to match compose service name with container name to handle the special case of minio
-get_container_name() {
-  local service_name="$1"
-  case "$service_name" in
-    minio)
-      echo "remote-falcon-images.minio"
-      ;;
-    *)
-      echo "$service_name"
-      ;;
-  esac
-}
+# get_container_name() moved to shared_functions.sh
 
-# Check $CURRENT_VERSION is in the valid version format after running fetch_current_version
-check_format() {
-  local service_name="$1"
-  local version="$2"
-  local format_regex="$3"
-  local format="$4"
+# Check $CURRENT_VERSION is in the valid version format after running get_current_version
+#check_tag_format() moved to shared_functions.sh
+# Function to get current version directly from the container when it is running.
+# fetch_current_version() moved to shared_functions.sh as get_current_version
 
-  if [[ $version =~ $format_regex ]]; then
-    # Return valid format
-    return 0
-  else
-    # Return invalid format
-    echo -e "${YELLOW}⚠️ $service_name current version $version is not in the valid format ($format).${NC}"
-    return 1
-  fi
-}
-
-# Function to fetch current version directly from the container after it is running
-fetch_current_version() {
-  local service_name=$1
-
-  case "$service_name" in
-    "cloudflared")
-      sudo docker exec "$(get_container_name "$service_name")" cloudflared --version | sed -n 's/^cloudflared version \([0-9.]*\).*/\1/p'
-      ;;
-    "nginx")
-      sudo docker exec "$(get_container_name "$service_name")" nginx -v 2>&1 | sed -n 's/^nginx version: nginx\///p'
-      ;;
-    "mongo")
-      sudo docker exec "$(get_container_name "$service_name")" bash -c "mongod --version | grep -oP 'db version v\\K[\\d\\.]+'" | tr -d '[:space:]'
-      ;;
-    "minio")
-      sudo docker exec "$(get_container_name "$service_name")" minio --version | sed -n 's/^minio version \(RELEASE\.[^ ]\+\).*/\1/p'
-      ;;
-    plugins-api|control-panel|viewer|ui|external-api)
-      sudo docker ps --filter "name=$(get_container_name "$service_name")" --format '{{.Image}}' | sed -E 's|^.*:||'
-      ;;
-    *)
-      echo -e "${RED}❌ Failed to fetch current version. Unsupported container: $service_name${NC}" >&2
-      exit 1
-      ;;
-  esac
-}
-
-# Function to fetch the latest version(s) for a container from its release notes
-fetch_latest_version() {
+# Function to get the latest version(s) for a container from its release notes
+get_latest_version() {
   local service_name=$1
 
   case "$service_name" in
@@ -262,42 +213,10 @@ prompt_to_update() {
 }
 
 # Function to get the current compose tag
-get_compose_tag() {
-  local service_name="$1"
-  local sed_command="$2"
-  local current_tag="undetermined"
-
-  case "$service_name" in
-    plugins-api|control-panel|viewer|ui|external-api)
-      current_tag=$(grep -m1 -E "image:.*${service_name}:" "$COMPOSE_FILE" | sed -E "s|.*${service_name}:([^\" ]+).*|\1|" | xargs)
-      ;;
-    *)
-      current_tag=$(sed -n $sed_command "$COMPOSE_FILE" | xargs)
-      ;;
-  esac
-  echo "$current_tag"
-}
+# get_compose_tag() moved to shared_functions.sh as get_current_compose_tag
 
 # Function to update compose tag if they are running and version was checked and is latest version available, but compose is stil tagged to 'latest'
-replace_compose_tags() {
-  local service_name="$1"
-  local latest_version="$2"
-  local sed_command="$3"
-
-  case "$service_name" in
-    plugins-api|control-panel|viewer|ui|external-api)
-      # Update the build context line in compose.yaml to allow local builds from the correct commit
-      sed -i -E "s|(context: https://github.com/Remote-Falcon/remote-falcon-${service_name}\.git)(#.*)?|\1#$latest_version|g" "$COMPOSE_FILE"
-      latest_version=${latest_version:0:7} # Use short sha for image tag
-      # Update the image tag in the compose.yaml
-      sed -i.bak -E "s|(^[[:space:]]*image:[[:space:]]*\"?)([^\"[:space:]]*${service_name}):[^\"[:space:]]+(\"?)|\1\2:${latest_version}\3|" "$COMPOSE_FILE"
-      ;;
-    *)
-      # Update the image tag in compose.yaml for non-RF images
-      sed -i.bak -E "$sed_command" "$COMPOSE_FILE"
-      ;;
-  esac
-}
+# replace_compose_tags() moved to shared_functions.sh
 
 # ========== Main update logic ==========
 # If REPO and GITHUB_PAT are configured, validate GitHub CLI and GHCR docker login are successful in order to build and pull images, these are in shared_functions.sh
@@ -317,8 +236,8 @@ check_for_update() {
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${BLUE}📦 Container: $service_name${NC}"
 
-  # Check if the container is running, for non-RF containers start if not started to get version directly, for RF containers check compose.yaml for tag
-  if ! sudo docker ps --format '{{.Names}}' | grep -q "^$(get_container_name "$service_name")$"; then
+  # Check if the container is NOT running, for non-RF containers start if not started to get version directly, for RF containers check compose.yaml for tag
+  if ! is_container_running "$service_name"; then
     echo -e "${YELLOW}⚠️ $service_name does not exist or is not running.${NC}"
     case "$service_name" in
       cloudflared|nginx|mongo|minio)
@@ -327,7 +246,7 @@ check_for_update() {
         # Retry up to 10 times to get the current version from the running container if it was just started
         if [[ -z "$CURRENT_VERSION" ]]; then
           for i in {1..10}; do
-            CURRENT_VERSION=$(fetch_current_version "$service_name")
+            CURRENT_VERSION=$(get_current_version "$service_name")
             if [[ -n "$CURRENT_VERSION" ]]; then
               break
             fi
@@ -346,7 +265,7 @@ check_for_update() {
         # If RF containers aren't started, check compose.yaml for version tag
         echo -e "${BLUE}🔍 Checking $service_name tag in $COMPOSE_FILE...${NC}" 
 
-        CURRENT_VERSION=$(grep -m1 -E "image:.*${service_name}:" "$COMPOSE_FILE" | sed -E "s|.*${service_name}:([^\" ]+).*|\1|" | xargs) || CURRENT_VERSION=""
+        CURRENT_VERSION=$(get_current_compose_tag "$service_name") || CURRENT_VERSION=""
         ;;
       *)
         echo -e "${RED}❌ Unsupported container: $service_name${NC}" >&2
@@ -355,12 +274,12 @@ check_for_update() {
     esac
   else
     # If the container is running, get the current version from the running container or for RF the running image tag
-    CURRENT_VERSION=$(fetch_current_version "$service_name")
+    CURRENT_VERSION=$(get_current_version "$service_name")
   fi
 
   # Fail if we still can't get the current version
   if [[ -z "$CURRENT_VERSION" ]]; then
-    echo -e "${RED}❌ Failed to fetch the current version for $service_name.${NC}"
+    echo -e "${RED}❌ Failed to get the current version for $service_name.${NC}"
     exit 1
   fi
 
@@ -393,7 +312,7 @@ check_for_update() {
     echo -e "${RED}❌ Failed to fetch release notes for $service_name from $RELEASE_NOTES_URL${NC}"
   else
     # Fetch latest version(s) from the release notes
-    LATEST_VERSION=$(echo "$release_notes" | fetch_latest_version "$service_name" || true)
+    LATEST_VERSION=$(echo "$release_notes" | get_latest_version "$service_name" || true)
   fi
 
   if [[ "$LATEST_VERSION" == "null" || -z "$LATEST_VERSION" ]]; then
@@ -407,14 +326,14 @@ check_for_update() {
         sed_command="s|cloudflare/$service_name:[^[:space:]]+|cloudflare/$service_name:$LATEST_VERSION|"
         format="^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$"
         # Check if the current version is in the valid XXXX.XX.X XXXX.X.X format
-        check_format "$service_name" "$CURRENT_VERSION" "^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$" "XXXX.XX.X"
+        check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_compose_tag "$service_name" "$sed_command")" != "$format" ]]; then
+          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tags $service_name $LATEST_VERSION $sed_command
+            replace_compose_tag $service_name $LATEST_VERSION
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
@@ -425,14 +344,14 @@ check_for_update() {
       "nginx")
         sed_command="/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_VERSION|"
         format="^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,2}$"
-        check_format "$service_name" "$CURRENT_VERSION" $format "XX.XX.XX"
+        check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_compose_tag "$service_name" "$sed_command")" != "$format" ]]; then
+          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tags $service_name $LATEST_VERSION $sed_command
+            replace_compose_tag $service_name $LATEST_VERSION
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
@@ -441,7 +360,7 @@ check_for_update() {
         fi
         ;;
       "mongo")
-        check_format "$service_name" "$CURRENT_VERSION" "^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" "XX.X.XX"
+        check_tag_format "$service_name" "$CURRENT_VERSION"
         # Function to extract the major version from a version string
         get_major_version() {
           echo "$1" | cut -d'.' -f1
@@ -457,9 +376,9 @@ check_for_update() {
           echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
           echo -e "🔹 Latest version: ${GREEN}$LATEST_SAME_MAJOR${NC}"
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_compose_tag "$service_name" "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_SAME_MAJOR|")" != "^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" ]]; then
+          if [[ "$(get_current_compose_tag "$service_name")" != "^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tags $service_name $LATEST_SAME_MAJOR "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_SAME_MAJOR|"
+            replace_compose_tag $service_name $LATEST_SAME_MAJOR
           fi
         else
           echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
@@ -483,14 +402,14 @@ check_for_update() {
       "minio")
         sed_command="s|minio/minio:[^[:space:]]+|minio/minio:$LATEST_VERSION|"
         format="^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$"
-        check_format "$service_name" "$CURRENT_VERSION" $format "RELEASE.YYYY-MM-DDTHH-MM-SSZ"
+        check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_compose_tag "$service_name" "$sed_command")" != "$format" ]]; then
+          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tags $service_name $LATEST_VERSION $sed_command
+            replace_compose_tag $service_name $LATEST_VERSION
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
@@ -503,11 +422,11 @@ check_for_update() {
         # This isn't used in perform_update since I had issues getting this to work correctly, so there is a case statement just for the RF images in perform_update
         sed_command="s|(^[[:space:]]*image:[[:space:]]*\"?)([^\"[:space:]]*${service_name}):[^\"[:space:]]+(\"?)|\1\2:${latest_version}\3|"
         format="\b[0-9a-f]{7}\b"
-        check_format "$service_name" "$CURRENT_VERSION" $format "abcd123"
-        correct_format=$? # Capture the return value of check_format
+        check_tag_format "$service_name" "$CURRENT_VERSION"
+        correct_format=$? # Capture the return value of check_tag_format
 
         # Start the container if it is not running and the compose.yaml format is correct(not 'latest')
-        if (( correct_format == 0 )) && ! sudo docker ps --format '{{.Names}}' | grep -q "^$(get_container_name "$service_name")$"; then
+        if (( correct_format == 0 )) && ! is_container_running "$service_name"; then
           echo -e "${BLUE}🔄 $service_name tag ${YELLOW}$CURRENT_VERSION${BLUE} is in valid format. Attempting to start $service_name...${NC}"
           sudo docker compose -f "$COMPOSE_FILE" up -d "$service_name"
         fi
@@ -517,9 +436,9 @@ check_for_update() {
 
         if [[ "$CURRENT_VERSION" == "$short_sha" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_compose_tag "$service_name" "$sed_command")" != "$format" ]]; then
+          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tags $service_name $LATEST_VERSION $sed_command
+            replace_compose_tag $service_name $LATEST_VERSION
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $short_sha):${NC}"
@@ -590,11 +509,6 @@ check_for_update() {
                     perform_update "$service_name" "$LATEST_VERSION" "$sed_command" # $LATEST_VERSION will get converted to short sha in perform_update
                   fi
                 else # REPO configured and image does not exist
-                  case "$service_name" in
-                  plugins-api|viewer)
-                    memory_check
-                    ;;
-                  esac
                   read -p "❓ Would you like to build and push $service_name:$short_sha to repository $REPO with run_workflow.sh? (y/n) [n]: " confirm
                   if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     if bash "$SCRIPT_DIR/run_workflow.sh" "$service_name=$LATEST_VERSION"; then

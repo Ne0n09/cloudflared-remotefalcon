@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.5.1
+# VERSION=2025.9.6.1
 
 #set -euo pipefail
 
@@ -220,25 +220,15 @@ update_env() {
 }
 
 # Function to fetch current RF container version directly from the container after it is running
-fetch_current_rf_version() {
-  local service_name=$1
+# fetch_current_rf_version() replaced by get_current_version() from shared_functions.sh
 
-  case "$service_name" in
-    plugins-api|control-panel|viewer|ui|external-api)
-      sudo docker ps --filter "name=$service_name" --format '{{.Image}}' | sed -E 's|.*/[^:]+:||'
-      ;;
-    *)
-      echo -e "${RED}❌ Failed to fetch current version. Unsupported container: $service_name${NC}" >&2
-      exit 1
-      ;;
-  esac
-}
 
 # Function to fetch current RF container tag from compose.yaml if it is not running
-fetch_current_rf_compose_tag() {
-  local service_name=$1
-  grep -E "/${service_name}:" "$COMPOSE_FILE" | sed -E "s|.*/${service_name}:([^\" ]+).*|\1|" | xargs
-}
+#fetch_current_rf_compose_tag() {
+#  local service_name=$1
+#  grep -E "/${service_name}:" "$COMPOSE_FILE" | sed -E "s|.*/${service_name}:([^\" ]+).*|\1|" | xargs
+#}
+# Replaced with get_current_compose_tag() from shared_functions.sh
 
 # Check for updates to the containers
 run_updates() {
@@ -338,31 +328,14 @@ repo_init() {
 }
 
 # Funciton to extract image tags for Remote Falcon services from compose.yaml to check if it's a new or existing install. New install will have 'latest' tag
-get_rf_image_tags() {
-  local containers=("plugins-api" "control-panel" "viewer" "ui" "external-api")
-  local tags=()
+# get_rf_image_tags() replaced with get_current_compose_tag() from shared_functions.sh
 
-  for service in "${containers[@]}"; do
-    # Look for lines like image: ghcr.io/${REPO}/service:tag or image: service:tag (if REPO not set)
-    local tag
-    tag=$(grep -E "[ /]${service}:" "$COMPOSE_FILE" | sed -E "s|.*/${service}:([^\" ]+).*|\1|" | xargs)
+# Function to check extracted tags to check if they are tagged to 'latest'
+tag_has_latest() {
 
-    if [[ -n "$tag" ]]; then
-      tags+=("$service:$tag")
-    fi
-  done
-
-  printf '%s\n' "${tags[@]}"
-}
-
-# Function to check extracted tags from get_rf_image_tags to check if they are tagged to 'latest'
-rf_tag_has_latest() {
-  local tags
-  tags=$(get_rf_image_tags)
-
-  for entry in $tags; do
-    local tag="${entry##*:}"
-    if [[ "$tag" == "latest" ]]; then
+  for service in "${SERVICES[@]}"; do
+    
+    if [[ $(get_current_compose_tag "$service") == "latest" ]]; then
       return 0  # true = has at least one 'latest'
     fi
   done
@@ -560,9 +533,11 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   # ====== START variable questions ======
 
   # ====== START REQUIRED variables ======
-  # Display a warning message if less than 16GB of RAM is detected to encourage adding more RAM or confiure GitHub
-  if ! memory_check; then
-    echo -e "⚡ ${Yellow}If the images fail to build either add more system memory or configure GitHub for building images remotely.${NC}"
+  # If no repo is configured, display a warning message if less than 16GB of RAM is detected to encourage adding more RAM or confiure GitHub
+  if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then
+    if ! memory_check; then
+      echo -e "⚡ ${Yellow}If the images fail to build either add more system memory or configure GitHub for building images remotely.${NC}"
+    fi
   fi
   if [[ "$(get_input "❓ Update GitHub configuration for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
     # If REPO is not blank or not the default ask to disable it, else ask to configure it
@@ -759,10 +734,23 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
 
     # Check if containers are running, meaning this is an existing configuration
     for service in "${SERVICES[@]}"; do
-      if sudo docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^$service$"; then
+      if is_container_running "$service"; then
         ANY_SERVICE_RUNNING=true
+        current_version=$(get_current_version "$service")
+        compose_tag=$(get_current_compose_tag "$service")
+        echo -e "${BLUE}📦 Container $service is running with version 🔹 ${YELLOW}$current_version${NC}${BLUE} and compose tag 🏷️ ${YELLOW}$compose_tag${NC}${BLUE}.${NC}"
+        # If existing configuration, check and compare running container tags to the compose.yaml tags and update compose.yaml if needed
+        # Check if the running container's tag is valid
+        if check_tag_format "$service" "$current_version"; then
+          # Check if compose tag is invalid
+          if ! check_tag_format "$service" "$compose_tag"; then
+            replace_compose_tag "$service" "$current_version"
+            echo -e "${GREEN}✔ Container $service compose tag updated to $current_version${NC}"
+          fi
+        fi
       fi
     done
+
     # Update handling if any container is running
     if [[ $ANY_SERVICE_RUNNING == true ]]; then
       # Only rebuild images if the build ARGs were changed
@@ -772,11 +760,11 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
           echo -e "${YELLOW}⚠️ Containers are running. Build ARG changes detected. Running ./run_workflow.sh to ensure Remote Falcon images are built with any updated build ARGs at their current version...${NC}"
           # Run the workflow script to rebuild all containers with any updated ARG values from the .env file, images are built based on current short_sha tag in compose.yaml
           if bash "$SCRIPT_DIR/run_workflow.sh" \
-            plugins-api=$(fetch_current_rf_version "plugins-api") \
-            control-panel=$(fetch_current_rf_version "control-panel") \
-            viewer=$(fetch_current_rf_version "viewer") \
-            ui=$(fetch_current_rf_version "ui") \
-            external-api=$(fetch_current_rf_version "external-api"); then
+            plugins-api=$(get_current_version "plugins-api") \
+            control-panel=$(get_current_version "control-panel") \
+            viewer=$(get_current_version "viewer") \
+            ui=$(get_current_version "ui") \
+            external-api=$(get_current_version "external-api"); then
               echo -e "${GREEN}🚀 Bringing up containers...${NC}"
               sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate
           else
@@ -805,9 +793,9 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
         echo -e "${YELLOW}⚠️ Remote Falcon image build required...${NC}"
         if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
           echo -e "🐙 GitHub repository ${REPO} will be used for the build.${NC}"
-          if rf_tag_has_latest; then
+          if tag_has_latest; then
             # No containers running, REPO configured, rebuild required, RF containers tagged to 'latest' Assume new install, run workflow to build latest images and run_updates auto-apply
-            echo -e "${BLUE}✨ Remote Falcon 'latest' image tags detected in compose.yaml, assuming new install. Running ./run_wofklow.sh to build new Remote Falcon images on GitHub....${NC}"
+            echo -e "${BLUE}✨ Remote Falcon 'latest' image tags detected in compose.yaml, assuming new install. Running ./run_workflow.sh to build new Remote Falcon images on GitHub....${NC}"
             if bash "$SCRIPT_DIR/run_workflow.sh"; then
               run_updates auto-apply
             else
@@ -815,13 +803,13 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
               exit 1
             fi
           else # No containers running, REPO configured, rebuild required, and RF containers not tagged to 'latest' so we just rebuild with existing image tags from compose.yaml
-            echo -e "${BLUE}🔄 Running ./run_wofklow.sh to ensure Remote Falcon images are built with any updated build ARGs at their current version...${NC}"
+            echo -e "${BLUE}🔄 Running ./run_workflow.sh to ensure Remote Falcon images are built with any updated build ARGs at their current version...${NC}"
             if bash "$SCRIPT_DIR/run_workflow.sh" \
-              plugins-api=$(fetch_current_rf_compose_tag "plugins-api") \
-              control-panel=$(fetch_current_rf_compose_tag "control-panel") \
-              viewer=$(fetch_current_rf_compose_tag "viewer") \
-              ui=$(fetch_current_rf_compose_tag "ui") \
-              external-api=$(fetch_current_rf_compose_tag "external-api"); then
+              plugins-api=$(get_current_compose_tag "plugins-api") \
+              control-panel=$(get_current_compose_tag "control-panel") \
+              viewer=$(get_current_compose_tag "viewer") \
+              ui=$(get_current_compose_tag "ui") \
+              external-api=$(get_current_compose_tag "external-api"); then
                 echo -e "${GREEN}🚀 Bringing up containers...${NC}"
                 sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate
             else
@@ -832,7 +820,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
         else # No containers running, REPO not configured so images will be built locally
           echo -e "${YELLOW}⚠️ GitHub Repository not configured, Remote Falcon images will be built locally, ensure that you have 16GB+ RAM or the build may fail...${NC}"
 
-          if rf_tag_has_latest; then
+          if tag_has_latest; then
             echo -e "${BLUE}✨ Remote Falcon 'latest' image tags detected in compose.yaml, assuming new install, running update_containers.sh...${NC}"
             run_updates auto-apply
           else # Assume existing install since no 'latest' tags found, force local build and restart
@@ -841,7 +829,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
           fi
         fi
       else # No containers running, image rebuild not required(ARGs weren't changed in script)
-        if rf_tag_has_latest; then
+        if tag_has_latest; then
           # Run run_updates auto-apply to tag containers
           echo -e "${GREEN}🚀 Bringing up existing containers to apply any .env changes...${NC}"
           run_updates auto-apply
