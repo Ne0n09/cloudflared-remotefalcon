@@ -225,7 +225,7 @@ fetch_current_rf_version() {
 
   case "$service_name" in
     plugins-api|control-panel|viewer|ui|external-api)
-      sudo docker ps --filter "name=$$service_name" --format '{{.Image}}' | sed -E 's|.*/[^:]+:||'
+      sudo docker ps --filter "name=$service_name" --format '{{.Image}}' | sed -E 's|.*/[^:]+:||'
       ;;
     *)
       echo -e "${RED}❌ Failed to fetch current version. Unsupported container: $service_name${NC}" >&2
@@ -427,24 +427,22 @@ fi
 
 # Check if GitHub CLI (gh) is installed
 if ! command -v gh >/dev/null 2>&1; then
-  if [[ "$(get_input "GitHub CLI (gh) is not installed, would you like to install it? (y/n)" "y")" =~ ^[Yy]$ ]]; then
-    echo "Installing GitHub CLI (gh)... you may need to enter your password for the 'sudo' command."
-    (type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \
-    && sudo mkdir -p -m 755 /etc/apt/keyrings \
-    && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-    && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
-    && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-    && sudo mkdir -p -m 755 /etc/apt/sources.list.d \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && sudo apt update \
-    && sudo apt install gh -y
-    if ! command -v gh >/dev/null 2>&1; then
-      echo -e "${RED}❌ GitHub CLI (gh) install failed. Please install GitHub CLI (gh) to proceed.${NC}"
-      exit 1
-    else
-      echo -e "${GREEN}✅ GitHub CLI (gh) installation complete!${NC}"
+  echo "Installing GitHub CLI (gh)... you may need to enter your password for the 'sudo' command."
+  (type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \
+  && sudo mkdir -p -m 755 /etc/apt/keyrings \
+  && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+  && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+  && sudo mkdir -p -m 755 /etc/apt/sources.list.d \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+  && sudo apt update \
+  && sudo apt install gh -y
+  if ! command -v gh >/dev/null 2>&1; then
+    echo -e "${RED}❌ GitHub CLI (gh) install failed. Please install GitHub CLI (gh) to proceed.${NC}"
+    exit 1
+  else
+    echo -e "${GREEN}✅ GitHub CLI (gh) installation complete!${NC}"
     fi
-  fi
 fi
 
 # Auto install jq if not installed
