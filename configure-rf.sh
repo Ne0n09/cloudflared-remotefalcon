@@ -57,8 +57,9 @@ source "$SCRIPT_DIR/shared_functions.sh"
 download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
 download_file $HEALTH_CHECK_URL "health_check.sh"
 download_file $MINIO_INIT_URL "minio_init.sh"
-chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "minio_init.sh"
-
+download_file $RUN_WORKFLOW_URL "run_workflow.sh"
+download_file $SYNC_REPO_SECRETS_URL "sync_repo_secrets.sh"
+chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "minio_init.sh" "run_workflow.sh" "sync_repo_secrets.sh"
 
 # Function to get user input for configuration questions
 get_input() {
@@ -770,7 +771,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       if [[ $image_rebuild_needed = true ]]; then
         # If any service is running and $REPO is configured run run_workflow.sh to rebuild all containers with any updated ARG values from the .env file
         if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
-          echo -e "${YELLOW}⚠️ Containers are running. Build ARG changes detected. Running ./run_wofklow.sh to ensure Remote Falcon images are built with any updated build ARGs at their current version...${NC}"
+          echo -e "${YELLOW}⚠️ Containers are running. Build ARG changes detected. Running ./run_workflow.sh to ensure Remote Falcon images are built with any updated build ARGs at their current version...${NC}"
           # Run the workflow script to rebuild all containers with any updated ARG values from the .env file, images are built based on current short_sha tag in compose.yaml
           if bash "$SCRIPT_DIR/run_workflow.sh" \
             plugins-api=$(fetch_current_rf_version "plugins-api") \
