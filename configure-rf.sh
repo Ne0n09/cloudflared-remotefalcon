@@ -224,11 +224,7 @@ update_env() {
 
 
 # Function to fetch current RF container tag from compose.yaml if it is not running
-#fetch_current_rf_compose_tag() {
-#  local service_name=$1
-#  grep -E "/${service_name}:" "$COMPOSE_FILE" | sed -E "s|.*/${service_name}:([^\" ]+).*|\1|" | xargs
-#}
-# Replaced with get_current_compose_tag() from shared_functions.sh
+#fetch_current_rf_compose_tag() Replaced with get_current_compose_tag() from shared_functions.sh
 
 # Check for updates to the containers
 run_updates() {
@@ -327,14 +323,13 @@ repo_init() {
   echo -e "${GREEN}✅ Repository '$username/$new_repo' created and $ENV_FILE updated!${NC}"
 }
 
-# Funciton to extract image tags for Remote Falcon services from compose.yaml to check if it's a new or existing install. New install will have 'latest' tag
+# Function to extract image tags for Remote Falcon services from compose.yaml to check if it's a new or existing install. New install will have 'latest' tag
 # get_rf_image_tags() replaced with get_current_compose_tag() from shared_functions.sh
 
 # Function to check extracted tags to check if they are tagged to 'latest'
 tag_has_latest() {
-
   for service in "${SERVICES[@]}"; do
-    
+
     if [[ $(get_current_compose_tag "$service") == "latest" ]]; then
       return 0  # true = has at least one 'latest'
     fi
@@ -727,29 +722,36 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   # ====== END Automatically configured variables ======
 
   # ====== END variable questions ======
-  # Run the container update scripts if .env variables were 'accepted' and 'updated'. This doesn't mean they were changed, just accepted and written to the .env file.
+
+  # ====== START Existing configuration ======
+  # This section checks if any containers are running and ensures that compose.yaml tags match currently running versions(if in valid format)
+
+  # Check if containers are running, meaning this is an existing configuration
+  for service in "${SERVICES[@]}"; do
+    if is_container_running "$service"; then
+      ANY_SERVICE_RUNNING=true
+      current_version=$(get_current_version "$service")
+      compose_tag=$(get_current_compose_tag "$service")
+
+      # Compare running container tags to the compose.yaml tags and update compose.yaml if compose tag is
+      # Check if the running container's tag is in the valid format
+      if check_tag_format "$service" "$current_version"; then
+        # If the compose tag does not match the current running version, update the compose tag in compose.yaml - this is useful if compose.yaml was replaced and all are tagged to 'latest'
+        if [[ "$compose_tag" != "$current_version" ]]; then
+          echo -e "${BLUE}⚠️ $service ${YELLOW}is running with version ${GREEN}$current_version${YELLOW} but the compose tag 🏷️ ${GREEN}$compose_tag${NC}${YELLOW} does not match. Updating compose tag to match...${NC}"
+          replace_compose_tag "$service" "$current_version"
+          echo -e "✔  ${BLUE}$service ${NC}compose tag updated to ${GREEN}$current_version.${NC}"
+        fi
+      fi
+    fi
+  done
+
+  # ====== END Existing configuration ======
+
+  # Run the container update scripts if .env variables were 'changed' and 'accepted'
   if update_env; then
     # From shared_function.sh, make sure the compose.yaml is set for pulling images via ghcr.io/${REPO}/ in the image path or set for local build
     update_compose_image_path
-
-    # Check if containers are running, meaning this is an existing configuration
-    for service in "${SERVICES[@]}"; do
-      if is_container_running "$service"; then
-        ANY_SERVICE_RUNNING=true
-        current_version=$(get_current_version "$service")
-        compose_tag=$(get_current_compose_tag "$service")
-        echo -e "${BLUE}📦 Container $service is running with version 🔹 ${YELLOW}$current_version${NC}${BLUE} and compose tag 🏷️ ${YELLOW}$compose_tag${NC}${BLUE}.${NC}"
-        # If existing configuration, check and compare running container tags to the compose.yaml tags and update compose.yaml if needed
-        # Check if the running container's tag is valid
-        if check_tag_format "$service" "$current_version"; then
-          # Check if compose tag is invalid
-          if ! check_tag_format "$service" "$compose_tag"; then
-            replace_compose_tag "$service" "$current_version"
-            echo -e "${GREEN}✔ Container $service compose tag updated to $current_version${NC}"
-          fi
-        fi
-      fi
-    done
 
     # Update handling if any container is running
     if [[ $ANY_SERVICE_RUNNING == true ]]; then

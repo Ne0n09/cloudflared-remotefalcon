@@ -418,14 +418,14 @@ check_tag_format() {
     return 0
   else
     # Return invalid format
-    echo -e "${YELLOW}⚠️ $service_name current version $tag is not in the valid format ($format).${NC}"
+    # echo -e "${YELLOW}⚠️ $service_name current version $tag is not in the valid format ($format).${NC}"
     return 1
   fi
 }
 
 is_container_running() {
   local service_name="$1"
-  
+
   sudo docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^${service_name}$"
 }
 
