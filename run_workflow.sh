@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.7.1
+# VERSION=2025.9.8.1
 
 # This script will run the GitHub Actions workflow in the REPO configured in the .env to build: plugins-api, control-panel, viewer, ui, and external-api.
 # It will call either the build-container.yml or build-all.yml workflow depending on the arguments passed.

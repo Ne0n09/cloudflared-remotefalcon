@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.6.1
+# VERSION=2025.9.8.1
 
 #set -euo pipefail
 
@@ -219,13 +219,6 @@ update_env() {
   fi
 }
 
-# Function to fetch current RF container version directly from the container after it is running
-# fetch_current_rf_version() replaced by get_current_version() from shared_functions.sh
-
-
-# Function to fetch current RF container tag from compose.yaml if it is not running
-#fetch_current_rf_compose_tag() Replaced with get_current_compose_tag() from shared_functions.sh
-
 # Check for updates to the containers
 run_updates() {
   local update_mode="${1:-}"
@@ -322,9 +315,6 @@ repo_init() {
 
   echo -e "${GREEN}✅ Repository '$username/$new_repo' created and $ENV_FILE updated!${NC}"
 }
-
-# Function to extract image tags for Remote Falcon services from compose.yaml to check if it's a new or existing install. New install will have 'latest' tag
-# get_rf_image_tags() replaced with get_current_compose_tag() from shared_functions.sh
 
 # Function to check extracted tags to check if they are tagged to 'latest'
 tag_has_latest() {

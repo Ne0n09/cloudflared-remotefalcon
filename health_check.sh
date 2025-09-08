@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.5.1
+# VERSION=2025.9.8.1
 
 #set -euo pipefail
 #set -x

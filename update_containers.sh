@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.6.1
+# VERSION=2025.9.8.1
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo,  minio, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -97,14 +97,6 @@ check_image_exists() {
     return 2
   fi
 }
-
-# Function to match compose service name with container name to handle the special case of minio
-# get_container_name() moved to shared_functions.sh
-
-# Check $CURRENT_VERSION is in the valid version format after running get_current_version
-#check_tag_format() moved to shared_functions.sh
-# Function to get current version directly from the container when it is running.
-# fetch_current_version() moved to shared_functions.sh as get_current_version
 
 # Function to get the latest version(s) for a container from its release notes
 get_latest_version() {
@@ -211,12 +203,6 @@ prompt_to_update() {
       ;;
     esac
 }
-
-# Function to get the current compose tag
-# get_compose_tag() moved to shared_functions.sh as get_current_compose_tag
-
-# Function to update compose tag if they are running and version was checked and is latest version available, but compose is stil tagged to 'latest'
-# replace_compose_tags() moved to shared_functions.sh
 
 # ========== Main update logic ==========
 # If REPO and GITHUB_PAT are configured, validate GitHub CLI and GHCR docker login are successful in order to build and pull images, these are in shared_functions.sh
