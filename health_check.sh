@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.7.28.1
+# VERSION=2025.9.8.1
 
 #set -euo pipefail
 #set -x
@@ -13,7 +13,7 @@ RETRY_DELAY=5  # Seconds to wait between retries
 
 
 if [[ -z "$SLEEP_TIME" ]]; then
-  SLEEP_TIME="20s"  # Default to 20s if not provided
+  SLEEP_TIME="10s"  # Default to 20s if not provided
 fi
 
 # Source shared functions
@@ -24,6 +24,86 @@ if [[ ! -f "$SCRIPT_DIR/shared_functions.sh" ]]; then
 fi
 
 source "$SCRIPT_DIR/shared_functions.sh"
+
+
+# Define known error patterns and custom messages
+declare -A CONTAINER_PATTERNS
+
+# Format: "pattern|custom message"
+CONTAINER_PATTERNS["cloudflared"]='
+Error response from daemon: No such container|Container is not running
+certificate is valid for|Verify Origin certificate and Tunnel Public Hostname configuration includes *.yourdomain.com.
+Provided Tunnel token is not valid.|Verify that your Cloudflare tunnel token is correct.
+'
+
+CONTAINER_PATTERNS["nginx"]='
+Error response from daemon: No such container|Container is not running
+connect() failed (111: Connection refused) while connecting to upstream|NGINX cannot connect to RF containers. Try restarting NGINX container or all containers.
+'
+
+CONTAINER_PATTERNS["mongo"]='
+Error response from daemon: No such container|Container is not running
+requires a CPU with AVX support|Check that your CPU supports AVX, if running in VM try changing VM CPU to 'host' type.
+'
+
+CONTAINER_PATTERNS["remote-falcon-images.minio"]='
+Error response from daemon: No such container|Container is not running
+'
+
+CONTAINER_PATTERNS["external-api"]='
+Error response from daemon: No such container|Container is not running
+'
+
+CONTAINER_PATTERNS["plugins-api"]='
+Error response from daemon: No such container|Container is not running
+'
+
+CONTAINER_PATTERNS["viewer"]='
+Error response from daemon: No such container|Container is not running
+'
+
+CONTAINER_PATTERNS["control-panel"]='
+Error response from daemon: No such container|Container is not running
+'
+
+CONTAINER_PATTERNS["ui"]='
+Error response from daemon: No such container|Container is not running
+'
+
+# Function to check logs with custom messages
+check_container_logs() {
+  local container="$1"
+  local logs
+  logs=$(sudo docker logs --tail 50 "$container" 2>&1)
+
+  echo -e "🔍 Checking logs for ${BLUE}$container${NC}..."
+
+  local found=false
+  while IFS= read -r entry; do
+    [[ -z "$entry" ]] && continue  # skip blanks
+    local pattern="${entry%%|*}"
+    local message="${entry#*|}"
+
+    if echo "$logs" | grep -qE "$pattern"; then
+      echo -e "❌ ${RED}Error detected:${NC} $message"
+      echo -e "   ↳ ${YELLOW}Log snippet:${NC}"
+      echo "$logs" | grep -E "$pattern" | tail -5 | sed 's/^/      /'
+      found=true
+      HEALTHY=false
+    fi
+  done <<< "${CONTAINER_PATTERNS[$container]}"
+
+  if [[ $found == false ]]; then
+    echo -e "✅ ${GREEN}No known issues detected in $container logs.${NC}"
+  fi
+}
+
+# Run all containers
+check_all_containers() {
+  for container in "${!CONTAINER_PATTERNS[@]}"; do
+    check_container_logs "$container"
+  done
+}
 
 # Function to check if container is running using compose 'service' name instead of 'container_name'
 is_container_running() {
@@ -44,10 +124,10 @@ for service in "${SERVICES[@]}"; do
     all_services_running=false
   fi
 done
-if [[ $all_services_running == false ]]; then
-  echo "💤 Sleeping $SLEEP_TIME before running health checks..."
-  sleep $SLEEP_TIME
-fi
+#if [[ $all_services_running == false ]]; then
+echo "💤 Sleeping $SLEEP_TIME before running health checks..."
+sleep $SLEEP_TIME
+#fi
 
 # Check if env file exists, parse it, then check if domain is not yourdomain.com
 # Then run various health checks
@@ -267,7 +347,8 @@ if [[ -f $ENV_FILE ]]; then
     HEALTHY=false
   fi
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
+  check_all_containers
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   if [[ $HEALTHY == true ]]; then
     if [[ $SWAP_CP == true ]]; then
       echo -e "${CYAN}🔄 SWAP_CP is enabled! Checking if Viewer Page Subdomain exists in MongoDB...${NC}"
