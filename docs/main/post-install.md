@@ -148,7 +148,7 @@ You will have to manually add your site to the trusted list or the plugins page 
     2. Click the :material-content-copy: button below, paste in the FPP shell, and run the commands to add your site to the trusted list and update the plugin settings:
 
         ```sh title="Copy and paste this into the FPP shell to update everything"
-        echo;echo "Adding '$DOMAIN' to Apache CSP...";sudo /opt/fpp/scripts/ManageApacheContentPolicy.sh add connect-src $DOMAIN;echo "Displaying currently configured domains for Apache CSP:";/opt/fpp/scripts/ManageApacheContentPolicy.sh show;echo "Updating Plugins API Path with '$DOMAIN'...";sed -i 's|^pluginsApiPath = ".*"|pluginsApiPath = '$DOMAIN/remote-falcon-plugins-api'|' media/config/plugin.remote-falcon;echo "Updating show token with '$TOKEN'...";sed -i "/^remoteToken =/c\remoteToken = ${TOKEN}" media/config/plugin.remote-falcon || echo "remoteToken = ${TOKEN}" >> media/config/plugin.remote-falcon;sed -i -e '/^init =/c\init = "true"' -e '$!b' -e '$a\init = "true"' media/config/plugin.remote-falcon;echo "Printing Remote Falcon Plugin configuration:";cat media/config/plugin.remote-falcon
+        echo;echo "Adding '$DOMAIN' to Apache CSP...";sudo /opt/fpp/scripts/ManageApacheContentPolicy.sh add connect-src $DOMAIN;echo "Displaying currently configured domains for Apache CSP:";/opt/fpp/scripts/ManageApacheContentPolicy.sh show;echo "Updating Plugins API Path with '$DOMAIN'...";sed -i 's|^pluginsApiPath = ".*"|pluginsApiPath = '$DOMAIN'|' media/config/plugin.remote-falcon;echo "Updating show token with '$TOKEN'...";sed -i "/^remoteToken =/c\remoteToken = ${TOKEN}" media/config/plugin.remote-falcon || echo "remoteToken = ${TOKEN}" >> media/config/plugin.remote-falcon;sed -i -e '/^init =/c\init = "true"' -e '$!b' -e '$a\init = "true"' media/config/plugin.remote-falcon;echo "Printing Remote Falcon Plugin configuration:";cat media/config/plugin.remote-falcon
         ```
         
         !!! example "Example output for http://localip.address.of.remote.falcon:8083"
@@ -187,6 +187,25 @@ You will have to manually add your site to the trusted list or the plugins page 
 
     3. Now you should be able to update the plugin settings normally in FPP. If you still have issues try rebooting or power cycling your FPP device.
 
+## Swap Viewer Page Subomdain
+
+Enable this if you would like visitors to be able to directly visit your show page at `https://yourdomain.com` instead of `https://yourshowname.yourdomain.com`.
+
+!!! note
+
+    You must first create an account before you can enable this along with creating a Viewer Page and setting it as active under Remote Falcon Settings.
+
+1. Run `./configure-rf`
+2. Enter `y` to change the variables
+3. Press `Enter` to accept current values until you get to **Update OPTIONAL variables?** where you enter `y`
+4. Press `Enter` to accept current values until you get to **Would you like to swap the Control Panel and Viewer Page Subdomain URLs?** where you enter `y`
+5. Type in your Viewer Page Subdomain, example: `mylightshow` and press `Enter`
+6. Enter `y` to accept the changes
+
+!!!warning
+
+    A rebuild of all Remote Falcon containers will be performed in order for these changes to take effect.
+
 ## Remote Falcon Image hosting
 
 If [minio-init](../scripts/index.md#__tabbed_1_7){ data-preview } script ran successfully and configured MinIO then you are able to make use of the Image Hosting page in the Control Panel.
@@ -204,8 +223,8 @@ Otherwise, uploading images should display a `image-name.png uploaded successful
 
     Ignore the `https://remote-falcon-images.nyc3.cdn.digitaloceanspaces.com` portion as this is an incorrect link.
 
-Substite `https://your_domain.com/remote-falcon-images` instead and you will get a usable link when you add the image path `/yourshowname/yourimagename.png`.
+Substitute `https://yourdomain.com/remote-falcon-images` instead and you will get a usable link when you add the image path `/yourshowname/yourimagename.png`.
 
 !!! example "Example image path for an image hosted from MinIO"
 
-    `https://your_domain.com/remote-falcon-images/yourshowname/sl3gtwl.png`
+    `https://yourdomain.com/remote-falcon-images/yourshowname/sl3gtwl.png`

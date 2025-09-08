@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.17.1
+# VERSION=2025.9.8.1
 
 #set -euo pipefail
 
@@ -11,12 +11,19 @@ SHARED_FUNCTIONS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remot
 DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/compose.yaml"
 NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/default.conf"
 DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/.env"
-UPDATE_RF_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_rf_containers.sh"
 UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_containers.sh"
 HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/health_check.sh"
 MINIO_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/minio_init.sh"
+RUN_WORKFLOW_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/run_workflow.sh"
+SYNC_REPO_SECRETS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/sync_repo_secrets.sh"
 SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo minio)
 ANY_SERVICE_RUNNING=false
+TEMPLATE_REPO="Ne0n09/remote-falcon-image-builder" # Template repo for image builder workflows
+
+# new_build_args array to track if any build args changed that would require RF container rebuild
+# For GHCR builds these get synced with sync_repo_secrets.sh
+# "CONTROL_PANEL_API" "VIEWER_API" not included because we only want to track if DOMAIN is changed
+#### This will need to be updated down in update_env() if any new build context args are added - sync_repo_secrets will also need to be updated
 
 # Function to download file if it does not exist
 download_file() {
@@ -47,12 +54,12 @@ fi
 source "$SCRIPT_DIR/shared_functions.sh"
 
 # Download extra helper scripts if they do not exist and make them executable
-download_file $UPDATE_RF_CONTAINERS_URL "update_rf_containers.sh"
 download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
 download_file $HEALTH_CHECK_URL "health_check.sh"
 download_file $MINIO_INIT_URL "minio_init.sh"
-chmod +x "shared_functions.sh" "update_rf_containers.sh" "update_containers.sh" "health_check.sh" "minio_init.sh"
-
+download_file $RUN_WORKFLOW_URL "run_workflow.sh"
+download_file $SYNC_REPO_SECRETS_URL "sync_repo_secrets.sh"
+chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "minio_init.sh" "run_workflow.sh" "sync_repo_secrets.sh"
 
 # Function to get user input for configuration questions
 get_input() {
@@ -60,45 +67,70 @@ get_input() {
   local default="$2"
   local input
 
-  read -p "$prompt [$default]: " input
+  read -rp "$prompt [$default]: " input
   echo "${input:-$default}"
 }
 
 # Function to update the the .env file with required variables to run RF and some optional variables
 update_env() {
-  # Declare new variables in an associative array
+  pending_changes=false # This is to track if any .env values would change
+  pending_arg_changes=false # This is to track if any BUILD args would change
+
+  # Declare NEW variables to check against existing .env values to detect if anything changed
   declare -A new_env_vars=(
+    ["REPO"]="$repo"
     ["TUNNEL_TOKEN"]="$tunneltoken"
     ["DOMAIN"]="$domain"
-#    ["VIEWER_JWT_KEY"]="$viewerjwtkey"
-#    ["USER_JWT_KEY"]="$userjwtkey"
 #    ["HOSTNAME_PARTS"]="$hostnameparts"
     ["AUTO_VALIDATE_EMAIL"]="$autovalidateemail"
 #    ["NGINX_CONF"]="$NGINX_CONF"
     ["NGINX_CERT"]="./${domain}_origin_cert.pem"
     ["NGINX_KEY"]="./${domain}_origin_key.pem"
 #    ["HOST_ENV"]="$HOST_ENV"
-#    ["VERSION"]="$VERSION"
     ["GOOGLE_MAPS_KEY"]="$googlemapskey"
     ["PUBLIC_POSTHOG_KEY"]="$publicposthogkey"
-#    ["PUBLIC_POSTHOG_HOST"]="$PUBLIC_POSTHOG_HOST"
     ["GA_TRACKING_ID"]="$gatrackingid"
     ["MIXPANEL_KEY"]="$mixpanelkey"
 #    ["CLIENT_HEADER"]="$CLIENT_HEADER"
 #    ["SENDGRID_KEY"]="$SENDGRID_KEY"
-#    ["GITHUB_PAT"]="$GITHUB_PAT"
+    ["GITHUB_PAT"]="$githubpat"
     ["SOCIAL_META"]="$socialmeta"
     ["SEQUENCE_LIMIT"]="$sequencelimit"
     ["SWAP_CP"]="$swapCP"
     ["VIEWER_PAGE_SUBDOMAIN"]="$viewerPageSubdomain"
   )
 
-  # Detect if any values would change
-  pending_changes=false
+  # If any of these are changed, an image rebuild will be required.
+  declare -A new_build_args=(
+    ["VERSION"]="$version"
+    ["HOST_ENV"]="$hostenv"
+    ["DOMAIN"]="$domain"
+    ["GOOGLE_MAPS_KEY"]="$googlemapskey"
+    ["PUBLIC_POSTHOG_KEY"]="$publicposthogkey"
+    ["PUBLIC_POSTHOG_HOST"]="$publicposthoghost"
+    ["GA_TRACKING_ID"]="$gatrackingid"
+    ["MIXPANEL_KEY"]="$mixpanelkey"
+    ["HOSTNAME_PARTS"]="$hostnameparts"
+    ["SOCIAL_META"]="$socialmeta"
+    ["SWAP_CP"]="$swapCP"
+    ["VIEWER_PAGE_SUBDOMAIN"]="$viewerPageSubdomain"
+    ["OTEL_OPTS"]="$otelopts"
+    ["OTEL_URI"]="$oteluri"
+    ["MONGO_URI"]="$mongouri"
+  )
+
   for key in "${!new_env_vars[@]}"; do
     current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
     if [[ "${new_env_vars[$key]}" != "$current_val" ]]; then
       pending_changes=true
+      break
+    fi
+  done
+
+  for key in "${!new_build_args[@]}"; do
+    current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
+    if [[ "${new_build_args[$key]}" != "$current_val" ]]; then
+      pending_arg_changes=true
       break
     fi
   done
@@ -118,6 +150,20 @@ update_env() {
       fi
     done
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    if [ "$pending_arg_changes" = true ]; then
+      echo
+      echo -e "${YELLOW}⚠️ The following build arguments have changed. Remote Falcon container images will need to be (re)built for the changes to take effect:${NC}"
+      echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+      for key in "${original_keys[@]}"; do
+        if [[ -v new_build_args[$key] ]]; then
+          current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
+          if [[ "${new_build_args[$key]}" != "$current_val" ]]; then
+            echo -e "${RED}🔧 $key${NC}=${YELLOW}${new_build_args[$key]}${NC}"
+          fi
+        fi
+      done
+      echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    fi
   fi
 
   # Write the variables to the .env file if answer is y
@@ -158,8 +204,14 @@ update_env() {
     echo -e "${GREEN}✔ Writing variables to .env file completed!${NC}"
     echo
     echo "Printing current .env variables:"
-    parse_env
+    parse_env "$ENV_FILE"
     print_env
+
+    # If there's pending arg changes set image_reubild_needed to true since the changes were accepted and written to .env
+    if [ "$pending_arg_changes" = true ]; then
+      image_rebuild_needed=true
+    fi
+
     return 0 # Return Success
   else
     echo -e "${YELLOW}⚠️ Variables were not updated! No changes were made to the .env file.${NC}"
@@ -190,19 +242,11 @@ run_updates() {
   echo -e "${YELLOW}⚠️ Checking for container updates...${NC}"
   case "$update_mode" in
     auto-apply)
-      bash "$SCRIPT_DIR/update_containers.sh" "mongo" "auto-apply" # Start with Mongo first since the RF containers depend on it.
-      bash "$SCRIPT_DIR/update_rf_containers.sh" "auto-apply"
-      bash "$SCRIPT_DIR/update_containers.sh" "minio" "auto-apply"
-      bash "$SCRIPT_DIR/update_containers.sh" "nginx" "auto-apply" # Start nginx 2nd to last or it will throw errors if other containers are not up yet.
-      bash "$SCRIPT_DIR/update_containers.sh" "cloudflared" "auto-apply" # Start cloudflared last or it will throw errors if nginx isn't running
+      bash "$SCRIPT_DIR/update_containers.sh" "all" "auto-apply"
       ;;
     *)
       # Interactive mode, default
-      bash "$SCRIPT_DIR/update_containers.sh" "mongo" # Start with Mongo first since the RF containers depend on it.
-      bash "$SCRIPT_DIR/update_rf_containers.sh"
-      bash "$SCRIPT_DIR/update_containers.sh" "minio"
-      bash "$SCRIPT_DIR/update_containers.sh" "nginx" # Start nginx 2nd to last or it will throw errors if other containers are not up yet.
-      bash "$SCRIPT_DIR/update_containers.sh" "cloudflared" # Start cloudflared last or it will throw errors if nginx isn't running
+      bash "$SCRIPT_DIR/update_containers.sh" "all"
       ;;
   esac
 
@@ -224,7 +268,7 @@ list_script_versions() {
   grep -H '^# *VERSION=' ./*.sh | while IFS=: read -r file line; do
     version=$(echo "$line" | sed -E 's/^# *VERSION=//')
     filename=$(basename "$file")
-    printf "🔸 %-25s ${YELLOW}%s${NC}\n" "$filename" "$version"
+    printf "🔹 %-25s ${YELLOW}%s${NC}\n" "$filename" "$version"
   done
 }
 
@@ -234,17 +278,54 @@ list_file_versions() {
   awk -v YELLOW="$YELLOW" -v NC="$NC" '
     FILENAME ~ /compose.yaml$/ && $0 ~ /^[[:space:]]*#?[[:space:]]*COMPOSE_VERSION=/ {
       gsub(/^[[:space:]]*#?[[:space:]]*COMPOSE_VERSION=[[:space:]]*/, "", $0)
-      printf "🔸 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
+      printf "🔹 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
     }
     FILENAME ~ /\.env$/ && $0 ~ /^[[:space:]]*#?[[:space:]]*ENV_VERSION=/ {
       gsub(/^[[:space:]]*#?[[:space:]]*ENV_VERSION=[[:space:]]*/, "", $0)
-      printf "🔸 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
+      printf "🔹 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
     }
     FILENAME ~ /default.conf$/ && $0 ~ /^[[:space:]]*#?[[:space:]]*VERSION=/ {
       gsub(/^[[:space:]]*#?[[:space:]]*VERSION=[[:space:]]*/, "", $0)
-      printf "🔸 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
+      printf "🔹 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
     }
   ' compose.yaml .env default.conf
+}
+
+repo_init() {
+  local username="$1"   # GitHub username
+  local new_repo="$2"   # Repo name (without username)
+
+  # Convert both to lowercase
+  username="${username,,}"
+  new_repo="${new_repo,,}"
+
+  echo -e "${BLUE}➕ Attempting to create private repository '$username/$new_repo' from template '$TEMPLATE_REPO'...${NC}"
+
+  # Create repo from template
+  if ! gh repo create "$username/$new_repo" --private --disable-issues --template "$TEMPLATE_REPO"; then
+    echo -e "${RED}❌ Failed to create repository '$username/$new_repo'. Please check your GitHub PAT permissions and try again.${NC}"
+    return 1
+  fi
+
+  # For updating the REPO value in the .env file
+  repo="${username}/${new_repo}"
+
+  # Disable projects quietly since projects is not really needed on the new repo
+  gh repo edit "$username/$new_repo" --enable-projects=false &>/dev/null || true
+
+  echo -e "${GREEN}✅ Repository '$username/$new_repo' created and $ENV_FILE updated!${NC}"
+}
+
+# Function to check extracted tags to check if they are tagged to 'latest'
+tag_has_latest() {
+  for service in "${SERVICES[@]}"; do
+
+    if [[ $(get_current_compose_tag "$service") == "latest" ]]; then
+      return 0  # true = has at least one 'latest'
+    fi
+  done
+
+  return 1  # false = no 'latest'
 }
 
 # Check if user is root or in the sudo group
@@ -266,7 +347,7 @@ else
 fi
 
 # Check if Docker is installed and ask to download and install it if not (For Ubuntu and Debian).
-if [ ! -x "$(command -v docker)" ]; then
+if ! command -v docker >/dev/null 2>&1; then
   if [[ "$(get_input "Docker is not installed, would you like to install it? (y/n)" "y")" =~ ^[Yy]$ ]]; then
     echo "Installing docker... you may need to enter your password for the 'sudo' command."
     # Get OS distribution
@@ -275,7 +356,7 @@ if [ ! -x "$(command -v docker)" ]; then
       ubuntu)
         echo "Installing Docker for Ubuntu..."
         sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-        if [ ! -x "$(command -v docker)" ]; then
+        if ! command -v docker >/dev/null 2>&1; then
           echo -e "${RED}❌ Docker install failed. Please install Docker to proceed.${NC}"
           exit 1
         else
@@ -285,7 +366,7 @@ if [ ! -x "$(command -v docker)" ]; then
       debian)
         echo "Installing Docker for Debian.."
         sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-        if [ ! -x "$(command -v docker)" ]; then
+        if ! command -v docker >/dev/null 2>&1; then
           echo -e "${RED}❌ Docker install failed. Please install Docker to proceed.${NC}"
           exit 1
         else
@@ -300,6 +381,32 @@ if [ ! -x "$(command -v docker)" ]; then
     exit 1
   fi
   echo
+fi
+
+# Check if GitHub CLI (gh) is installed
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Installing GitHub CLI (gh)... you may need to enter your password for the 'sudo' command."
+  (type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \
+  && sudo mkdir -p -m 755 /etc/apt/keyrings \
+  && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+  && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+  && sudo mkdir -p -m 755 /etc/apt/sources.list.d \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+  && sudo apt update \
+  && sudo apt install gh -y
+  if ! command -v gh >/dev/null 2>&1; then
+    echo -e "${RED}❌ GitHub CLI (gh) install failed. Please install GitHub CLI (gh) to proceed.${NC}"
+    exit 1
+  else
+    echo -e "${GREEN}✅ GitHub CLI (gh) installation complete!${NC}"
+    fi
+fi
+
+# Auto install jq if not installed
+if ! command -v jq >/dev/null 2>&1; then
+  echo -e "${YELLOW}⚠️ 'jq' is not installed. Installing jq...${NC}"
+  sudo apt-get update && sudo apt-get install -y jq
 fi
 
 # Get the downloaded script versions and display them
@@ -334,9 +441,71 @@ else
   echo "🔍 Parsing default .env variables:"
 fi
 
-# Read the .env file and export the variables and print them
-parse_env
+# Read the .env file and export the variables, save build args to OLD_ARGS and print env file contents
+parse_env "$ENV_FILE"
 print_env
+
+# Function for the GitHub configuration flow to configure GITHUB_PAT and REPO
+configure_github() {
+  # Get GITHUB_PAT and validate input is not default or empty
+  while true; do
+    githubpat=$(get_input "🔑 Enter your GitHub Personal Access Token, required scopes are 'read:org', 'read:packages', 'repo':" "$GITHUB_PAT")
+    if [[ -z "$githubpat" ]]; then
+      echo -e "${RED}❌ GitHub Personal Access Token cannot be blank.${NC}"
+      continue
+    elif [[ ! "$githubpat" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$githubpat" =~ ^gh[pousr]_[A-Za-z0-9_]{36,255}$ ]]; then
+      echo -e "${RED}❌ GitHub Personal Access Token is not in the correct format.${NC}"
+    else
+      break
+    fi
+  done
+
+  # Only continue if PAT is set
+  if [[ -n "$githubpat" ]]; then
+    # Validate the GITHUB_PAT by using the GitHub CLI to login
+    validate_github_user "$githubpat" || exit 1
+
+    # Get the GitHub REPO name and then validate it exists or create it from template if it does not exist
+    while true; do
+      repo_input=$(get_input "🐙 Enter your GitHub Repository (either 'repo' or 'username/repo'). The username will be set to '$GH_USER':" "$REPO")
+
+      # Reject blank/default
+      if [[ -z "$repo_input" || "$repo_input" == "username/repo" || "$repo_input" == "repo" ]]; then
+        echo -e "${RED}❌ Repository is blank or still set to default.${NC}"
+        continue
+      fi
+
+      # Strip username if provided
+      if [[ "$repo_input" == */* ]]; then
+        repo_name="${repo_input#*/}"
+      else
+        repo_name="$repo_input"
+      fi
+
+      # Validate repo name format
+      if [[ ! "$repo_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        echo -e "${RED}❌ Repository name may only contain letters, numbers, underscores, periods, or dashes.${NC}"
+        continue
+      fi
+
+      # Normalize to lowercase
+      username="${GH_USER,,}"
+      repo_name="${repo_name,,}"
+
+      # If repo does not exist, create it from template via repo_init, else set the repo variable to the correct format for the existing repo
+      if ! validate_github_repo "$repo_name"; then
+        if [[ "$(get_input "❓ Would you like to create private repository '$repo_name' from template 🔗 https://github.com/$TEMPLATE_REPO ? (y/n)" "y")" =~ ^[Yy]$ ]]; then     
+          # Create from template if missing
+          repo_init "$username" "$repo_name"
+        fi
+      else
+        # set the temp repo value to the correct format, if user confirms at the update .env prompt it will be written to .env
+        repo="${username}/${repo_name}"
+      fi
+      break
+    done
+  fi
+}
 
 # Ask to configure .env values
 if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ ]]; then
@@ -349,8 +518,33 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   # ====== START variable questions ======
 
   # ====== START REQUIRED variables ======
+  # If no repo is configured, display a warning message if less than 16GB of RAM is detected to encourage adding more RAM or confiure GitHub
+  if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then
+    if ! memory_check; then
+      echo -e "⚡ ${Yellow}If the images fail to build either add more system memory or configure GitHub for building images remotely.${NC}"
+    fi
+  fi
+  if [[ "$(get_input "❓ Update GitHub configuration for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+    # If REPO is not blank or not the default ask to disable it, else ask to configure it
+    if [[ -n "$repo" && "$repo" != "username/repo" ]]; then
+      echo -e "${YELLOW}⚠️ Existing GitHub repository configuration found: $repo${NC}"
+      if [[ "$(get_input "❓ Would you like to disable it and build images locally? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}⚠️ GITHUB_PAT and REPO will be set to default values if .env changes are accepted.${NC}"
+        githubpat=" "
+        repo="username/repo"
+      else
+        if [[ "$(get_input "❓ Modify the existing GitHub configuration to update the GITHUB_PAT or REPO? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+          configure_github
+        fi
+      fi
+    else # REPO is blank or set to default
+      if [[ "$(get_input "❓ Configure GITHUB_PAT and REPO for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+        configure_github
+      fi
+    fi
+  fi
 
-  # get the Cloudflared tunnel token and validate input is not default, empty, or not in valid format
+  # Get the Cloudflared tunnel token and validate input is not default, empty, or not in valid format
   while true; do
     tunneltoken=$(get_input "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
     if [[ -z "$tunneltoken" || "$tunneltoken" == "cloudflare_token" ]]; then
@@ -387,10 +581,10 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   #echo "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com')"
   #hostnameparts=$(get_input "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month):" "$HOSTNAME_PARTS" )
   #echo
-  hostnameparts="$HOSTNAME_PARTS"
-  if [[ $hostnameparts == 3 ]]; then
-    echo -e "${YELLOW}⚠️ You are using a 3 part domain. Please ensure you have Advanced Certificate Manager enabled in Cloudflare.${NC}"
-  fi
+
+  #if [[ $hostnameparts == 3 ]]; then
+  #  echo -e "${YELLOW}⚠️ You are using a 3 part domain. Please ensure you have Advanced Certificate Manager enabled in Cloudflare.${NC}"
+  #fi
 
   # Ask if Cloudflare origin certificates should be updated if they exist. Otherwise prompt if cert/key files are missing
   # This will create the cert/key in the current directory and append the domain name to the beginning of the file name
@@ -428,9 +622,6 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       read -p "📊 Enter your Google Analytics Measurement ID - https://analytics.google.com/: [$GA_TRACKING_ID]: " gatrackingid
       read -p "📊 Enter your Mixpanel key - https://mixpanel.com/: [$MIXPANEL_KEY]: " mixpanelkey
 
-      publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
-      gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
-      mixpanelkey=${mixpanelkey:-$MIXPANEL_KEY}
     fi
 
     # Ask if SOCIAL_META variable should be updated
@@ -441,7 +632,6 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       echo "🏷️ Update SOCIAL_META tag or leave as default - Enter on one line only"
       echo
       read -p "[$SOCIAL_META]: " socialmeta
-      socialmeta=${socialmeta:-$SOCIAL_META}
     fi
 
     # Ask if SEQUENCE_LIMIT variable should be updated
@@ -457,25 +647,21 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     # Ask if the user wants to switch the Viewer Page and Control Panel URLs
     if [[ -z "$SWAP_CP" || "$SWAP_CP" == false ]]; then
       if [[ "$(get_input "🔁 Would you like to swap the Control Panel and Viewer Page Subdomain URLs? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-        SWAP_CP=true
+        swapCP=true
       fi
     else
       if [[ "$(get_input "🔁 Would you like to REVERT the Control Panel and Viewer Page Subdomain URLs back to the default? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-        SWAP_CP=false
+        swapCP=false
       fi
     fi
 
-    # If SWAP_CP is set to true ask to update the Viewer Page Subdomain
-    if [[ $SWAP_CP == true ]]; then
+    # If swapCP is set to true ask to update the Viewer Page Subdomain
+    if [[ $swapCP == true ]]; then
       while true; do
-        read -p "🌐 Enter your Viewer Page Subdomain [${VIEWER_PAGE_SUBDOMAIN}]: " viewerPageSubdomain
-
-        # Use default if nothing entered
-        viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
+        viewerPageSubdomain=$(get_input "🌐 Enter your Viewer Page Subdomain:" "$VIEWER_PAGE_SUBDOMAIN")
 
         # Remove all whitespace (leading, trailing, and internal)
         viewerPageSubdomain=$(echo "$viewerPageSubdomain" | tr -d '[:space:]')
-
         # Convert to lowercase
         viewerPageSubdomain=$(echo "$viewerPageSubdomain" | tr '[:upper:]' '[:lower:]')
 
@@ -489,30 +675,31 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
         fi
       done
     fi
-    # Ensure optional variables are set to the current values if they weren't updated
-    googlemapskey=${googlemapskey:-$GOOGLE_MAPS_KEY}
-    publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
-    gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
-    mixpanelkey=${mixpanelkey:-$MIXPANEL_KEY}
-    socialmeta=${socialmeta:-$SOCIAL_META}
-    sequencelimit=${sequencelimit:-$SEQUENCE_LIMIT}
-    viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
-    swapCP=${swapCP:-$SWAP_CP}
-  else
-    # Ensure optional variables are set to the current values if they weren't updated
-    googlemapskey=${googlemapskey:-$GOOGLE_MAPS_KEY}
-    publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
-    gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
-    mixpanelkey=${mixpanelkey:-$MIXPANEL_KEY}
-    socialmeta=${socialmeta:-$SOCIAL_META}
-    sequencelimit=${sequencelimit:-$SEQUENCE_LIMIT}
-    viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
-    swapCP=${swapCP:-$SWAP_CP}
   fi
+  # Ensure optional variables are set to the current values regardless if they were updated or not
+  repo=${repo:-$REPO}
+  githubpat=${githubpat:-$GITHUB_PAT}
+  hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
+  googlemapskey=${googlemapskey:-$GOOGLE_MAPS_KEY}
+  publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
+  gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
+  mixpanelkey=${mixpanelkey:-$MIXPANEL_KEY}
+  socialmeta=${socialmeta:-$SOCIAL_META}
+  sequencelimit=${sequencelimit:-$SEQUENCE_LIMIT}
+  viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
+  swapCP=${swapCP:-$SWAP_CP}
   # ====== END OPTIONAL variables ======
 
-  # ====== START Automatically configured variables ======
+  # ====== START BUILD ARGs ======
+  # Capture the current values of any BUILD args(from sourced .env) that weren't asked for above
+  version=${version:-$VERSION}
+  hostenv=${hostenv:-$HOST_ENV}
+  publicposthoghost=${publicposthoghost:-$PUBLIC_POSTHOG_HOST}
+  otelopts=${otelopts:-$OTEL_OPTS}
+  oteluri=${oteluri:-$OTEL_URI}
+  mongouri=${mongouri:-$MONGO_URI}
 
+  # ====== START Automatically configured variables ======
   # Check VIEWER_JWT_KEY and USER_JWT_KEY .env variables and generate a random Base64 value if set to default 123456
   if [[ $VIEWER_JWT_KEY == "123456" ]]; then
     VIEWER_JWT_KEY=$(openssl rand -base64 32)
@@ -526,31 +713,135 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
 
   # ====== END variable questions ======
 
-  # Run the container update scripts if .env variables were 'accepted' and 'updated'. This doesn't mean they were changed, just accepted and written to the .env file.
-  if update_env; then
-    # Check if containers are running and then do 'docker compose up -d --force-recreate' to ensure .env changes are applied
-    for service in "${SERVICES[@]}"; do
-      if sudo docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^$service$"; then
-        ANY_SERVICE_RUNNING=true
+  # ====== START Existing configuration ======
+  # This section checks if any containers are running and ensures that compose.yaml tags match currently running versions(if in valid format)
+
+  # Check if containers are running, meaning this is an existing configuration
+  for service in "${SERVICES[@]}"; do
+    if is_container_running "$service"; then
+      ANY_SERVICE_RUNNING=true
+      current_version=$(get_current_version "$service")
+      compose_tag=$(get_current_compose_tag "$service")
+
+      # Compare running container tags to the compose.yaml tags and update compose.yaml if compose tag is
+      # Check if the running container's tag is in the valid format
+      if check_tag_format "$service" "$current_version"; then
+        # If the compose tag does not match the current running version, update the compose tag in compose.yaml - this is useful if compose.yaml was replaced and all are tagged to 'latest'
+        if [[ "$compose_tag" != "$current_version" ]]; then
+          echo -e "${BLUE}⚠️ $service ${YELLOW}is running with version ${GREEN}$current_version${YELLOW} but the compose tag 🏷️ ${GREEN}$compose_tag${NC}${YELLOW} does not match. Updating compose tag to match...${NC}"
+          replace_compose_tag "$service" "$current_version"
+          echo -e "✔  ${BLUE}$service ${NC}compose tag updated to ${GREEN}$current_version.${NC}"
+        fi
       fi
-    done
+    fi
+  done
+
+  # ====== END Existing configuration ======
+
+  # Run the container update scripts if .env variables were 'changed' and 'accepted'
+  if update_env; then
+    # From shared_function.sh, make sure the compose.yaml is set for pulling images via ghcr.io/${REPO}/ in the image path or set for local build
+    update_compose_image_path
+
+    # Update handling if any container is running
     if [[ $ANY_SERVICE_RUNNING == true ]]; then
-      echo -e "${YELLOW}⚠️ Containers are running. Running 'docker compose up -d --build --force-recreate' to apply .env changes...${NC}"
-      sudo docker compose -f "$COMPOSE_FILE" up -d --build --force-recreate 
+      # Only rebuild images if the build ARGs were changed
+      if [[ $image_rebuild_needed = true ]]; then
+        # If any service is running and $REPO is configured run run_workflow.sh to rebuild all containers with any updated ARG values from the .env file
+        if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
+          echo -e "${YELLOW}⚠️ Containers are running. Build ARG changes detected. Running ./run_workflow.sh to ensure Remote Falcon images are built with any updated build ARGs at their current version...${NC}"
+          # Run the workflow script to rebuild all containers with any updated ARG values from the .env file, images are built based on current short_sha tag in compose.yaml
+          if bash "$SCRIPT_DIR/run_workflow.sh" \
+            plugins-api=$(get_current_version "plugins-api") \
+            control-panel=$(get_current_version "control-panel") \
+            viewer=$(get_current_version "viewer") \
+            ui=$(get_current_version "ui") \
+            external-api=$(get_current_version "external-api"); then
+              echo -e "${GREEN}🚀 Bringing up containers...${NC}"
+              sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+          else
+              echo -e "${RED}❌ Workflow to build all Remote Falcon images to current versions did not complete successfully, aborting.${NC}"
+              exit 1
+          fi
+        else # If any service is running and $REPO is not configured, build locally
+          echo -e "${YELLOW}⚠️ Containers are running. Build ARG changes detected. Running 'sudo docker compose up -d --build --force-recreate' to apply any ARG and .env changes...${NC}"
+          sudo docker compose -f "$COMPOSE_FILE" up -d --build --force-recreate
+        fi
+      else # No ARGs changed, just run 'sudo docker compose up -d' to pick up any environment variable changes
+          echo -e "${YELLOW}⚠️ Containers are running. No build ARG changes detected. Running 'sudo docker compose up -d' to apply any environmental variable changes...${NC}"
+          sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+      fi
+
       # Prompt to check updates after applying new .env values to existing containers
       if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         run_updates
-      elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      elif [[ "$(get_input "❓ Run health check script? (y/n)" "y")" =~ ^[Yy]$ ]]; then
         health_check health
       fi
-    else # Automatically run container updates and update image tags in the compose.yaml file
-        run_updates auto-apply
+    else # No containers running
+      echo -e "No containers are running. Checking Remote Falcon image tags for 'latest' in compose.yaml..."
+      # No containers running, only rebuild images if the build ARGs were changed
+      if [[ $image_rebuild_needed = true ]]; then
+        echo -e "${YELLOW}⚠️ Remote Falcon image build required...${NC}"
+        if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
+          echo -e "🐙 GitHub repository ${REPO} will be used for the build.${NC}"
+          if tag_has_latest; then
+            # No containers running, REPO configured, rebuild required, RF containers tagged to 'latest' Assume new install, run workflow to build latest images and run_updates auto-apply
+            echo -e "${BLUE}✨ Remote Falcon 'latest' image tags detected in compose.yaml, assuming new install. Running ./run_workflow.sh to build new Remote Falcon images on GitHub....${NC}"
+            if bash "$SCRIPT_DIR/run_workflow.sh"; then
+              run_updates auto-apply
+            else
+              echo -e "${RED}❌ Workflow failed. Aborting.${NC}"
+              exit 1
+            fi
+          else # No containers running, REPO configured, rebuild required, and RF containers not tagged to 'latest' so we just rebuild with existing image tags from compose.yaml
+            echo -e "${BLUE}🔄 Running ./run_workflow.sh to ensure Remote Falcon images are built with any updated build ARGs at their current version...${NC}"
+            if bash "$SCRIPT_DIR/run_workflow.sh" \
+              plugins-api=$(get_current_compose_tag "plugins-api") \
+              control-panel=$(get_current_compose_tag "control-panel") \
+              viewer=$(get_current_compose_tag "viewer") \
+              ui=$(get_current_compose_tag "ui") \
+              external-api=$(get_current_compose_tag "external-api"); then
+                echo -e "${GREEN}🚀 Bringing up containers...${NC}"
+                sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+            else
+              echo -e "${RED}❌ Workflow failed. Aborting.${NC}"
+              exit 1
+            fi
+          fi
+        else # No containers running, REPO not configured so images will be built locally
+          echo -e "${YELLOW}⚠️ GitHub Repository not configured, Remote Falcon images will be built locally, ensure that you have 16GB+ RAM or the build may fail...${NC}"
+
+          if tag_has_latest; then
+            echo -e "${BLUE}✨ Remote Falcon 'latest' image tags detected in compose.yaml, assuming new install, running update_containers.sh...${NC}"
+            run_updates auto-apply
+          else # Assume existing install since no 'latest' tags found, force local build and restart
+            echo -e "${BLUE}🔄 Building Remote Falcon images to apply any updated build ARGs at their current version...${NC}"
+            sudo docker compose up -d --build --force-recreate
+          fi
+        fi
+      else # No containers running, image rebuild not required(ARGs weren't changed in script)
+        if tag_has_latest; then
+          # Run run_updates auto-apply to tag containers
+          echo -e "${GREEN}🚀 Bringing up existing containers to apply any .env changes...${NC}"
+          run_updates auto-apply
+        else # No containers running, no image rebuild required, and no 'latest' tags found so just bring the containers up
+          # Run interactive updates since update_containers will verify if the image exists in the repo and build indvidually if missing
+          if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
+            echo -e "${GREEN}🚀 Bringing up stopped containers with update_container.sh...${NC}"
+            run_updates
+          else # No containers running, no image rebuild required, so just bring the containers up
+            echo -e "${GREEN}🚀 Bringing up existing containers to apply any .env changes...${NC}"
+            sudo docker compose up -d
+          fi
+        fi
+      fi
     fi
   else # update_env returned false - Ask to run update check anyway
     if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
       run_updates
     elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-        health_check health
+      health_check health
     fi
   fi
 else # User chose not to update the .env file
@@ -558,7 +849,7 @@ else # User chose not to update the .env file
   if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
     run_updates
   elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-      health_check health
+    health_check health
   fi
 fi
 

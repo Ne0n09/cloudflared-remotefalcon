@@ -17,7 +17,23 @@ The first command will shut down all the containers and the second command will 
   ./health_check.sh
   ```
 
-### Unexpected Error
+## Update or view the .env file manually outside of the configure-rf script
+
+The [configure-rf](../scripts/index.md#__tabbed_1_1) script isn't required to view or make updates to the [.env](../architecture/files.md#env) file. 
+
+You can manually edit the file, but the compose stack will have to be brought down manually and the Remote Falcon images rebuilt for some settings to take effect.
+
+- To view the .env file:
+    ```sh
+    cat remotefalcon/.env
+    ```
+
+- To manually edit the .env file:
+    ```sh
+    nano remotefalcon/.env
+    ```
+
+### Unexpected Error when browsing to your domain
 
 - **Control Panel**: Ensure your web browser is pointing you to `https://yourdomain.com` and *NOT `www`:* `https://www.yourdomain.com`
 
@@ -82,7 +98,7 @@ To downgrade you can check the latest version of 4 here [Mongo 4.x tags](https:/
 
 ### Viewer page Now playing/Up next not updating as expected
 
-- You will observe intermittent and random times where the Now playing/Up next do not update and requests also do not play. 
+- Intermittent and random times where the Now playing/Up next do not update and requests also do not play. 
 
 - After waiting 15 minutes or so things will start working as expected again.
 
@@ -111,38 +127,7 @@ If you see errors such as the below at the end of the gap timeframe(7:29 PM) the
     Oct 26 19:29:52 FPP fppd_boot_post[2128]: PHP Warning:  file_get_contents(https://yourdomain.com/remote-falcon-plugins-api/nextPlaylistInQueue?updateQueue=true): failed to open stream: operation failed in /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php on line 376
     ```
 
-To resolve, we can publish the plugins-api port and configure the FPP plugin to connect locally to plugins-api to avoid FPP from having to go out to the internet to reach the plugins-api:
-
-1. Modify the `compose.yaml` and update the plugins-api container to publish port 8083(if it is not already published):
-
-    ```yaml title="compose.yaml" linenums="50" hl_lines="9-10"
-      plugins-api:
-        build:
-          context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
-          args:
-            - OTEL_OPTS=
-        image: plugins-api
-        container_name: plugins-api
-        restart: always
-        ports:
-          - "8083:8083"
-    ```
-
-2. Restart the containers with these [steps](#stop-and-start-the-compose-stack).
-
-3. `#!sh sudo docker ps` will show the plugins-api is now published on port 8083: 
-```
-ONTAINER ID   IMAGE                              COMMAND                  CREATED       STATUS       PORTS                                                 NAMES
-c3dc4de3a19b   plugins-api:fe7c932                "/bin/sh -c 'exec ja…"   5 hours ago   Up 5 hours   8080/tcp, 0.0.0.0:8083->8083/tcp, :::8083->8083/tcp   plugins-api
-```
-
-4. In the FPP plugin settings update the Plugins API path to the IP address of your local self hosted RF instance:
-
-      |                    | Developer Settings                                                       |
-      |--------------------|--------------------------------------------------------------------------|
-      | Plugins API Path   | http://localip.address.of.remote.falcon:8083/remote-falcon-plugins-api   |
-
-5. Reboot FPP.
+To resolve, we can publish the plugins-api port and configure the FPP plugin to connect locally to plugins-api to avoid FPP from having to go out to the internet to reach the plugins-api by following the steps [here](../main/post-install.md#__tabbed_1_2).
 
 ## Troubleshooting Commands
 
@@ -210,3 +195,82 @@ Alternatively, here's some one-liner commands that automatically login and run t
   ```sh
   sudo docker exec -it mongo bash -c "mongosh --quiet 'mongodb://root:root@localhost:27017' --eval 'db = db.getSiblingDB(\"remote-falcon\"); const subdomains = db.show.find({}, { showSubdomain: 1, _id: 0 }).toArray();subdomains.forEach(doc => {if (doc.showSubdomain) {print(doc.showSubdomain);}});'"
   ```
+
+### GitHub
+
+- Check GitHub authorization status:
+    ```
+    gh auth status
+    ```
+
+- Display GitHub API user details:
+    ```
+    gh api user
+    ```
+
+- Login to GitHub
+    ```
+    gh auth login
+    ```
+
+- Logout of GitHub:
+    ```
+    gh auth logout 
+    ```
+
+### Docker
+
+- Display running containers:
+    ```
+    sudo docker ps
+    ```
+
+- Display downloaded images:
+    ```
+    sudo docker image ls
+    ```
+
+- Remove unused images to free up space:
+    ```
+    sudo docker image prune
+    ```
+
+- Display logged in registries:
+    ```
+    sudo cat /root/.docker/config.json
+    ```
+
+- Login to the GitHub Container Registry:
+    ```
+    sudo docker login ghcr.io
+    ```
+
+- Logout of the GitHub Container Registry:
+    ```
+    sudo docker logout ghcr.io
+    ```
+
+- Build new images:
+    ```
+    sudo docker compose -f remotefalcon/compose.yaml build
+    ```
+
+- Download new images:
+    ```
+    sudo docker compose -f remotefalcon/compose.yaml pull
+    ```
+
+- Bring the compose stack up in the background:
+    ```
+    sudo docker compose -f remotefalcon/compose.yaml up -d
+    ```
+
+- Force recreation of containers:
+    ```
+    sudo docker compose -f remotefalcon/compose.yaml up -d --force-recreate
+    ```
+
+- Bring the compose stack down:
+    ```
+    sudo docker compose -f remotefalcon/compose.yaml down
+    ```

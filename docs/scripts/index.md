@@ -16,7 +16,7 @@ You can check the [release notes](../release-notes.md) to see if there any updat
 
 2. Remove the scripts:
 ```sh
-rm configure-rf.sh health_check.sh minio_init.sh update_containers.sh update_rf_containers.sh shared_functions.sh
+rm configure-rf.sh shared_functions.sh health_check.sh minio_init.sh update_containers.sh update_rf_containers.sh run_workflow.sh sync_repo_secrets.sh
 ```
 
 3. The command below will re-download the configure-rf script and run it which will then re-download the helper scripts:
@@ -36,11 +36,11 @@ Click through the tabs below to view detailed information for each script.
 
 === "Configure RF"
 
-    - This script is used for the initial setup and configuration of [cloudflared-remotefalcon](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main).
+    - Used for the initial setup and configuration of [cloudflared-remotefalcon](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main).
 
-    - It guides you on setting the required and some optional [.env](../architecture/files.md#env) variables.
+    - Guides through setting the required and some optional [.env](../architecture/files.md#env) variables.
 
-    - It can be re-run to view or update the variables or to run the container update or health check scripts.
+    - Can be re-run to view or update the variables or to run the container update or health check scripts.
 
     - Automatically downloads other helper scripts if they are missing.
 
@@ -54,13 +54,19 @@ Click through the tabs below to view detailed information for each script.
 
     ![Configure-rf demo](../images/configure-rf-clean-install.gif)
 
-=== "Update RF Containers"
+=== "Update Containers"
 
-    - This script will update the Remote Falcon containers to the latest available commit on the [Remote Falcon Github](https://github.com/Remote-Falcon).
+    - Checks for updates and updates non-RF containers to their latest available release.
+
+    - Checks for updates and updates Remote Falcon containers to the latest available commit on the [Remote Falcon Github](https://github.com/Remote-Falcon).
+
+    - The [compose.yaml](../architecture/files.md#composeyaml) build context hash is updated to the latest commit for the Remote Falcon containers.
     
-    - The [compose.yaml](../architecture/files.md#composeyaml) build context hash is updated to the latest commit for the container.
+    - The compose.yaml container image tag is updated to the latest release.
 
-    - The image tag for the container is updated in the compose.yaml to the short-hash:
+    - A backup of the compose.yaml is created when any of the containers are updated.
+
+    - The image tag for the Remote Falcon container is updated in the compose.yaml to the short-hash:
     ```yaml linenums="50" hl_lines="3 6"
       plugins-api:
         build:
@@ -71,42 +77,9 @@ Click through the tabs below to view detailed information for each script.
         container_name: plugins-api
     ```
 
-    - A backup of the compose.yaml is created when any of the containers are updated.
+    - Accepts three arguments:
 
-    - The script accepts two arguments:
-
-        1. `[dry-run|auto-apply|interactive]`
-
-            - `dry-run`: Displays if any updates are available or if up to date.
-
-            - `auto-apply`: Automatically update all RF containers if any updates are found.
-
-            - `interactive/no argument`: Display if update is available and prompt for confirmation before updating each container.
-
-        2. `[health]`
-
-            - Add `health` after the first argument to automatically run the health_check script.
-
-    ```sh title="update_rf_containers script syntax examples" 
-    ./update_rf_containers.sh [dry-run|auto-apply|interactive] [health]
-    ./update_rf_containers.sh
-    ./update_rf_containers.sh dry-run health
-    ./update_rf_containers.sh auto-apply
-    ```
-
-    ![Update RF containers demo](../images/update_rf_containers-clean-install.gif)
-
-=== "Update Containers"
-
-    - This script will check and update the non-Remote Falcon containers to their latest available release.
-    
-    - The [compose.yaml](../architecture/files.md#composeyaml) container image tag is updated to the latest release.
-
-    - A backup of the compose.yaml is created when any of the containers are updated.
-
-    - The script accepts three arguments:
-
-        1. `[all|mongo|minio|nginx|cloudflared]`
+        1. `[all|mongo|minio|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api]`
 
             - `container_name`: You can specify an individual container or all. If left blank with no other arguments it will check all containers in interactive mode.
 
@@ -123,16 +96,16 @@ Click through the tabs below to view detailed information for each script.
             - Add `health` after the first two arguments to automatically run the health_check script.
 
     ```sh title="update_containers script syntax examples" 
-    ./update_containers.sh [all|mongo|minio|nginx|cloudflared] [dry-run|auto-apply|interactive] [health]
+    ./update_containers.sh [all|mongo|minio|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api] [dry-run|auto-apply|interactive] [health]
     ./update_containers.sh
     ./update_containers.sh all dry-run health
     ./update_containers.sh all auto-apply
     ```
-    ![Update containers demo](../images/update_containers-clean-install.gif)
+    ![Update containers demo](../images/update_containers_9_7_25.gif)
 
 === "Health Check"
 
-    - This script will perform a 'health check' of various things and displays any issues that are found.
+    - Performs a 'health check' of various things and displays any issues that are found.
 
     - Checks if containers are running.
 
@@ -140,7 +113,7 @@ Click through the tabs below to view detailed information for each script.
 
     - Checks if the domain is not the default.
 
-    - Checks if the .env file exists.
+    - Checks if the [].env](../../architecture/files/#env) file exists.
 
     - Checks if the Cloudflare Origin certificate and key exist and if they match.
 
@@ -150,11 +123,43 @@ Click through the tabs below to view detailed information for each script.
 
     - Checks Mongo to search for any shows that are configured and provides their URL.
 
+    - Checks if [SWAP_CP](../main/post-install.md#swap-viewer-page-subomdain) is enabled and displays the Control Panel URL.
+
+    - Checks for any known issues by checking container logs directly.
+
     ```sh title="Run health_check.sh" 
     ./health_check.sh
     ```
 
-    ![Health check demo](../images/health_check-clean-install.gif)
+    ![Health check demo](../images/health_check_9_7_25.gif)
+
+=== "Sync Repo Secrets"
+
+    - If [REPO](../../architecture/files/#env) and [GITHUB_PAT](../../architecture/files/#env) are configured in the .env file this script will sync the build arguments required to build images with GitHub Actions.
+
+    ```sh title="Run sync_repo_secrets.sh" 
+    ./sync_repo_secrets.sh
+    ```
+
+    ![Sync repo secrets demo](../images/sync_repo_secrets_9_7_25.gif)
+
+=== "Run Workflow"
+
+    - If [REPO](../../architecture/files/#env) and [GITHUB_PAT](../../architecture/files/#env) are configured in the .env file this script will run a GitHub Actions workflow to build new Remote Falcon Images.
+    
+    - It will call the sync_repo_secrets script to ensure build arguments are synced prior to building new images.
+
+    - If building all images, expect the workflow to run for about 15 minutes.
+
+    ```sh title="run_workflow script syntax examples" 
+    # Usage:./run_workflow.sh [ container | container=sha | container=sha container=sha ...]
+    ./run_workflow.sh # Runs the build-all.yml GitHub Actions workflow to build all containers to the latest available commit.
+    ./run_workflow.sh [container] # Runs the build-container.yml GitHub Actions workflow to build an individual container to the latest available commit on 'main'.
+    ./run_workflow.sh [container=sha] # Runs the build-container.yml GitHub Actions workflow to build an individual container to a specific commit SHA.
+    ./run_workflow.sh plugins-api=69c0c53 control-panel=671bbed viewer=060011d ui=245c529 external-api=f7e09fe # Runs the build-all.yml GitHub Actions workflow to build all containers to the specified commit SHAs.
+    ```
+
+    ![Run Workflow demo](../images/run_workflow_9_7_25.gif)
 
 === "Generate JWT"
 

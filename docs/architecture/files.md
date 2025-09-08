@@ -46,7 +46,11 @@ Some of these are updated by the [configure-rf](../scripts/index.md#__tabbed_1_1
 
 The .env file can be edited manually with `nano remotefalcon/.env`.
 
-??? info ".env variables"
+???+ info ".env variables"
+
+    `REPO`
+
+    :   The configure-rf script guides on setting this. This lets you run a [GitHub Actions workflow](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows) to build Remote Falcon images and store them on the GitHub Container Registry. Also required the GITHUB_PAT to be configured.
 
     `TUNNEL_TOKEN`
 
@@ -122,7 +126,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `GITHUB_PAT`
 
-    :   [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens). This is not required.
+    :   [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens). This is required if you would like to build Remote Falcon images via a [GitHub Actions workflow](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows).
 
     `SOCIAL_META`
 
@@ -174,19 +178,19 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `OTEL_URI`
 
-    :   This is used for OpenTelemry. 
+    :   This is used for OpenTelemry.
 
     `OTEL_OPTS`
 
-    :   This is used for OpenTelemry. 
+    :   This is used for OpenTelemry.
 
     `SWAP_CP`
 
-    :   Set to true or false. When true, it allows for swapping the Viewer Page Subdomain that is set with VIEWER_PAGE_SUBDOMAIN with the Control Panel so that the Viewer Page is accessible at `https://your_domain.com` and the Control Panel is accessible at `https:\\controlpanel.your_domain.com`.
+    :   The configure-rf script guides on setting this. When set to 'true' and `VIEWER_PAGE_SUBDOMAIN` is set to a valid subdomain then the Viewer Page Subdomain will be accessible at https://yourdomain.com and the Control Panel will be accessible at https://controlpanel.yourdomain.com.
 
     `VIEWER_PAGE_SUBDOMAIN`
 
-    :   Set to a valid show name. Must be all lower case with no spaces.
+    :   The configure-rf script guides on setting this. This is used with `SWAP_CP` to swap the Control Panel with the subdomain that is defined here.
 
 ## default.conf
 

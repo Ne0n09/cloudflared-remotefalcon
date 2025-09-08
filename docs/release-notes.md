@@ -1,36 +1,32 @@
 # Release Notes
 
-## 2025.07.28.1
+## 2025.09.8.1
 
-- Updated compose.yaml plugins-api section for the quarkus updates in c46138a to add quarkus.http.port=8083. 
+- **GitHub Actions integration!** This will allow you to easily configure a GitHub repo to build images via GitHub Actions workflows. 
 
-- Updated default.conf plugins-api entry to allow access to /q/health endpoint.
+- The configure-rf and update_containers scripts have been completely overhauled to add this along with other improvements.
 
-- Updated health_check to check the /remote-falcon-plugins-api/q/health endpoint.
+- Removed the update_rf_containers script as it is all integrated into the update_containers script.
 
-- If the FPP plugin is accessing RF via LAN, after updating plugins-api to c46138a or later you will need to remove the /remote-falcon-plugins-api path and just specify http://localip.address.of.remote.falcon:8083
+- Added sync_repo_secrets and run_workflow scripts to facilitate building images on GitHub.
 
-## 2025.06.17.1
+- Created a [template repository](https://github.com/Ne0n09/remote-falcon-image-builder) with the workflows that the configure-rf script will use to create a new private repo to run the GitHub Actions workflows.
 
-- Updated configure-rf to add validation for VIEWER_PAGE_SUBDOMAIN.
+- If a REPO is configured in the .env the configure-rf, update_containers, or run_workflow scripts will automatically add ```ghcr.io/${REPO}``` to the image path in compose.yaml.
 
-- Fixed some optional variables going missing after running configure-rf.
+- If a REPO is not configured it will also automatically remove it from the image path.
 
-- Updated health_check to validate VIEWER_PAGE_SUBDOMAIN exists in MongoDB and to display if SWAP_CP is enabled or disabled.
+- Updated FPP 9 plugin configuration [steps](main/post-install.md#fpp-9-and-above-update-the-fpp-plugin-settings).
 
-## 2025.06.16.2
+- Additional health checks in the health_check script.
 
-- Updated configure-rf to allow for swapping the viewer page with the control panel. This is configured under OPTIONAL variables.
-
-- Updated .env to add SWAP_CP and VIEWER_PAGE_SUBDOMAIN.
-
-- Updated compose.yaml to add SWAP_CP and VIEWER_PAGE_SUBDOMAIN under ui.
+- Various other changes
 
 ## 2025.06.16.1
 
 - Updated configure-rf .env file version would not display if .env didn't already exist.
 
-- Added FPP 9 configuration steps [here](/docs/main/post-install.md).
+- Added FPP 9 configuration steps [here](main/post-install.md#fpp-9-and-above-update-the-fpp-plugin-settings).
 
 - Updated update_rf_containers again to fix the current_ctx not being found properly.
 

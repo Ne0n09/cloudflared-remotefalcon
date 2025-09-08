@@ -4,13 +4,16 @@ If you meet the prerequisites you can move on to the [installation](../main/inst
 
 ## Domain Name
 
-I recommended [porkbun](https://porkbun.com/) if you do not already have a domain name.
+- I recommended [porkbun](https://porkbun.com/) if you do not already have a domain name.
 
 ## Server Hardware
 
 - 2 CPUs/cores, minimum
 
-- 4 GB RAM, minimum
+- 4 GB RAM, minimum if you configure [GitHub](../main/install/github.md) to remotely build Remote Falcon images.
+
+    !!! warning
+        16 GB or more RAM is required to locally build the Remote Falcon [viewer](http://127.0.0.1:8000/cloudflared-remotefalcon/docs/architecture/containers/#viewer) or [plugins-api](http://127.0.0.1:8000/cloudflared-remotefalcon/docs/architecture/containers/#plugins-api) images.
 
 - 80 GB disk storage, you may be able to get away with less but more is always better.
 

@@ -1,19 +1,3 @@
-## Update or view the .env file manually outside of the configure-rf script
-
-The [configure-rf](../scripts/index.md#__tabbed_1_1) script isn't required to view or make updates to the [.env](../architecture/files.md#env) file. 
-
-You can manually edit the file, but the compose stack will have to be brought down manually and the Remote Falcon images rebuilt for some settings to take effect.
-
-- To view the .env file:
-    ```sh
-    cat remotefalcon/.env
-    ```
-
-- To manually edit the .env file:
-    ```sh
-    nano remotefalcon/.env
-    ```
-
 ## External API
 
 Follow the steps below to get access to the external API for your self hosted Remote Falcon.
@@ -28,7 +12,7 @@ Follow the steps below to get access to the external API for your self hosted Re
 
         Ignore the Unexpected Error or API Access Already Requested if you do not have email configured. The API token and secret will still be generated. 
 
-4.  Copy the command below and paste it to download and run the [generate_jwt](../scripts/index.md#__tabbed_1_5) script:
+4.  Copy the command below and paste it to download and run the [generate_jwt](../scripts/index.md#__tabbed_1_6) script:
 
     ```sh
     curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/generate_jwt.sh; \
@@ -76,7 +60,7 @@ References:
 
 - It will let you search for show subdomains and let you basically view/edit the MongoDB record.
 
-- The [make_admin](../scripts/index.md#__tabbed_1_6) script will display any shows found and whether they are configured as a USER or ADMIN.
+- The [make_admin](../scripts/index.md#__tabbed_1_7) script will display any shows found and whether they are configured as a USER or ADMIN.
 
 - Copy the command below and paste it to download and run the make_admin script:   
 
