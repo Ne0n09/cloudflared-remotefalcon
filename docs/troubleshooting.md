@@ -12,14 +12,14 @@ The first command will shut down all the containers and the second command will 
   ```sh
   sudo docker compose -f remotefalcon/compose.yaml up -d
   ```
-3. Run the [health_check](../scripts/index.md#__tabbed_1_4) script to help check for errors:
+3. Run the [health_check](about/scripts.md#health_checksh) script to help check for errors:
   ```sh
   ./health_check.sh
   ```
 
-## Update or view the .env file manually outside of the configure-rf script
+### Edit or view the .env file manually outside of the configure-rf script
 
-The [configure-rf](../scripts/index.md#__tabbed_1_1) script isn't required to view or make updates to the [.env](../architecture/files.md#env) file. 
+The [configure-rf](about/scripts.md#configure-rfsh) script isn't required to view or make updates to the [.env](about/files.md#env) file. 
 
 You can manually edit the file, but the compose stack will have to be brought down manually and the Remote Falcon images rebuilt for some settings to take effect.
 
@@ -94,7 +94,7 @@ To downgrade you can check the latest version of 4 here [Mongo 4.x tags](https:/
 
 - This is caused by *`HOSTNAME_PARTS`* being set to 3 when everything else(Tunnel public hostnames/DNS) is configured for 2 parts.  
 
-- To correct this issue, ensure you set *`HOSTNAME_PARTS`* to 2 in the .env file and make sure to update your origin certificates using the [configure-rf](../scripts/index.md#__tabbed_1_1) script so the certificate file names are properly updated for the 2-part domain. 
+- To correct this issue, ensure you set *`HOSTNAME_PARTS`* to 2 in the .env file and make sure to update your origin certificates using the [configure-rf](about/scripts.md#configure-rfsh) script so the certificate file names are properly updated for the 2-part domain. 
 
 ### Viewer page Now playing/Up next not updating as expected
 
@@ -127,7 +127,7 @@ If you see errors such as the below at the end of the gap timeframe(7:29 PM) the
     Oct 26 19:29:52 FPP fppd_boot_post[2128]: PHP Warning:  file_get_contents(https://yourdomain.com/remote-falcon-plugins-api/nextPlaylistInQueue?updateQueue=true): failed to open stream: operation failed in /home/fpp/media/plugins/remote-falcon/remote_falcon_listener.php on line 376
     ```
 
-To resolve, we can publish the plugins-api port and configure the FPP plugin to connect locally to plugins-api to avoid FPP from having to go out to the internet to reach the plugins-api by following the steps [here](../main/post-install.md#__tabbed_1_2).
+To resolve, we can publish the plugins-api port and configure the FPP plugin to connect locally to plugins-api to avoid FPP from having to go out to the internet to reach the plugins-api by following the steps [here](post-install.md#__tabbed_1_2).
 
 ## Troubleshooting Commands
 

@@ -17,6 +17,7 @@ theme:
     - navigation.path
     - navigation.tracking
     - navigation.indexes
+#    - navigation.sections
 #    - navigation.instant.preview
 #    - navigation.tabs
 #    - navigation.footer
@@ -27,7 +28,7 @@ theme:
     - content.code.copy
     - header.autohide
     - announce.dismiss
-
+    - toc.integrate
 
   palette: 
   # Dark Mode
@@ -46,28 +47,22 @@ theme:
       accent: deep orange  
 
 nav:
-  - 'About':
+  - 'About': 
     - 'About': index.md
-    - 'Release Notes': release-notes.md
-    - 'Architecture': 
-      - 'Architecture': architecture/index.md
-      - 'Files': architecture/files.md
-      - 'Containers': architecture/containers.md
-  - 'Getting Started': 
-    - 'Getting Started': main/index.md
-    - 'Prerequisites': main/prerequisites.md
-    - 'Installation': 
-      - 'Installation': main/install/index.md
-      - 'Cloudflare': main/install/cloudflare.md
-      - 'GitHub': main/install/github.md
-      - 'Remote Falcon': main/install/remotefalcon.md
-    - 'Post-Install': main/post-install.md
-    - 'Updating': main/updating.md
-  - 'Scripts':
-    - 'Scripts': scripts/index.md
-  - 'Extra':
-    - 'Extra': extra/index.md
-  - 'Troubleshooting': troubleshooting/index.md
+    - 'Containers': about/containers.md
+    - 'Scripts': about/scripts.md
+    - 'Files': about/files.md
+  - 'Release Notes': release-notes.md
+  - 'Installation': 
+    - 'Installation': install/index.md
+    - 'Prerequisites': install/prerequisites.md
+    - 'Cloudflare': install/cloudflare.md
+    - 'GitHub': install/github.md
+    - 'Remote Falcon': install/remotefalcon.md
+  - 'Post-Install': post-install.md
+  - 'Updates': updates.md
+  - 'Extra': extra.md
+  - 'Troubleshooting': troubleshooting.md
 
 
 markdown_extensions:

@@ -208,7 +208,7 @@ Enable this if you would like visitors to be able to directly visit your show pa
 
 ## Remote Falcon Image hosting
 
-If [minio-init](../scripts/index.md#__tabbed_1_7){ data-preview } script ran successfully and configured MinIO then you are able to make use of the Image Hosting page in the Control Panel.
+If [minio_init](about/scripts.md#minio_initsh) script ran successfully and configured MinIO then you are able to make use of the Image Hosting page in the Control Panel.
 
 If it is not configured succesfully, you will be greeted with a blank white page after attempting to upload an image.
 

@@ -1,4 +1,4 @@
-This page covers the Cloudflare domain name, certificate, tunnel, and DNS configuration.
+This page covers the Cloudflare [domain name](cloudflare.md#add-domain-name-to-cloudflare), [certificate](cloudflare.md#certificate), [tunnel](cloudflare.md#cloudflare-tunnel), and [DNS](cloudflare.md#dns) configuration.
 
 !!! note
 
@@ -204,4 +204,4 @@ Scroll down and you should see the Cloudflare Nameservers.
 
 Ensure that you are using these name servers with your domain name registrar/provider.
 
-Next is Remote Falcon [installation](../install/remotefalcon.md).
+Next is GitHub [configuration](github.md) if you want to build Remote Falcon images through GitHub or you can skip to the Remote Falcon [installation](remotefalcon.md) if you want to build images locally.

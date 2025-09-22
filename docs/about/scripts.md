@@ -1,44 +1,12 @@
-## Script Updates
+Click the name of the script to expand the section to display details about the script.
 
-Currently there is no auto-update for the configure-rf or helper scripts so you may want to check for updates periodically.
+??? example "configure-rf.sh"
 
-1. The `configure-rf` script will print the existing versions on your system when it runs:
-```sh
-📜 Existing script versions:
-🔸 configure-rf.sh           2025.6.2.1
-🔸 health_check.sh           2025.5.26.1
-🔸 minio_init.sh             2025.5.31.1
-🔸 update_containers.sh      2025.5.31.1
-🔸 update_rf_containers.sh   2025.5.27.1
-```
-
-You can check the [release notes](../release-notes.md) to see if there any updates or view the `.sh` files directly on [GitHub](https://github.com/Ne0n09/cloudflared-remotefalcon) looking for any `# VERSION` comments towards the top of each script.
-
-2. Remove the scripts:
-```sh
-rm configure-rf.sh shared_functions.sh health_check.sh minio_init.sh update_containers.sh update_rf_containers.sh run_workflow.sh sync_repo_secrets.sh
-```
-
-3. The command below will re-download the configure-rf script and run it which will then re-download the helper scripts:
-```sh
-curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/configure-rf.sh; \
-chmod +x configure-rf.sh; \
-./configure-rf.sh
-```
-
-    !!! note
-
-        To check for updates to compose.yaml, .env, and default.conf check the instructions [here](../main/updating.md#updating-composeyaml-env-and-defaultconf)
-
-## Scripts Details
-
-Click through the tabs below to view detailed information for each script.
-
-=== "Configure RF"
+    #### configure-rf.sh
 
     - Used for the initial setup and configuration of [cloudflared-remotefalcon](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main).
 
-    - Guides through setting the required and some optional [.env](../architecture/files.md#env) variables.
+    - Guides through setting the required and some optional [.env](files.md#env) variables.
 
     - Can be re-run to view or update the variables or to run the container update or health check scripts.
 
@@ -46,7 +14,7 @@ Click through the tabs below to view detailed information for each script.
 
     - Automatically creates the `remotefalcon` and `remotefalcon-backups` directories.
 
-    - Automatically downloads the [compose.yaml](../architecture/files.md#composeyaml), [.env](../architecture/files.md#.env), and [default.conf](../architecture/files.md#defaultconf) files if they are missing.
+    - Automatically downloads the [compose.yaml](files.md#composeyaml), [.env](files.md#.env), and [default.conf](files.md#defaultconf) files if they are missing.
 
     ```sh title="Run configure-rf.sh"
     ./configure-rf.sh
@@ -54,13 +22,15 @@ Click through the tabs below to view detailed information for each script.
 
     ![Configure-rf demo](../images/configure-rf-clean-install.gif)
 
-=== "Update Containers"
+??? example "update_containers.sh"
+
+    #### update_containers.sh
 
     - Checks for updates and updates non-RF containers to their latest available release.
 
     - Checks for updates and updates Remote Falcon containers to the latest available commit on the [Remote Falcon Github](https://github.com/Remote-Falcon).
 
-    - The [compose.yaml](../architecture/files.md#composeyaml) build context hash is updated to the latest commit for the Remote Falcon containers.
+    - The [compose.yaml](files.md#composeyaml) build context hash is updated to the latest commit for the Remote Falcon containers.
     
     - The compose.yaml container image tag is updated to the latest release.
 
@@ -103,7 +73,9 @@ Click through the tabs below to view detailed information for each script.
     ```
     ![Update containers demo](../images/update_containers_9_7_25.gif)
 
-=== "Health Check"
+??? example "health_check.sh"
+
+    #### health_check.sh
 
     - Performs a 'health check' of various things and displays any issues that are found.
 
@@ -113,7 +85,7 @@ Click through the tabs below to view detailed information for each script.
 
     - Checks if the domain is not the default.
 
-    - Checks if the [].env](../../architecture/files/#env) file exists.
+    - Checks if the [.env](files/#env) file exists.
 
     - Checks if the Cloudflare Origin certificate and key exist and if they match.
 
@@ -123,7 +95,7 @@ Click through the tabs below to view detailed information for each script.
 
     - Checks Mongo to search for any shows that are configured and provides their URL.
 
-    - Checks if [SWAP_CP](../main/post-install.md#swap-viewer-page-subomdain) is enabled and displays the Control Panel URL.
+    - Checks if [SWAP_CP](../post-install.md#swap-viewer-page-subomdain) is enabled and displays the Control Panel URL.
 
     - Checks for any known issues by checking container logs directly.
 
@@ -133,9 +105,11 @@ Click through the tabs below to view detailed information for each script.
 
     ![Health check demo](../images/health_check_9_7_25.gif)
 
-=== "Sync Repo Secrets"
+??? example "sync_repo_secrets.sh"
 
-    - If [REPO](../../architecture/files/#env) and [GITHUB_PAT](../../architecture/files/#env) are configured in the .env file this script will sync the build arguments required to build images with GitHub Actions.
+    #### sync_repo_secrets.sh
+
+    - If [REPO](files/#env) and [GITHUB_PAT](files/#env) are configured in the .env file this script will sync the build arguments required to build images with GitHub Actions.
 
     ```sh title="Run sync_repo_secrets.sh" 
     ./sync_repo_secrets.sh
@@ -143,9 +117,11 @@ Click through the tabs below to view detailed information for each script.
 
     ![Sync repo secrets demo](../images/sync_repo_secrets_9_7_25.gif)
 
-=== "Run Workflow"
+??? example "run_workflow.sh"
 
-    - If [REPO](../../architecture/files/#env) and [GITHUB_PAT](../../architecture/files/#env) are configured in the .env file this script will run a GitHub Actions workflow to build new Remote Falcon Images.
+    #### run_workflow.sh
+
+    - If [REPO](files/#env) and [GITHUB_PAT](files/#env) are configured in the .env file this script will run a GitHub Actions workflow to build new Remote Falcon Images.
     
     - It will call the sync_repo_secrets script to ensure build arguments are synced prior to building new images.
 
@@ -161,7 +137,9 @@ Click through the tabs below to view detailed information for each script.
 
     ![Run Workflow demo](../images/run_workflow_9_7_25.gif)
 
-=== "Generate JWT"
+??? example "generate_jwt.sh"
+
+    #### generate_jwt.sh
 
     - This is to be able to make use of the External API.
 
@@ -180,7 +158,9 @@ Click through the tabs below to view detailed information for each script.
 
     ![Generate_JWT demo](../images/generate_jwt.gif)
 
-=== "Make Admin"
+??? example "make_admin.sh"
+
+    #### make_admin.sh
 
     - This script will display shows that have admin access and allow you to toggle admin access when the show subdomain is passed as an argument.
 
@@ -199,7 +179,9 @@ Click through the tabs below to view detailed information for each script.
 
     ![Make_admin demo](../images/make_admin.gif)
 
-=== "Revert"
+??? example "revert.sh"
+
+    #### revert.sh
 
     - This script will allow you to revert to a previous backup of the .env, compose.yaml, or MongoDB.
 
@@ -216,7 +198,9 @@ Click through the tabs below to view detailed information for each script.
 
     ![Make_admin demo](../images/revert.gif)
 
-=== "MinIO Init"
+??? example "minio_init.sh"
+
+    #### minio_init.sh
 
     - This script will configure MinIO. Minio is a lightweight object storage server.
 
@@ -232,6 +216,8 @@ Click through the tabs below to view detailed information for each script.
 
     ![Minio_init demo](../images/minio_init-clean-install.gif)
 
-=== "Shared Functions"
+??? example "shared_functions.sh"
+
+    #### shared_functions.sh
 
     - This is a helper script for functions and variables that are re-used across the other scripts. 

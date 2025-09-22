@@ -12,7 +12,7 @@ Follow the steps below to get access to the external API for your self hosted Re
 
         Ignore the Unexpected Error or API Access Already Requested if you do not have email configured. The API token and secret will still be generated. 
 
-4.  Copy the command below and paste it to download and run the [generate_jwt](../scripts/index.md#__tabbed_1_6) script:
+4.  Copy the command below and paste it to download and run the [generate_jwt](about/scripts.md#generate_jwtsh) script:
 
     ```sh
     curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/generate_jwt.sh; \
@@ -60,7 +60,7 @@ References:
 
 - It will let you search for show subdomains and let you basically view/edit the MongoDB record.
 
-- The [make_admin](../scripts/index.md#__tabbed_1_7) script will display any shows found and whether they are configured as a USER or ADMIN.
+- The [make_admin](about/scripts.md#make_adminsh) script will display any shows found and whether they are configured as a USER or ADMIN.
 
 - Copy the command below and paste it to download and run the make_admin script:   
 

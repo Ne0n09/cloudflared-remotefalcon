@@ -1,6 +1,6 @@
 Below you will find a summary of each file that is in the `remotefalcon` directory.
 
-The [configure-rf](../scripts/index.md#__tabbed_1_1){ data-preview } script will download these automatically if they do not exist.
+The [configure-rf](scripts.md#configure-rfsh) script will download these automatically if they do not exist.
 
 ## compose.yaml
 
@@ -42,7 +42,7 @@ The exceptions are plugins-api(8083:8083) and MinIO(9000:9000,9001:9001) which a
 
 The [.env](https://github.com/Ne0n09/cloudflared-remotefalcon/blob/main/remotefalcon/.env) file specifies all the variables that are used in the compose.yaml.
 
-Some of these are updated by the [configure-rf](../scripts/index.md#__tabbed_1_1){ data-preview } script.
+Some of these are updated by the [configure-rf](scripts.md#configure-rfsh) script.
 
 The .env file can be edited manually with `nano remotefalcon/.env`.
 
@@ -82,11 +82,11 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `NGINX_CERT`
 
-    :   The configure-rf script guides on setting this. Specifies the path to the [SSL certifcate](../../main/install/cloudflare/#__tabbed_1_4) used by NGINX.
+    :   The configure-rf script guides on setting this. Specifies the path to the [SSL certifcate](../install/cloudflare/#__tabbed_1_4) used by NGINX.
 
     `NGINX_KEY`
 
-    :   The configure-rf script guides on setting this. Specifies the path to the [SSL private key](../../main/install/cloudflare/#__tabbed_1_4) used by NGINX.
+    :   The configure-rf script guides on setting this. Specifies the path to the [SSL private key](../install/cloudflare/#__tabbed_1_4) used by NGINX.
 
     `HOST_ENV`
 
@@ -158,11 +158,11 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `MINIO_ROOT_USER`
 
-    :   Specifies the root user for MinIO. The [minio-init](../scripts/index.md/#__tabbed_1_7) script will automatically update the default value to a random value.
+    :   Specifies the root user for MinIO. The [minio_init](scripts.md#minio_initsh) script will automatically update the default value to a random value.
 
     `MINIO_ROOT_PASSWORD`
 
-    :   Specifies the root password for MinIO. The [minio-init](../scripts/index.md/#__tabbed_1_7) script will automatically update the default value to a random value.
+    :   Specifies the root password for MinIO. The [minio_init](scripts.md#minio_initsh) script will automatically update the default value to a random value.
 
     `S3_ENDPOINT`
 
@@ -170,11 +170,11 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `S3_ACCESS_KEY`
 
-    :   Specifies the S3 access key for MinIO 'remote-falcon-images' bucket. The [minio-init](../scripts/index.md/#__tabbed_1_7) script will automatically update the default value to a random value.
+    :   Specifies the S3 access key for MinIO 'remote-falcon-images' bucket. The [minio_-_init](scripts.md#minio_initsh) script will automatically update the default value to a random value.
 
     `S3_SECRET_KEY`
 
-    :   Specifies the S3 seceret key for MinIO 'remote-falcon-images' bucket. The [minio-init](../scripts/index.md/#__tabbed_1_7) script will automatically update the default value to a random value.
+    :   Specifies the S3 seceret key for MinIO 'remote-falcon-images' bucket. The [minio_init](scripts.md#minio_initsh) script will automatically update the default value to a random value.
 
     `OTEL_URI`
 
@@ -194,4 +194,4 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
 ## default.conf
 
-The [default.conf](https://github.com/Ne0n09/cloudflared-remotefalcon/blob/main/remotefalcon/default.conf) is used for [NGINX](containers.md#nginx){ data-preview } and defines its configuration.
+The [default.conf](https://github.com/Ne0n09/cloudflared-remotefalcon/blob/main/remotefalcon/default.conf) is used for [NGINX](containers.md#nginx) and defines its configuration.
