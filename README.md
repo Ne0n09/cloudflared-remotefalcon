@@ -1,6 +1,6 @@
 # cloudflared-remotefalcon
 
-[cloudflared-remotefalcon](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main) helps you self host [Remote Falcon](https://remotefalcon.com/) through guided setup and configuration using [Cloudflare Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) and your own server capable of running [Docker](https://www.docker.com/) through the use of various helper [scripts](https://ne0n09.github.io/cloudflared-remotefalcon/scripts/).
+[cloudflared-remotefalcon](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main) helps you self host [Remote Falcon](https://remotefalcon.com/) through guided setup and configuration using [Cloudflare Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) and your own server capable of running [Docker](https://www.docker.com/) through the use of various helper [scripts](https://ne0n09.github.io/cloudflared-remotefalcon/about/scripts/).
 
 For full details check the [cloudflared-remotefalcon documentation](https://ne0n09.github.io/cloudflared-remotefalcon/)!
 
@@ -8,11 +8,11 @@ To learn more about [Remote Falcon](https://remotefalcon.com/) check out the doc
 
 Installation is a three-step process, although step 2 is optional:
 
-1. [Cloudflare](https://ne0n09.github.io/cloudflared-remotefalcon/main/install/cloudflare/)
+1. [Cloudflare](https://ne0n09.github.io/cloudflared-remotefalcon/install/cloudflare/)
 
-2. [GitHub](https://ne0n09.github.io/cloudflared-remotefalcon/main/install/github/)
+2. [GitHub](https://ne0n09.github.io/cloudflared-remotefalcon/install/github/)
 
-3. [Remote Falcon](https://ne0n09.github.io/cloudflared-remotefalcon/main/install/remotefalcon/#download-and-run-configure-rf-script)
+3. [Remote Falcon](https://ne0n09.github.io/cloudflared-remotefalcon/install/remotefalcon/)
 
 You may refer to the [release notes](https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/) for any updates to the scripts and files.
 
