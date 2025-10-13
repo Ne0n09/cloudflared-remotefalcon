@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.8.1
+# VERSION=2025.10.13.1
 
 # This script will sync your build ARG secrets from the .env to the REPO defined in the .env file.
 # These secrets are used during the build workflows.
@@ -48,6 +48,7 @@ SYNC_KEYS=(
   "OTEL_OPTS"
   "OTEL_URI"
   "MONGO_URI"
+  "CLARITY_PROJECT_ID"
 )
 
 # Ensures the latest values from .env are synced to the GitHub repo secrets before triggering the workflow

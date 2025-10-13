@@ -93,3 +93,9 @@ curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/c
 chmod +x configure-rf.sh; \
 ./configure-rf.sh
 ```
+
+## Updating build-all.yml and build-container.yml
+
+Manually updating both of the .yml files is required for any changes that occur on the remote-falcon-image-builder template repo.
+
+Check the [workflows](https://github.com/Ne0n09/remote-falcon-image-builder/tree/main/.github/workflows) for any new updates and copy and paste them to your repo to apply any changes.

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.8.1
+# VERSION=2025.10.13.1
 
 # This script will run the GitHub Actions workflow in the REPO configured in the .env to build: plugins-api, control-panel, viewer, ui, and external-api.
 # It will call either the build-container.yml or build-all.yml workflow depending on the arguments passed.
@@ -29,26 +29,6 @@ DEFAULT_REF="main"                            # Default branch if none specified
 CONTAINERS=("plugins-api" "control-panel" "viewer" "ui" "external-api")
 POLL_INTERVAL=10  # Seconds between status checks on GitHub Actions run
 
-# ARGs/Keys to sync from .env before running the workflow.
-SYNC_KEYS=(
-  "HOST_ENV"
-  "VERSION"
-  "CONTROL_PANEL_API"
-  "VIEWER_API"
-  "VIEWER_JWT_KEY"
-  "GOOGLE_MAPS_KEY"
-  "PUBLIC_POSTHOG_KEY"
-  "PUBLIC_POSTHOG_HOST"
-  "GA_TRACKING_ID"
-  "MIXPANEL_KEY"
-  "HOSTNAME_PARTS"
-  "SOCIAL_META"
-  "SWAP_CP"
-  "VIEWER_PAGE_SUBDOMAIN"
-  "OTEL_OPTS"
-  "OTEL_URI"
-  "MONGO_URI"
-)
 
 # Validate GitHub CLI and GHCR docker login are successful in order to build and pull images, these are in shared_functions.sh
 validate_github_user "$GITHUB_PAT" || exit 1

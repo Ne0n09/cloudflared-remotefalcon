@@ -1,5 +1,19 @@
 # Release Notes
 
+## 2025.10.13.1
+
+- Added configuration question for Microsoft Clarity to configure-rf.sh.
+
+- Updated .env to add CLARITY_PROJECT_ID.
+
+- Updated compose.yaml to add CLARITY_PROJECT_ID.
+
+- Updated sync_repo_secrets.sh to add CLARITY_PROJECT_ID.
+
+- Added CLARITY_PROJECT_ID to build-all.yml and build-container.yml in the remote-falcon-image-builder template repo.
+
+- Removed MONGO_URI as build arg for plugins-api and viewer and set it as env var.
+
 ## 2025.09.8.1
 
 - **GitHub Actions integration!** This will allow you to easily configure a GitHub repo to build images via GitHub Actions workflows. 

@@ -102,7 +102,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `PUBLIC_POSTHOG_KEY`
 
-    :   This is used for analytics. You can create a free account at Create this at [PostHog](https://posthog.com/)
+    :   This is used for analytics. You can create a free account at [PostHog](https://posthog.com/)
 
     `PUBLIC_POSTHOG_HOST`
 
@@ -191,6 +191,10 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
     `VIEWER_PAGE_SUBDOMAIN`
 
     :   The configure-rf script guides on setting this. This is used with `SWAP_CP` to swap the Control Panel with the subdomain that is defined here.
+
+    `CLARITY_PROJECT_ID `
+
+    :   This is used for analytics. You can create a free account at [Microsoft Clarity](https://clarity.microsoft.com/).
 
 ## default.conf
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.8.1
+# VERSION=2025.10.13.1
 
 #set -euo pipefail
 
@@ -117,6 +117,7 @@ update_env() {
     ["OTEL_OPTS"]="$otelopts"
     ["OTEL_URI"]="$oteluri"
     ["MONGO_URI"]="$mongouri"
+    ["CLARITY_PROJECT_ID"]="$clarity_project_id"
   )
 
   for key in "${!new_env_vars[@]}"; do
@@ -621,7 +622,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       read -p "📊 Enter your PostHog key - https://posthog.com/: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
       read -p "📊 Enter your Google Analytics Measurement ID - https://analytics.google.com/: [$GA_TRACKING_ID]: " gatrackingid
       read -p "📊 Enter your Mixpanel key - https://mixpanel.com/: [$MIXPANEL_KEY]: " mixpanelkey
-
+      read -p "📊 Enter your Microsoft Clarity code - https://clarity.microsoft.com/: [$CLARITY_PROJECT_ID]: " clarity_project_id
     fi
 
     # Ask if SOCIAL_META variable should be updated
@@ -684,6 +685,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
   gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
   mixpanelkey=${mixpanelkey:-$MIXPANEL_KEY}
+  clarity_project_id=${clarity_project_id:-$CLARITY_PROJECT_ID}
   socialmeta=${socialmeta:-$SOCIAL_META}
   sequencelimit=${sequencelimit:-$SEQUENCE_LIMIT}
   viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
