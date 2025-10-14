@@ -98,6 +98,7 @@ update_env() {
     ["SEQUENCE_LIMIT"]="$sequencelimit"
     ["SWAP_CP"]="$swapCP"
     ["VIEWER_PAGE_SUBDOMAIN"]="$viewerPageSubdomain"
+    ["CLARITY_PROJECT_ID"]="$clarity_project_id"
   )
 
   # If any of these are changed, an image rebuild will be required.
