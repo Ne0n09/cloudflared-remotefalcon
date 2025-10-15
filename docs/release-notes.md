@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2025.10.14.1
+
+- Moved MONGO_URI back as a build arg for plugins-api and viewer.
+
 ## 2025.10.13.1
 
 - Added configuration question for Microsoft Clarity to configure-rf.sh.

@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2025.10.13.1
+# COMPOSE_VERSION=2025.10.14.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -56,6 +56,7 @@ services:
       args:
         - OTEL_OPTS=${OTEL_OPTS}
         - OTEL_URI=${OTEL_URI}
+        - MONGO_URI=${MONGO_URI}
     image: ghcr.io/${REPO}/plugins-api:latest
     container_name: plugins-api
     restart: always
@@ -64,7 +65,6 @@ services:
     environment:
       - quarkus.http.port=8083
       - sequence-limit=${SEQUENCE_LIMIT}
-      - MONGO_URI=${MONGO_URI}
     depends_on:
       - mongo
   control-panel:
@@ -97,13 +97,13 @@ services:
       args:
         - OTEL_OPTS=${OTEL_OPTS}
         - OTEL_URI=${OTEL_URI}
+        - MONGO_URI=${MONGO_URI}
     image: ghcr.io/${REPO}/viewer:latest
     container_name: viewer
     restart: always
     environment:
       - quarkus.http.port=8082
       - client.header=${CLIENT_HEADER}
-      - MONGO_URI=${MONGO_URI}
     depends_on:
       - mongo
   ui:
