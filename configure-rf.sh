@@ -113,7 +113,7 @@ update_scripts() {
   fi
 
   echo -e "${BLUE}🔗 Release notes: https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/${NC}"
-  read -rp $'Would you like to update all outdated scripts now? (y/n): [n]' ans
+  read -rp $'Would you like to update all outdated scripts now? (y/n) [n]: ' ans
   [[ ! "$ans" =~ ^[Yy]$ ]] && echo -e "${YELLOW}Skipped script updates.${NC}" && return
 
   echo -e "⬇️ Updating outdated scripts..."
@@ -131,8 +131,8 @@ update_scripts() {
 
   # Restart if configure-rf.sh updated
   if printf '%s\n' "${outdated_scripts[@]}" | grep -q "^configure-rf.sh$"; then
-    echo -e "${YELLOW}Restarting script to load new version...${NC}"
-    exec "$0" "$@"
+    echo -e "${BLUE}🔁 Restarting script to load new version...${NC}"
+    exec "$SCRIPT_DIR/configure-rf.sh" "$@"
   fi
 }
 
