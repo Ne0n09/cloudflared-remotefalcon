@@ -68,6 +68,12 @@ timestamp=$(date +'%Y-%m-%d_%H-%M-%S'); for f in remotefalcon/{compose.yaml,.env
 
 ## Script Updates
 
+### 10.19.2025.1 configure-rf auto-update
+
+This version will display any outdated versions and prompt to download the updates.
+
+### Previous versions of configure-rf manual update
+
 Currently there is no auto-update for the configure-rf or helper scripts so you may want to check for updates periodically.
 
 1. The `configure-rf` script will print the existing versions on your system when it runs:

@@ -113,16 +113,16 @@ update_scripts() {
   fi
 
   echo -e "${BLUE}🔗 Release notes: https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/${NC}"
-  read -rp $'\nWould you like to update all outdated scripts now? (y/n): ' ans
+  read -rp $'\nWould you like to update all outdated scripts now? (y/n): [n]' ans
   [[ ! "$ans" =~ ^[Yy]$ ]] && echo -e "${YELLOW}Skipped script updates.${NC}" && return
 
-  echo -e "\n⬇️  Updating outdated scripts...\n"
+  echo -e "⬇️ Updating outdated scripts..."
 
   for file in "${outdated_scripts[@]}"; do
     local_file="$WORKING_DIR/$file"
     echo -e "→ Updating $file..."
     backup_file "$local_file"
-    curl -fsSL "$BASE_URL/remotefalcon/$file" -o "$local_file"
+    curl -fsSL "$BASE_URL/$file" -o "$local_file"
     chmod +x "$local_file"
 
     new_ver=$(grep -Eo "^# ${FILES[$file]}[0-9.]+" "$local_file" | head -n1 | sed -E "s/^# ${FILES[$file]}//" | tr -d '\r')
