@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.10.13.1
+# VERSION=2025.10.19.1
 
 #set -euo pipefail
 
@@ -60,6 +60,77 @@ download_file $MINIO_INIT_URL "minio_init.sh"
 download_file $RUN_WORKFLOW_URL "run_workflow.sh"
 download_file $SYNC_REPO_SECRETS_URL "sync_repo_secrets.sh"
 chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "minio_init.sh" "run_workflow.sh" "sync_repo_secrets.sh"
+
+## Check for script updates
+BASE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main"
+
+# Mapping of files to their version tag patterns
+declare -A FILES=(
+  [configure-rf.sh]="VERSION="
+  [update_containers.sh]="VERSION="
+  [health_check.sh]="VERSION="
+  [sync_repo_secrets.sh]="VERSION="
+  [minio_init.sh]="VERSION="
+  [run_workflow.sh]="VERSION="
+  [compose.yaml]="COMPOSE_VERSION="
+  [.env]="ENV_VERSION="
+  [default.conf]="VERSION="
+)
+
+# Function to display and check for updates to the helper scripts with a prompt to upddate all that are out of date
+update_scripts() {
+  echo -e "${CYAN}📜 Checking for script updates...${NC}"
+  local outdated_scripts=()
+
+  printf "%-25s %-15s %-15s %-7s\n" "File" "Local Version" "Remote Version" "Status"
+  printf "%-25s %-15s %-15s %-7s\n" "─────────────────────────" "───────────────" "───────────────" "───────"
+
+  for file in configure-rf.sh update_containers.sh health_check.sh sync_repo_secrets.sh minio_init.sh run_workflow.sh; do
+    pattern="${FILES[$file]}"
+    local_file="$SCRIPT_DIR/$file"
+    local_ver="N/A"
+    if [[ -f "$local_file" ]]; then
+      local_ver=$(grep -Eo "^# ${pattern}[0-9.]+" "$local_file" | head -n1 | sed -E "s/^# ${pattern}//" | tr -d '\r')
+    fi
+
+    remote_ver=$(curl -fsSL "$BASE_URL/$file" 2>/dev/null | grep -Eo "^# ${pattern}[0-9.]+" | head -n1 | sed -E "s/^# ${pattern}//" | tr -d '\r')
+
+    if [[ -z "$remote_ver" ]]; then
+      status="⚠️  Skipped"
+    elif [[ "$local_ver" == "$remote_ver" ]]; then
+      status="✅ OK"
+    else
+      status="🔄 Update"
+      outdated_scripts+=("$file")
+    fi
+
+    printf "🔹 %-23s %-15s %-15s %-7s\n" "$file" "$local_ver" "$remote_ver" "$status"
+  done
+
+  if [[ ${#outdated_scripts[@]} -eq 0 ]]; then
+    echo -e "\n${GREEN}All scripts are up to date!${NC}"
+    return
+  fi
+
+  echo -e "${BLUE}🔗 Release notes: https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/${NC}"
+  read -rp $'\nWould you like to update all outdated scripts now? (y/n): ' ans
+  [[ ! "$ans" =~ ^[Yy]$ ]] && echo -e "${YELLOW}Skipped script updates.${NC}" && return
+
+  echo -e "\n⬇️  Updating outdated scripts...\n"
+
+  for file in "${outdated_scripts[@]}"; do
+    local_file="$WORKING_DIR/$file"
+    echo -e "→ Updating $file..."
+    backup_file "$local_file"
+    curl -fsSL "$BASE_URL/remotefalcon/$file" -o "$local_file"
+    chmod +x "$local_file"
+
+    new_ver=$(grep -Eo "^# ${FILES[$file]}[0-9.]+" "$local_file" | head -n1 | sed -E "s/^# ${FILES[$file]}//" | tr -d '\r')
+    echo -e "${GREEN}✅ $file updated to version ${YELLOW}$new_ver${NC}\n"
+  done
+}
+
+update_scripts
 
 # Function to get user input for configuration questions
 get_input() {
@@ -412,7 +483,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # Get the downloaded script versions and display them
-list_script_versions
+#list_script_versions
 
 # Ensure the 'remotefalcon' directory exists
 if [ ! -d "$WORKING_DIR" ]; then
@@ -435,7 +506,7 @@ download_file $NGINX_DEFAULT_URL "default.conf"
 # Print existing .env file, if it exists, otherwise download the default .env file
 if [ -f .env ]; then
   echo "✔  Found existing .env at $ENV_FILE."
-  list_file_versions
+#  list_file_versions
   echo "🔍 Parsing current .env variables:"
 else
   download_file $DEFAULT_ENV_URL ".env"

@@ -8,7 +8,7 @@ You will need your own domain name and server capable of running Docker and Mong
 
 - 2 CPUs/cores, minimum.
 
-- 4 GB RAM, minimum if you configure [GitHub](../main/install/github.md) to remotely build Remote Falcon images.
+- 4 GB RAM, minimum if you configure [GitHub](github.md) to remotely build Remote Falcon images.
 
     !!! warning
         16 GB or more RAM is required to locally build the Remote Falcon [viewer](http://127.0.0.1:8000/cloudflared-remotefalcon/docs/architecture/containers/#viewer) or [plugins-api](http://127.0.0.1:8000/cloudflared-remotefalcon/docs/architecture/containers/#plugins-api) images.

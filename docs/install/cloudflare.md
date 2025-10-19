@@ -4,7 +4,75 @@ This page covers the Cloudflare [domain name](cloudflare.md#add-domain-name-to-c
 
     The tunnel configuration requires a Cloudflare Zero Trust account, which is free, but will require you to enter a payment method(Credit card or PayPal).
 
-## Add Domain Name to Cloudflare
+## Automatic Configuration
+
+With a Cloudflare API key the steps below can be automated utilizing the [setup_cloudflare.sh] script.
+
+If issues are encountered with the script you can still follow the sections below to verify settings manually.
+
+### Create Cloudflare API Token
+
+1. Go to [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+
+2. Click Create Token
+
+3. Click Create Custom Token
+
+4. Name the token 'Remote Falcon Setup'
+
+5. Configure the token with the below settings:
+
+    | Account/Zone | Resource | Permissions |
+    | ------------ | -------- | ----------- |
+    | Account | Cloudflare Tunnel | Edit (to create and configure tunnels) |
+    | Account | Account Settings | Read (to retrieve Account ID) |
+    | Zone | Zone | Edit (to add domains to Cloudflare) |
+    | Zone | DNS | Edit (to create DNS records) |
+    | Zone | SSL and Certificates | Edit (to configure SSL settings and create origin certificates) |
+
+    | Account Resources |        |
+    | ------- | -------------- |
+    | Include | All accounts (or select a specific account if you prefer) |
+    | Zone Resources |        |
+    | Include | All zones (recommended) OR All zones from an account |
+
+6. Click Continue to summary
+
+7. Click Create Token
+
+    !!! warning 
+
+        Copy the token immediately and save it to a notepad - you won't see it again!
+
+![Cloudflare API key](../images/cloudflare_api_key.PNG)
+
+### Download and run setup_cloudflare script
+
+- This script is intended for new installations, but can be re-run to ensure settings are correct, create new certificates, and to delete and re-create the tunnel and tunnel settings.
+
+- The script will ask you for your Cloudflare API token.
+
+- The Cloudflare API token is not stored.
+
+1. Download the script to your desired directory. Your current directory can be verified with `#!sh pwd` command.
+
+    !!! note
+
+        The script must be outside of the 'remotefalcon' directory if it already exists.
+
+2. Run the command below. The command will download the [setup_cloudflare](../about/scripts.md#setup_cloudflaresh) script, make it executable, and run it automatically.
+   
+      ```sh
+      curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/setup_cloudflare.sh; \
+      chmod +x setup_cloudflare.sh; \
+      ./setup_cloudflare.sh
+      ```
+
+## Manual Configuration
+
+If the [setup_cloudflare](../about/scripts.md#setup_cloudflaresh) fails or if you prefer to configure things manually you can follow the steps below to get Cloudflare configured.
+
+### Add Domain Name to Cloudflare
 
 If not already added, you'll have to add your domain name to Cloudflare
 
@@ -28,7 +96,7 @@ You will have to wait some time for the new nameservers to take effect.
 
 Cloudflare will send you an email when your domain is available. You can continue with the additional setup so it will be ready to go when your domain is available.
 
-## Certificate
+### Certificate
 
 1. Click SSL/TLS on the left side of the Cloudflare Dashboard
 
@@ -69,7 +137,7 @@ Cloudflare will send you an email when your domain is available. You can continu
         The free Cloudflare plan does not let you create wildcard certificates for sub-sub-domains 
         (ex: *.sub.yourdomain.com) unless you purchase Advanced Certificate Manager.
 
-## Cloudflare Tunnel
+### Cloudflare Tunnel
 
 Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if not there already.
 
@@ -87,7 +155,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 !!! note
     Ensure you have copied the whole token. We will need it later in the configuration script.
 
-### Configure both public hostnames
+#### Configure both public hostnames
 
 ???+ info "Public Hostnames"
 
@@ -153,7 +221,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
         ![tunnel_public_hostname_page_settings_wildcard](https://github.com/user-attachments/assets/1698a66f-6c13-4b62-9c82-ae4fbcf697e0)
 
-### **Catch-all rule**
+#### **Catch-all rule**
 
 1. Click *Edit* to the right of the catch-all rule.
 
@@ -161,7 +229,7 @@ Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/) page if
 
 ![tunnel_public_hostname_config](https://github.com/user-attachments/assets/b3f1ed8f-b75b-490f-abb6-1b5ec3cf3e7d)
 
-## DNS
+### DNS
 
 With the Cloudflare tunnel configuration completed. Go back to the main [Cloudflare Dashboard](https://dash.cloudflare.com/).
 

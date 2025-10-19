@@ -1,5 +1,17 @@
 # Release Notes
 
+## 2025.10.19.1
+
+- Added [setup_cloudflare.sh](/docs/install/cloudflare.md#automatic-configuration) to assist with automatic initial Cloudflare domain, certificate, SSL/TLS, tunnel, and DNS settings.
+
+- Updated health_check.sh to include check for plugins-api and viewer not connecting to mongo.
+
+- Updated health_check.sh to include 000 error code if DNS records are missing.
+
+- Updated health_check.sh NGINX health check so if on-disk cert/key is changed NGINX will be restarted if it is running.
+
+- Updated configure-rf.sh to display a prompt for script updates to assist in downloading new script updates.
+
 ## 2025.10.14.1
 
 - Moved MONGO_URI back as a build arg for plugins-api and viewer.
@@ -34,7 +46,7 @@
 
 - If a REPO is not configured it will also automatically remove it from the image path.
 
-- Updated FPP 9 plugin configuration [steps](main/post-install.md#fpp-9-and-above-update-the-fpp-plugin-settings).
+- Updated FPP 9 plugin configuration [steps](post-install.md#fpp-9-and-above-update-the-fpp-plugin-settings).
 
 - Additional health checks in the health_check script.
 
@@ -44,7 +56,7 @@
 
 - Updated configure-rf .env file version would not display if .env didn't already exist.
 
-- Added FPP 9 configuration steps [here](main/post-install.md#fpp-9-and-above-update-the-fpp-plugin-settings).
+- Added FPP 9 configuration steps [here](post-install.md#fpp-9-and-above-update-the-fpp-plugin-settings).
 
 - Updated update_rf_containers again to fix the current_ctx not being found properly.
 
@@ -160,9 +172,7 @@ control-panel:
 
 - Added S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY to .env and compose.yaml.
 
-- Updated NGINX default.conf viewer port from 8082 to 8080 due to change in [15ab9d4](https://github.com/Remote-Falcon/remote-falcon-viewer/commit/15ab9d45c546da0b2ad7193410ca33b3383ccc25).
-
-- Updated compose.yaml viewer section to change port to 8080 and added MONGO_URI and OTEL_URI build args.
+- Updated compose.yaml viewer section to add MONGO_URI and OTEL_URI build args.
 
 - Updated health_check script viewer endpoint to https://$DOMAIN/remote-falcon-viewer/q/health
 

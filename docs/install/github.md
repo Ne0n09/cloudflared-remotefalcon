@@ -12,7 +12,7 @@ Configure GitHub to remotely build Remote Falcon Images via GitHub Actions workf
 
 - This makes use of the [sync_repo_secrets](../about/scripts.md#sync_repo_secretssh) and [run_workflow](../about/scripts.md#run_workflowsh) scripts.
 
-- [sync_repo_secrets](../about/scripts.md#sync_repo_secretssh) syncs build arguments from the [.env](../about/files/#env) to your private repos as secrets that are used in the workflow to build the images.
+- [sync_repo_secrets](../about/scripts.md#sync_repo_secretssh) syncs build arguments from the [.env](../about/files.md#env) to your private repos as secrets that are used in the workflow to build the images.
 
 - [run_workflow](../about/scripts.md#run_workflowsh) syncs secrets to your repo and runs the [build-all](https://github.com/Ne0n09/remote-falcon-image-builder/blob/main/.github/workflows/build-all.yml) or [build-container](https://github.com/Ne0n09/remote-falcon-image-builder/blob/main/.github/workflows/build-container.yml) workflow.
 
@@ -58,4 +58,4 @@ Configure GitHub to remotely build Remote Falcon Images via GitHub Actions workf
 
 8. Run `configure-rf` and enter `Y` at the question to update GitHub configuration.
 
-![github_pat_settings.png](../../images/github_pat_settings.png)
+![github_pat_settings.png](../images/github_pat_settings.png)

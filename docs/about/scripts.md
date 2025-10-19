@@ -14,7 +14,7 @@ Click the name of the script to expand the section to display details about the 
 
     - Automatically creates the `remotefalcon` and `remotefalcon-backups` directories.
 
-    - Automatically downloads the [compose.yaml](files.md#composeyaml), [.env](files.md#.env), and [default.conf](files.md#defaultconf) files if they are missing.
+    - Automatically downloads the [compose.yaml](files.md#composeyaml), [.env](files.md#env), and [default.conf](files.md#defaultconf) files if they are missing.
 
     ```sh title="Run configure-rf.sh"
     ./configure-rf.sh
@@ -85,7 +85,7 @@ Click the name of the script to expand the section to display details about the 
 
     - Checks if the domain is not the default.
 
-    - Checks if the [.env](files/#env) file exists.
+    - Checks if the [.env](files.md#env) file exists.
 
     - Checks if the Cloudflare Origin certificate and key exist and if they match.
 
@@ -109,7 +109,7 @@ Click the name of the script to expand the section to display details about the 
 
     #### sync_repo_secrets.sh
 
-    - If [REPO](files/#env) and [GITHUB_PAT](files/#env) are configured in the .env file this script will sync the build arguments required to build images with GitHub Actions.
+    - If [REPO](files.md#env) and [GITHUB_PAT](files.md#env) are configured in the .env file this script will sync the build arguments required to build images with GitHub Actions.
 
     ```sh title="Run sync_repo_secrets.sh" 
     ./sync_repo_secrets.sh
@@ -121,7 +121,7 @@ Click the name of the script to expand the section to display details about the 
 
     #### run_workflow.sh
 
-    - If [REPO](files/#env) and [GITHUB_PAT](files/#env) are configured in the .env file this script will run a GitHub Actions workflow to build new Remote Falcon Images.
+    - If [REPO](files.md#env) and [GITHUB_PAT](files.md#env) are configured in the .env file this script will run a GitHub Actions workflow to build new Remote Falcon Images.
     
     - It will call the sync_repo_secrets script to ensure build arguments are synced prior to building new images.
 
@@ -221,3 +221,9 @@ Click the name of the script to expand the section to display details about the 
     #### shared_functions.sh
 
     - This is a helper script for functions and variables that are re-used across the other scripts. 
+
+??? example "setup_cloudflare.sh"
+
+    #### setup_cloudflare.sh
+
+    - This is a script to automatically set up Cloudflare domain, certificate, SSL/TLS, tunnel, and DNS settings.

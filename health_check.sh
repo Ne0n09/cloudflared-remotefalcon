@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.8.1
+# VERSION=2025.10.19.1
 
 #set -euo pipefail
 #set -x
@@ -34,6 +34,7 @@ CONTAINER_PATTERNS["cloudflared"]='
 Error response from daemon: No such container|Container is not running
 certificate is valid for|Verify Origin certificate and Tunnel Public Hostname configuration includes *.yourdomain.com.
 Provided Tunnel token is not valid.|Verify that your Cloudflare tunnel token is correct.
+Register tunnel error from server side error|Verify that the tunnel exists and token is correct.
 '
 
 CONTAINER_PATTERNS["nginx"]='
@@ -56,10 +57,12 @@ Error response from daemon: No such container|Container is not running
 
 CONTAINER_PATTERNS["plugins-api"]='
 Error response from daemon: No such container|Container is not running
+state=CONNECTING, exception={com.mongodb.MongoSocketOpenException: Exception opening socket}, caused by {java.net.ConnectException: Connection refused|Verify that your MONGO_URI is correct and rebuild image.
 '
 
 CONTAINER_PATTERNS["viewer"]='
 Error response from daemon: No such container|Container is not running
+state=CONNECTING, exception={com.mongodb.MongoSocketOpenException: Exception opening socket}, caused by {java.net.ConnectException: Connection refused|Verify that your MONGO_URI is correct and rebuild image.
 '
 
 CONTAINER_PATTERNS["control-panel"]='
@@ -155,6 +158,20 @@ if [[ -f $ENV_FILE ]]; then
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${CYAN}🔄 Checking Remote Falcon endpoints...${NC}"
 
+check_endpoint() {
+  # Perform the request and capture both code and DNS errors
+  response_file="/tmp/curl_response"
+  http_code_file="/tmp/http_code"
+  error_log="/tmp/curl_error.log"
+
+  # Ensure cleanup before each check
+  rm -f "$response_file" "$http_code_file"
+
+  curl -sS -o "$response_file" -w "%{http_code}" "$endpoint" > "$http_code_file" 2>"$error_log"
+  http_code=$(cat "$http_code_file" 2>/dev/null || echo "000")
+  health_status=$(jq -r '.status // "UNKNOWN"' "$response_file" 2>/dev/null)
+}
+
   # Iterate through each container and its endpoint if it is running
   for rf_container in "${!rf_containers[@]}"; do
     endpoint="${rf_containers[$rf_container]}"
@@ -164,51 +181,38 @@ if [[ -f $ENV_FILE ]]; then
       HEALTHY=false
       continue
     else
-      # Fetch the response and HTTP status code
-      response=$(curl -s -o /tmp/curl_response -w "%{http_code}" "$endpoint")
-      http_code=$response
-      body=$(cat /tmp/curl_response)
+      attempt=1
+      while true; do
+        check_endpoint
 
-      # Extract the "status" field from the JSON-like response (handles compact and formatted JSON)
-      status=$(echo "$body" | grep -o '"status":[ ]*"UP"' | head -n1 | sed 's/.*"status":[ ]*"\([^"]*\)".*/\1/' || true)
-
-      # Check if the status is "UP" or handle errors
-      if [[ "$http_code" -eq 200 && "$status" == "UP" ]]; then
-          echo -e "  ${YELLOW}•${NC} ${GREEN}✅ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${GREEN}status is UP${NC}"
-      else
-        # Retry loop
-        attempt=1
-        while true; do
-          # Fetch the response and HTTP status code
-          response=$(curl -s -o /tmp/curl_response -w "%{http_code}" "$endpoint")
-          http_code=$response
-          body=$(cat /tmp/curl_response)
-
-          # Extract the "status" field from the JSON-like response (handles compact and formatted JSON)
-          status=$(echo "$body" | grep -o '"status":[ ]*"UP"' | head -n1 | sed 's/.*"status":[ ]*"\([^"]*\)".*/\1/' || true)
-
-          # Check if the status is "UP" or handle errors
-          if [[ "$http_code" -eq 200 && "$status" == "UP" ]]; then
+        # Check if the status is "UP" or handle errors
+        if [[ "$http_code" -eq 200 ]]; then
+          if [[ "$health_status" == "UP" ]]; then
             echo -e "  ${YELLOW}•${NC} ${GREEN}✅ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${GREEN}status is UP${NC}"
             break  # Success, exit retry loop
-          else
-            if [[ $attempt -lt $MAX_RETRIES ]]; then
-              echo -e "${YELLOW}⚠️ $rf_container endpoint status check attempt ($attempt/$MAX_RETRIES) failed. Retrying in $RETRY_DELAY seconds...${NC}"
-              sleep $RETRY_DELAY
-              ((attempt++))
-            else
-              # Final failure after retries
-              if [[ "$http_code" -ne 200 ]]; then
-                echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container HTTP Error: $http_code (Endpoint ${BLUE}🔗 $endpoint${NC} ${RED}may be down)${NC}"
-              else
-                echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${RED}status is NOT UP (Current status: $status)${NC}"
-                echo -e "${YELLOW}⚠️ Check the logs with 'sudo docker logs $rf_container' for more information.${NC}"
-              fi
-              break  # Give up after max retries
-            fi
           fi
-        done
-      fi
+        else
+          if [[ $attempt -lt $MAX_RETRIES ]]; then
+            echo -e "${YELLOW}⚠️ $rf_container endpoint status check attempt ($attempt/$MAX_RETRIES) failed. Retrying in $RETRY_DELAY seconds...${NC}"
+            sleep $RETRY_DELAY
+            ((attempt++))
+          else
+            # Final failure after retries
+            if [[ "$http_code" -ne 200 ]]; then
+              # Detect DNS resolution or network errors
+              if grep -qiE "Could not resolve host|Name or service not known|Temporary failure in name resolution" "$error_log"; then
+                echo -e "${RED}🌐 Unable to resolve host for $rf_container endpoint. Check that your DNS records are configured correctly. If so you may have to wait for records to propagate.${NC}"
+              fi
+              echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container HTTP Error: $http_code (Endpoint ${BLUE}🔗 $endpoint${NC} ${RED}may be down)${NC}"
+              HEALTHY=false
+            else
+              echo -e "  ${YELLOW}•${NC} ${RED}❌ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${RED}status is NOT UP (Current status: $status)${NC}"
+              echo -e "${YELLOW}⚠️ Check the logs with 'sudo docker logs $rf_container' for more information.${NC}"
+            fi
+            break  # Give up after max retries
+          fi
+        fi
+      done
     fi
   done
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -230,9 +234,11 @@ if [[ -f $ENV_FILE ]]; then
     # Compare the public keys
     if [[ "$cert_pub_key" == "$key_pub_key" ]]; then
       echo -e "${GREEN}✅ The certificate and private key match.${NC}"
+      ON_DISK_CERT_KEY_MATCH=true
     else
       echo -e "${RED}❌ The certificate and private key do NOT match:${NC}"
       HEALTHY=false
+      ON_DISK_CERT_KEY_MATCH=false
       echo -e "  ${YELLOW}•${NC} Certificate: "$WORKING_DIR/$NGINX_CERT""
       echo -e "  ${YELLOW}•${NC} Private key: "$WORKING_DIR/$NGINX_KEY""
     fi
@@ -245,11 +251,31 @@ if [[ -f $ENV_FILE ]]; then
   if is_container_running $container_name; then
     echo -e "${CYAN}🔄 $container_name is running. Testing the configuration with 'sudo docker exec $container_name nginx -t'...${NC}"
     nginx_test_output=$(sudo docker exec $container_name nginx -t 2>&1)
-    echo "$nginx_test_output"
+  
     if echo "$nginx_test_output" | grep -q "syntax is ok" && echo "$nginx_test_output" | grep -q "test is successful"; then
       echo -e "${GREEN}✅ NGINX configuration test successful.${NC}"
     else
-      echo -e "${RED}❌ NGINX configuration test FAILED. Check default.conf${NC}"
+      echo "$nginx_test_output"
+      if echo "$nginx_test_output" | grep -q "key values mismatch" && $ON_DISK_CERT_KEY_MATCH == true; then
+        echo -e "${YELLOW}⚠️ Detected certificate/key mismatch inside the NGINX container, but the on disk certificate and key match.${NC}"
+        echo -e "${YELLOW}🔁 Attempting to restart $container_name to correct the issue... ${NC}"
+        sudo docker restart $container_name
+        echo "💤 Sleeping 5s before re-testing $container_name..."
+        sleep 5s
+        # Re-test NGINX configuration
+        echo -e "${CYAN}🔄 Re-testing $container_name configuration after restart...${NC}"
+        nginx_test_output_post=$(sudo docker exec $container_name nginx -t 2>&1)
+
+        if echo "$nginx_test_output_post" | grep -q "syntax is ok" && echo "$nginx_test_output_post" | grep -q "test is successful"; then
+          echo -e "${GREEN}✅ NGINX configuration test successful after restart.${NC}"
+        else
+          echo "$nginx_test_output_post"
+          echo -e "${RED}❌ NGINX configuration test still failing after restart. Check certficates, certificate paths, and default.conf.${NC}"
+          HEALTHY=false
+        fi
+      else
+        echo -e "${RED}❌ NGINX configuration test FAILED. Check default.conf${NC}"
+      fi
     fi
   else
     echo -e "${RED}❌ $container_name is NOT running.${NC}"

@@ -82,11 +82,11 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `NGINX_CERT`
 
-    :   The configure-rf script guides on setting this. Specifies the path to the [SSL certifcate](../install/cloudflare/#__tabbed_1_4) used by NGINX.
+    :   The configure-rf script guides on setting this. Specifies the path to the [SSL certifcate](../install/cloudflare.md#__tabbed_1_4) used by NGINX.
 
     `NGINX_KEY`
 
-    :   The configure-rf script guides on setting this. Specifies the path to the [SSL private key](../install/cloudflare/#__tabbed_1_4) used by NGINX.
+    :   The configure-rf script guides on setting this. Specifies the path to the [SSL private key](../install/cloudflare.md#__tabbed_1_4) used by NGINX.
 
     `HOST_ENV`
 
