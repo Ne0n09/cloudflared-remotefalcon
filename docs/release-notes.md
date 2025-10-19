@@ -2,7 +2,7 @@
 
 ## 2025.10.19.1
 
-- Added [setup_cloudflare.sh](/docs/install/cloudflare.md#automatic-configuration) to assist with automatic initial Cloudflare domain, certificate, SSL/TLS, tunnel, and DNS settings.
+- Added [setup_cloudflare.sh](install/cloudflare.md#automatic-configuration) to assist with automatic initial Cloudflare domain, certificate, SSL/TLS, tunnel, and DNS settings.
 
 - Updated health_check.sh to include check for plugins-api and viewer not connecting to mongo.
 

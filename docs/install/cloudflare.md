@@ -6,7 +6,7 @@ This page covers the Cloudflare [domain name](cloudflare.md#add-domain-name-to-c
 
 ## Automatic Configuration
 
-With a Cloudflare API key the steps below can be automated utilizing the [setup_cloudflare.sh] script.
+With a Cloudflare API key the steps below can be automated utilizing the [setup_cloudflare.sh](../about/scripts.md#setup_cloudflaresh) script.
 
 If issues are encountered with the script you can still follow the sections below to verify settings manually.
 
