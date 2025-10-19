@@ -119,7 +119,7 @@ update_scripts() {
   echo -e "⬇️ Updating outdated scripts..."
 
   for file in "${outdated_scripts[@]}"; do
-    local_file="$WORKING_DIR/$file"
+    local_file="$SCRIPT_DIR/$file"
     echo -e "→ Updating $file..."
     backup_file "$local_file"
     curl -fsSL "$BASE_URL/$file" -o "$local_file"
