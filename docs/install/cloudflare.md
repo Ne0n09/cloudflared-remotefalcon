@@ -44,7 +44,7 @@ If issues are encountered with the script you can still follow the sections belo
 
         Copy the token immediately and save it to a notepad - you won't see it again!
 
-![Cloudflare API key](../images/cloudflare_api_key.PNG)
+    ![Cloudflare API key](../images/cloudflare_api_key.PNG)
 
 ### Download and run setup_cloudflare script
 

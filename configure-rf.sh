@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.10.19.1
+# VERSION=2025.10.22.1
 
 #set -euo pipefail
 
@@ -66,6 +66,7 @@ BASE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs
 
 # Mapping of files to their version tag patterns
 declare -A FILES=(
+  [shared_functions.sh]="SHARED_FUNCTIONS_VERSION="
   [configure-rf.sh]="VERSION="
   [update_containers.sh]="VERSION="
   [health_check.sh]="VERSION="
@@ -77,48 +78,71 @@ declare -A FILES=(
   [default.conf]="VERSION="
 )
 
-# Function to display and check for updates to the helper scripts with a prompt to upddate all that are out of date
-update_scripts() {
-  echo -e "${CYAN}📜 Checking for script updates...${NC}"
-  local outdated_scripts=()
+echo -e "${BLUE}🔗 https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/${NC}"
+
+# Base function to check for updates and prompt user to update
+check_updates() {
+  local title="$1"         # e.g. "📜 Checking for script updates..."
+  local type_name="$2"     # e.g. "scripts" or "files"
+  local dir="$3"           # local directory
+  local remote_path="$4"   # remote URL path (can be "" or "remotefalcon")
+  shift 4
+  local files=("$@")       # file list
+
+  echo -e "${CYAN}${title}${NC}"
+  
+  local outdated=()
 
   printf "%-25s %-15s %-15s %-7s\n" "File" "Local Version" "Remote Version" "Status"
-  printf "%-25s %-15s %-15s %-7s\n" "─────────────────────────" "───────────────" "───────────────" "───────"
+  printf "${YELLOW}%-25s %-15s %-15s %-7s${NC}\n" "─────────────────────────" "───────────────" "───────────────" "───────"
 
-  for file in configure-rf.sh update_containers.sh health_check.sh sync_repo_secrets.sh minio_init.sh run_workflow.sh; do
+  for file in "${files[@]}"; do
     pattern="${FILES[$file]}"
-    local_file="$SCRIPT_DIR/$file"
+    local_file="$dir/$file"
     local_ver="N/A"
+
     if [[ -f "$local_file" ]]; then
       local_ver=$(grep -Eo "^# ${pattern}[0-9.]+" "$local_file" | head -n1 | sed -E "s/^# ${pattern}//" | tr -d '\r')
     fi
 
-    remote_ver=$(curl -fsSL "$BASE_URL/$file" 2>/dev/null | grep -Eo "^# ${pattern}[0-9.]+" | head -n1 | sed -E "s/^# ${pattern}//" | tr -d '\r')
+    local full_url="$BASE_URL"
+    [[ -n "$remote_path" ]] && full_url="${full_url}/${remote_path}"
+    remote_ver=$(curl -fsSL "${full_url}/${file}" 2>/dev/null | grep -Eo "^# ${pattern}[0-9.]+" | head -n1 | sed -E "s/^# ${pattern}//" | tr -d '\r')
 
     if [[ -z "$remote_ver" ]]; then
-      status="⚠️  Skipped"
+      status="⚠️ Skipped"
     elif [[ "$local_ver" == "$remote_ver" ]]; then
-      status="✅ OK"
+      status="${GREEN}✅ OK${NC}"
     else
-      status="🔄 Update"
-      outdated_scripts+=("$file")
+      status="${YELLOW}🔄 Update${NC}"
+      outdated+=("$file")
     fi
 
-    printf "🔹 %-23s %-15s %-15s %-7s\n" "$file" "$local_ver" "$remote_ver" "$status"
+    printf "🔸 %-23s %-15s %-15s %-7b\n" "$file" "$local_ver" "$remote_ver" "$status"
   done
 
-  if [[ ${#outdated_scripts[@]} -eq 0 ]]; then
-    echo -e "\n${GREEN}All scripts are up to date!${NC}"
+  printf "${YELLOW}%-25s %-15s %-15s %-7s${NC}\n" "─────────────────────────" "───────────────" "───────────────" "───────"
+  
+  if [[ ${#outdated[@]} -eq 0 ]]; then
+    echo -e "${GREEN}✅ All ${type_name} are up to date!${NC}"
+    UPDATED_FILES=()
     return
   fi
 
-  echo -e "${BLUE}🔗 Release notes: https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/${NC}"
-  read -rp $'Would you like to update all outdated scripts now? (y/n) [n]: ' ans
-  [[ ! "$ans" =~ ^[Yy]$ ]] && echo -e "${YELLOW}Skipped script updates.${NC}" && return
+  read -rp "❓ Would you like to update all outdated ${type_name} now? (y/n) [n]: " ans
+  [[ ! "$ans" =~ ^[Yy]$ ]] && echo -e "⏭️ Skipped ${type_name} updates." && UPDATED_FILES=() && return
 
-  echo -e "⬇️ Updating outdated scripts..."
+  echo -e "⬇️ Updating outdated ${type_name}..."
+  UPDATED_FILES=("${outdated[@]}")
+}
 
-  for file in "${outdated_scripts[@]}"; do
+# Function to display and check for updates to the helper scripts with a prompt to upddate all that are out of date
+update_scripts() {
+  local files=(shared_functions.sh update_containers.sh health_check.sh sync_repo_secrets.sh minio_init.sh run_workflow.sh configure-rf.sh)
+  check_updates "📜 Checking for script updates..." "scripts" "$SCRIPT_DIR" "" "${files[@]}"
+
+  # If user accepted updates
+  for file in "${UPDATED_FILES[@]}"; do
     local_file="$SCRIPT_DIR/$file"
     echo -e "→ Updating $file..."
     backup_file "$local_file"
@@ -126,17 +150,245 @@ update_scripts() {
     chmod +x "$local_file"
 
     new_ver=$(grep -Eo "^# ${FILES[$file]}[0-9.]+" "$local_file" | head -n1 | sed -E "s/^# ${FILES[$file]}//" | tr -d '\r')
-    echo -e "${GREEN}✅ $file updated to version ${YELLOW}$new_ver${NC}\n"
-  done
+    echo -e "${GREEN}✅ $file updated to version ${YELLOW}$new_ver${NC}"
 
-  # Restart if configure-rf.sh updated
-  if printf '%s\n' "${outdated_scripts[@]}" | grep -q "^configure-rf.sh$"; then
-    echo -e "${BLUE}🔁 Restarting script to load new version...${NC}"
-    exec "$SCRIPT_DIR/configure-rf.sh" "$@"
-  fi
+    # Special case: restart if configure-rf.sh updated
+    if [[ "$file" == "configure-rf.sh" ]]; then
+      echo -e "${BLUE}🔁 Restarting script to load new version...${NC}"
+      exec "$SCRIPT_DIR/configure-rf.sh" "$@"
+    fi
+  done
+}
+
+# Function to display and check for updates to the compose, .env, and default.conf files with a prompt to upddate all that are out of date
+update_files() {
+  local files=(compose.yaml .env default.conf)
+  check_updates "🧩 Checking for file updates..." "files" "$WORKING_DIR" "remotefalcon" "${files[@]}"
+
+  for file in "${UPDATED_FILES[@]}"; do
+    local_file="$WORKING_DIR/$file"
+    echo -e "→ Updating $file..."
+    backup_file "$local_file"
+
+    # --- Special handling for compose.yaml ---
+    if [[ "$file" == "compose.yaml" && -f "$local_file" ]]; then
+      echo -e "${CYAN}🗂️ Capturing image and context lines...${NC}"
+
+      declare -A OLD_IMAGES
+      declare -A OLD_CONTEXTS
+
+      # Capture image lines (full lines)
+      while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*image:[[:space:]]*.+$ ]]; then
+          # Extract potential service name
+          image_value=$(echo "$line" | sed -E 's/^[[:space:]]*image:[[:space:]]*//')
+          if [[ "$image_value" == */* ]]; then
+            # ghcr.io/.../service:tag → extract "service"
+            service=$(echo "$image_value" | sed -E 's|.*/([^:/]+):.*|\1|')
+          else
+            # image: nginx:1.29.2 → extract "nginx"
+            service=$(echo "$image_value" | sed -E 's|^([^:]+):.*|\1|')
+          fi
+
+          # Trim any stray whitespace
+          service=$(echo "$service" | xargs)
+          OLD_IMAGES["$service"]="$line"
+          #echo "Captured image line for service '$service': ${line}"
+        fi
+      done < "$local_file"
+
+      # Capture context lines
+      while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*context:[[:space:]]*https://github.com/Remote-Falcon/remote-falcon-([a-zA-Z0-9_-]+)\.git ]]; then
+          service="${BASH_REMATCH[1]}"
+          OLD_CONTEXTS["$service"]="$line"
+          #echo "Captured context line for service '$service': ${line}"
+        fi
+      done < "$local_file"
+
+      echo -e "${CYAN}⬇️ Downloading new compose.yaml...${NC}"
+      curl -fsSL "$BASE_URL/remotefalcon/$file" -o "$local_file"
+      new_ver=$(grep -Eo "^# ${FILES[$file]}[0-9.]+" "$local_file" | head -n1 | sed -E "s/^# ${FILES[$file]}//" | tr -d '\r')
+
+      echo -e "${CYAN}♻️ Restoring captured image and context lines...${NC}"
+
+      # Restore contexts
+      for service in "${!OLD_CONTEXTS[@]}"; do
+        old_line="${OLD_CONTEXTS[$service]}"
+        if [[ -n "$old_line" ]]; then
+          #echo "Restoring context for service '${service}'"
+          # Replace the matching context line for this service
+          sed -i -E "s|^[[:space:]]*context:[[:space:]]*https://github.com/Remote-Falcon/remote-falcon-${service}\.git.*|${old_line}|" "$local_file"
+        fi
+      done
+
+      # Restore image lines
+      for service in "${!OLD_IMAGES[@]}"; do
+        old_line="${OLD_IMAGES[$service]}"
+        if [[ -n "$old_line" ]]; then
+          #echo "Restoring image line for service '${service}'"
+          # Replace image line that references this service
+          sed -i -E "s|^[[:space:]]*image:[[:space:]]*.*${service}.*|${old_line}|" "$local_file"
+        fi
+      done
+
+      echo -e "${GREEN}✅ compose.yaml updated to version ${YELLOW}$new_ver${NC} and previous image and context lines restored.${NC}"
+      continue
+    fi
+
+    # --- Special handling for .env updates ---
+    if [[ "$file" == ".env" && -f "$local_file" ]]; then
+      echo -e "${CYAN}🗂️ Capturing current .env values...${NC}"
+
+      declare -A OLD_ENV
+
+      while IFS= read -r line; do
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        
+        # Extract key (before first '=') and value (everything after)
+        key="${line%%=*}"
+        value="${line#*=}"
+        
+        # Trim whitespace (optional)
+        key=$(echo "$key" | xargs)
+        value=$(echo "$value" | xargs)
+        
+        # Skip ENV_VERSION
+        [[ "$key" == "ENV_VERSION" ]] && continue
+
+        OLD_ENV["$key"]="$value"
+      done < "$local_file"
+
+      echo -e "${CYAN}⬇️ Downloading new .env...${NC}"
+      curl -fsSL "$BASE_URL/remotefalcon/$file" -o "$local_file"
+      new_ver=$(grep -Eo "^# ${FILES[$file]}[0-9.]+" "$local_file" | head -n1 | sed -E "s/^# ${FILES[$file]}//" | tr -d '\r')
+
+      echo -e "${CYAN}♻️ Restoring previous .env values...${NC}"
+
+      # Restore matching keys in the new file
+      for key in "${!OLD_ENV[@]}"; do
+        old_value="${OLD_ENV[$key]}"
+        if grep -qE "^${key}=" "$local_file"; then
+          sed -i -E "s|^${key}=.*|${key}=${old_value}|" "$local_file"
+          #echo "Restored: ${key}=${old_value}"
+        fi
+      done
+
+      echo -e "${GREEN}✅ .env updated to version ${YELLOW}$new_ver${NC} and previous values restored.${NC}"
+      continue
+    fi
+
+    # --- Default file update ---
+    curl -fsSL "$BASE_URL/remotefalcon/$file" -o "$local_file"
+    new_ver=$(grep -Eo "^# ${FILES[$file]}[0-9.]+" "$local_file" | head -n1 | sed -E "s/^# ${FILES[$file]}//" | tr -d '\r')
+    echo -e "${GREEN}✅ $file updated to version ${YELLOW}$new_ver${NC}"
+  done
 }
 
 update_scripts
+update_files
+
+# Function to check for updates to the image builder workflows if REPO is configured.
+check_image_builder_updates() {
+  # Check if .env file exists before proceeding
+  if [[ ! -f $ENV_FILE ]]; then
+    return
+  fi
+
+  REPO=$(grep -E '^REPO=' $ENV_FILE | cut -d '=' -f2- | tr -d '\r')
+  GITHUB_PAT=$(grep -E '^GITHUB_PAT=' $ENV_FILE | cut -d '=' -f2- | tr -d '\r')
+
+  if [[ -z "$REPO" || "$repo" == "username/repo" || -z "$GITHUB_PAT" ]]; then
+    return
+  fi
+
+  TEMPLATE_URL_BASE="https://raw.githubusercontent.com/Ne0n09/remote-falcon-image-builder/main/.github/workflows"
+  PRIVATE_URL_BASE="https://raw.githubusercontent.com/${REPO}/main/.github/workflows"
+  WORKFLOW_DIR=".github/workflows"
+  WORKFLOW_FILES=("build-all.yml" "build-container.yml")
+  echo -e "${CYAN}📜 Checking for image builder workflow updates...${NC}"
+  printf "%-25s %-15s %-15s %-7s\n" "Workflow" "Your Version" "Template Version" "Status"
+  printf "${YELLOW}%-25s %-15s %-15s %-7s${NC}\n" "─────────────────────────" "───────────────" "───────────────" "───────"
+
+  outdated=()
+
+  for file in "${WORKFLOW_FILES[@]}"; do
+    # Get versions from template (remote) and private (local)
+    remote_ver=$(curl -fsSL "$TEMPLATE_URL_BASE/$file" | grep -Eo "^# VERSION=[0-9.]+" | sed -E 's/^# VERSION=//')
+    local_ver=$(curl -fsSL -H "Authorization: token $GITHUB_PAT" "$PRIVATE_URL_BASE/$file" | grep -Eo "^# VERSION=[0-9.]+" | sed -E 's/^# VERSION=//')
+
+    if [[ -z "$remote_ver" ]]; then
+      status="⚠️ Skipped"
+    elif [[ "$local_ver" == "$remote_ver" ]]; then
+      status="${GREEN}✅ OK${NC}"
+    elif [[ -z "$local_ver" ]]; then
+      status="${YELLOW}🆕 Missing${NC}"
+      outdated+=("$file")
+    else
+      status="${YELLOW}🔄 Update${NC}"
+      outdated+=("$file")
+    fi
+
+    printf "🔸 %-23s %-15s %-15s %-7b\n" "$file" "${local_ver:-N/A}" "${remote_ver:-N/A}" "$status"
+  done
+
+  printf "${YELLOW}%-25s %-15s %-15s %-7s${NC}\n" "─────────────────────────" "───────────────" "───────────────" "───────"
+
+ # --- Prompt for updates ---
+  if (( ${#outdated[@]} > 0 )); then
+    echo -e "${BLUE}🔗 https://github.com/Ne0n09/remote-falcon-image-builder/${NC}"
+    echo -ne "$❓ Would you like to update all image builder workflows now? (y/n) [n]: "
+    read -r answer
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+      TMP_DIR=$(mktemp -d)
+      echo -e "${CYAN}⬇️ Downloading updates to temporary directory...${NC}"
+      for file in "${outdated[@]}"; do
+        curl -fsSL "$TEMPLATE_URL_BASE/$file" -o "$TMP_DIR/$file"
+      done
+
+      echo -e "${CYAN}⬆️ Updating files in private repository...${NC}"
+
+      git config --global user.name "GitHub Actions"
+      git config --global user.email "actions@github.com"
+
+      # Clone private repo using GITHUB_PAT
+      echo -e "${CYAN}🔍 Cloning ${REPO}...${NC}"
+      git clone "https://${GITHUB_PAT}@github.com/${REPO}.git" repo_tmp
+      cd repo_tmp || return
+
+      # Detect branch dynamically
+      current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
+      echo -e "${CYAN}🌿 Detected branch:${NC} ${YELLOW}${current_branch}${NC}"
+
+      mkdir -p "$WORKFLOW_DIR"
+      for file in "${outdated[@]}"; do
+        cp "$TMP_DIR/$file" "$WORKFLOW_DIR/$file"
+        echo -e "${GREEN}✔ Updated:${NC} $file"
+      done
+
+      echo -e "${CYAN}📦 Staging changes...${NC}"
+      git add "$WORKFLOW_DIR"
+
+      echo -e "${CYAN}📝 Committing changes...${NC}"
+      git commit -m "🔄 Update image builder workflows"
+
+      echo -e "${CYAN}🚀 Pushing to branch:${NC} ${YELLOW}${current_branch}${NC}"
+      git push origin "$current_branch"
+
+      cd ..
+      rm -rf repo_tmp "$TMP_DIR"
+
+      echo -e "${GREEN}✅ Image builder workflows updated and pushed to ${CYAN}${REPO}:${current_branch}${NC}.${NC}"
+    else
+      echo -e "${CYAN}ℹ️  Skipped updating workflows.${NC}"
+    fi
+  else
+    echo -e "${GREEN}✅ All image builder workflows are up to date.${NC}"
+  fi
+}
+
+check_image_builder_updates
 
 # Function to get user input for configuration questions
 get_input() {
@@ -221,18 +473,18 @@ update_env() {
     # Print all answers before asking to update the .env file
     echo
     echo -e "${YELLOW}⚠️ Please confirm the values below are correct:${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     # Iterate over the original order of keys
     for key in "${original_keys[@]}"; do
       if [[ -v new_env_vars[$key] ]]; then  # Ensures empty values are displayed
         echo -e "${RED}🔸 $key${NC}=${YELLOW}${new_env_vars[$key]}${NC}"
       fi
     done
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     if [ "$pending_arg_changes" = true ]; then
       echo
       echo -e "${YELLOW}⚠️ The following build arguments have changed. Remote Falcon container images will need to be (re)built for the changes to take effect:${NC}"
-      echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+      echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
       for key in "${original_keys[@]}"; do
         if [[ -v new_build_args[$key] ]]; then
           current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
@@ -241,7 +493,7 @@ update_env() {
           fi
         fi
       done
-      echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+      echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     fi
   fi
 
@@ -528,7 +780,7 @@ print_env
 configure_github() {
   # Get GITHUB_PAT and validate input is not default or empty
   while true; do
-    githubpat=$(get_input "🔑 Enter your GitHub Personal Access Token, required scopes are 'read:org', 'read:packages', 'repo':" "$GITHUB_PAT")
+    githubpat=$(get_input "🔑 Enter your GitHub Personal Access Token, required scopes are 'read:org', 'workflow', 'read:packages', 'repo':" "$GITHUB_PAT")
     if [[ -z "$githubpat" ]]; then
       echo -e "${RED}❌ GitHub Personal Access Token cannot be blank.${NC}"
       continue

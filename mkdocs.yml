@@ -52,6 +52,7 @@ nav:
     - 'Containers': about/containers.md
     - 'Scripts': about/scripts.md
     - 'Files': about/files.md
+    - 'Workflows': about/workflows.md
   - 'Release Notes': release-notes.md
   - 'Installation': 
     - 'Installation': install/index.md

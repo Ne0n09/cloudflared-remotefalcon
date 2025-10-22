@@ -34,74 +34,100 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 - When an update is accepted, a backup of your current compose.yaml is created and place in the remotefalcon-backups directory.
 
-- The script directly checks the versions in the containers themselves so it does not rely on the image tags in the [compose.yaml](about/files.md#composeyaml), but it does update the image tag in order to roll back.
+- The script directly checks the versions in the containers themselves so it does not rely on the image tags in the [compose.yaml](about/files.md#composeyaml), but it does update the image tag in order to allow rolling back to previous versions if needed.
 
 ## Updating compose.yaml, .env, and default.conf
 
-Currently there are no automatic updates for these files. Sometimes there are changes or additions that will require an update.
+- As of [configure-rf](about/scripts.md#configure-rfsh) script version 10.20.2025.1 it will check and display local and remote file versions and prompt to update if the local versions do not match.
 
-1. The [configure-rf](about/scripts.md#configure-rfsh)) script will print the existing versions on your system when it runs:
-```sh
-📜 Existing file versions:
-🔸 compose.yaml              2025.5.27.1
-🔸 .env                      2025.5.27.1
-🔸 default.conf              2025.5.27.1
-```
-You can check the [release notes](release-notes.md) to see if there any updates or view the files directly on [GitHub](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main/remotefalcon) looking for any `# VERSION` comments towards the top of each script.
+- The current files will backed up to the `remotefalcon-backups` directory before the new versions are downloaded.
 
-2. Run the command below to manually backup to `remotefalcon-backup` and remove the compose.yaml, .env, and default.conf files:
-```sh
-timestamp=$(date +'%Y-%m-%d_%H-%M-%S'); for f in remotefalcon/{compose.yaml,.env,default.conf}; do cp "$f" "remotefalcon-backups/$(basename "$f").backup-$timestamp" && rm "$f"; done
-```
+- Current values in the [.env](about/files.md#env) file will be copied to the new .env.
 
-    !!! warning
+- Current image versions and build context lines in the [compose.yaml](about/files.md#composeyaml) will be copied to the new compose.yaml.
 
-        Ensure you have a current backup of your .env variables:
-        ```sh
-        ls -la remotefalcon-backups
-        ```
-    
-3. Run the [configure-rf](about/scripts.md#configure-rfsh) script to re-download the files and to re-configure your .env variables:
+- The [default.conf](about/files#defaultconf) has no values that are copied and will be replaced completely.
+
+- You can check the [release notes](release-notes.md) to see what is updated.
+
+1. Run the [configure-rf](about/scripts.md#configure-rfsh) script:
 ```sh
 ./configure-rf.sh
 ```
+```sh
+🧩 Checking for file updates...
+
+File                      Local Version   Remote Version  Status
+───────────────────────── ─────────────── ─────────────── ───────
+🔸 compose.yaml            2025.10.12.1    2025.10.14.1    🔄 Update
+🔸 .env                    2025.10.10.1    2025.10.13.1    🔄 Update
+🔸 default.conf            2025.9.5.1      2025.9.8.1      🔄 Update
+───────────────────────── ─────────────── ─────────────── ───────
+❓ Would you like to update all outdated files now? (y/n) [n]:
+```
+
+2. Answer y to update all out of date files.
 
 ## Script Updates
 
 ### 10.19.2025.1 configure-rf auto-update
 
-This version will display any outdated versions and prompt to download the updates.
+- This version will display any outdated versions and prompt to download the updates.
+
+- Current script versions will be backed up to the `remotefalcon-backups` directory before the new versions are downloaded.
+
+1. Run the [configure-rf](about/scripts.md#configure-rfsh) script:
+```sh
+./configure-rf.sh
+```
+```sh
+📜 Checking for script updates...
+
+File                      Local Version   Remote Version  Status
+───────────────────────── ─────────────── ─────────────── ───────
+🔸 shared_functions.sh     2025.9.8.1      2025.9.8.1      ✅ OK
+🔸 update_containers.sh    2025.9.8.1      2025.9.8.1      ✅ OK
+🔸 health_check.sh         2025.10.19.1    2025.10.19.1    ✅ OK
+🔸 sync_repo_secrets.sh    2025.10.12.1    2025.10.13.1    🔄 Update
+🔸 minio_init.sh           2025.5.31.1     2025.5.31.1     ✅ OK
+🔸 run_workflow.sh         2025.10.12.1    2025.10.13.1    🔄 Update
+🔸 configure-rf.sh         2025.10.19.1    2025.10.19.1    ✅ OK
+───────────────────────── ─────────────── ─────────────── ───────
+❓ Would you like to update all outdated scripts now? (y/n) [n]:
+```
+
+2. Answer y to update all out of date files.
 
 ### Previous versions of configure-rf manual update
 
-Currently there is no auto-update for the configure-rf or helper scripts so you may want to check for updates periodically.
-
-1. The `configure-rf` script will print the existing versions on your system when it runs:
-```sh
-📜 Existing script versions:
-🔸 configure-rf.sh           2025.6.2.1
-🔸 health_check.sh           2025.5.26.1
-🔸 minio_init.sh             2025.5.31.1
-🔸 update_containers.sh      2025.5.31.1
-🔸 update_rf_containers.sh   2025.5.27.1
-```
-
-You can check the [release notes](release-notes.md) to see if there any updates or view the `.sh` files directly on [GitHub](https://github.com/Ne0n09/cloudflared-remotefalcon) looking for any `# VERSION` comments towards the top of each script.
-
-2. Remove the scripts:
+1. Remove the scripts:
 ```sh
 rm configure-rf.sh shared_functions.sh health_check.sh minio_init.sh update_containers.sh update_rf_containers.sh run_workflow.sh sync_repo_secrets.sh
 ```
 
-3. The command below will re-download the configure-rf script and run it which will then re-download the helper scripts:
+2. The command below will re-download the configure-rf script and run it which will then re-download the helper scripts:
 ```sh
 curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/configure-rf.sh; \
 chmod +x configure-rf.sh; \
 ./configure-rf.sh
 ```
 
-## Updating build-all.yml and build-container.yml
+## Updating Remote Falcon Image Builder Workflows
 
-Manually updating both of the .yml files is required for any changes that occur on the remote-falcon-image-builder template repo.
+- As of configure-rf script version 2025.10.22.1 automatic workflow updates are possible.
 
-Check the [workflows](https://github.com/Ne0n09/remote-falcon-image-builder/tree/main/.github/workflows) for any new updates and copy and paste them to your repo to apply any changes.
+- This feature requires that your GitHub Personal Access Token has the `workflow` permission. 
+
+- If you previously created a GitHub PAT you may not have this permission and will have to follow the [GitHub](install/github.md#create-personal-access-token) setup to configure a new GitHub PAT and save it to your .env
+
+```sh
+📜 Checking for image builder workflow updates...
+🔗 https://github.com/Ne0n09/remote-falcon-image-builder/
+
+Workflow                  Your Version    Template Version Status
+───────────────────────── ─────────────── ─────────────── ───────
+🔸 build-all.yml           2025.8.25.1     2025.10.13.1    🔄 Update
+🔸 build-container.yml     2025.8.25.1     2025.10.13.1    🔄 Update
+───────────────────────── ─────────────── ─────────────── ───────
+❓ Would you like to update all image builder workflows now? (y/n) [n]:
+```

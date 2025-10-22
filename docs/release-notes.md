@@ -1,8 +1,18 @@
 # Release Notes
 
+## 2025.22.1
+
+- Easier updates! When running configure-rf.sh it will display current local versions of [scripts](about/scripts.md), [files](about/files.md), and workflow versions and compare them to the latest available versions on GitHub.
+
+- Updated configure-rf.sh to prompt for [compose.yaml, .env, and default.conf updates](updates.md#updating-composeyaml-env-and-defaultconf) to assist with downloading new config file updates.
+
+- Updated configure-rf.sh to prompt for [Remote Falcon Image Builder workflow updates](updates.md#updating-remote-falcon-image-builder-workflows).
+
+- Removed ghcr.io/${REPO}/ from the default compose.yaml. This will automatically get updated by update_compose_image_path in shared_function.sh when update_container.sh or configure-rf.sh is run.
+
 ## 2025.10.19.1
 
-- Added [setup_cloudflare.sh](install/cloudflare.md#automatic-configuration) to assist with automatic initial Cloudflare domain, certificate, SSL/TLS, tunnel, and DNS settings.
+- Added [setup_cloudflare.sh](install/cloudflare.md#automatic-configuration) to assist with automatic Cloudflare domain, certificate, SSL/TLS, tunnel, and DNS settings for initial or existing installations.
 
 - Updated health_check.sh to include check for plugins-api and viewer not connecting to mongo.
 
@@ -10,7 +20,7 @@
 
 - Updated health_check.sh NGINX health check so if on-disk cert/key is changed NGINX will be restarted if it is running.
 
-- Updated configure-rf.sh to display a prompt for script updates to assist in downloading new script updates.
+- Updated configure-rf.sh to display a prompt for [script updates](updates.md#script-updates) to assist in downloading new script updates.
 
 ## 2025.10.14.1
 

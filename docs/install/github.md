@@ -48,6 +48,8 @@ Configure GitHub to remotely build Remote Falcon Images via GitHub Actions workf
 
     :fontawesome-regular-square-check: **repo**
 
+    :fontawesome-regular-square-check: **workflow**
+
     :fontawesome-regular-square-check: **read:packages**
 
     :fontawesome-regular-square-check: **read:org**
@@ -58,4 +60,4 @@ Configure GitHub to remotely build Remote Falcon Images via GitHub Actions workf
 
 8. Run `configure-rf` and enter `Y` at the question to update GitHub configuration.
 
-![github_pat_settings.png](../images/github_pat_settings.png)
+![github_pat_settings_v2.png](../images/github_pat_settings_v2.png)

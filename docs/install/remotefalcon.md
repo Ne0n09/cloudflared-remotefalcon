@@ -16,7 +16,7 @@ The [configure-rf](../about/scripts.md#configure-rfsh) script will help configur
 
       The configure-rf script will automatically download additional helper scripts and create 'remotefalcon' and 'remotefalcon-backups' directories.
 
-Make sure you have the following information available to copy and paste as the configuration script will ask for these:
+If you did not run the [automatic configuration](cloudflare.md#automatic-configuration) for Cloudflare then make sure you have the following information available to copy and paste as the configuration script will ask for these:
 
 - [Cloudflare Tunnel](https://one.dash.cloudflare.com/) token
 
@@ -24,7 +24,9 @@ Make sure you have the following information available to copy and paste as the 
 
 - [Cloudflare](https://dash.cloudflare.com/) origin server private key
 
-- [GitHub Personal Access Token](https://github.com/settings/tokens) if you want to use GitHub to build Remote Falcon images
+If you want to use GitHub to build Remote Falcon images:
+
+- [GitHub Personal Access Token](https://github.com/settings/tokens)
 
 If everything went to plan with the configuration the [health_check](../about/scripts.md#health_checksh) script should show everything OK and will present you with a link to access Remote Falcon.
 
