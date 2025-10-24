@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.9.8.1
+# VERSION=2025.10.24.1
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo,  minio, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -386,6 +386,8 @@ check_for_update() {
         fi
         ;;
       "minio")
+      # Pinning minio to RELEASE.2025-09-07T16-13-09Z due to no new images being published: https://github.com/minio/minio/issues/21647#issuecomment-3418675115
+        LATEST_VERSION="RELEASE.2025-09-07T16-13-09Z"
         sed_command="s|minio/minio:[^[:space:]]+|minio/minio:$LATEST_VERSION|"
         format="^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$"
         check_tag_format "$service_name" "$CURRENT_VERSION"

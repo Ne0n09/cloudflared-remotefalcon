@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.10.22.1
+# VERSION=2025.10.24.1
 
 #set -euo pipefail
 
@@ -458,13 +458,17 @@ update_env() {
     fi
   done
 
-  for key in "${!new_build_args[@]}"; do
-    current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
-    if [[ "${new_build_args[$key]}" != "$current_val" ]]; then
-      pending_arg_changes=true
-      break
-    fi
-  done
+  if tag_has_latest; then # With the setup_cloudflare script it will populate some initial arg values so assume build is needed if tags are set to latest
+    pending_arg_changes=true
+  else
+    for key in "${!new_build_args[@]}"; do
+      current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
+      if [[ "${new_build_args[$key]}" != "$current_val" ]]; then
+        pending_arg_changes=true
+        break
+      fi
+    done
+  fi
 
   if [ "$pending_changes" = false ]; then
     echo -e "${YELLOW}⚠️ No changes detected — skipping .env update prompt.${NC}"
@@ -483,16 +487,18 @@ update_env() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     if [ "$pending_arg_changes" = true ]; then
       echo
-      echo -e "${YELLOW}⚠️ The following build arguments have changed. Remote Falcon container images will need to be (re)built for the changes to take effect:${NC}"
-      echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-      for key in "${original_keys[@]}"; do
-        if [[ -v new_build_args[$key] ]]; then
-          current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
-          if [[ "${new_build_args[$key]}" != "$current_val" ]]; then
-            echo -e "${RED}🔧 $key${NC}=${YELLOW}${new_build_args[$key]}${NC}"
+      if ! tag_has_latest; then
+        echo -e "${YELLOW}⚠️ The following build arguments have changed. Remote Falcon container images will need to be (re)built for the changes to take effect:${NC}"
+        echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        for key in "${original_keys[@]}"; do
+          if [[ -v new_build_args[$key] ]]; then
+            current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
+            if [[ "${new_build_args[$key]}" != "$current_val" ]]; then
+              echo -e "${RED}🔧 $key${NC}=${YELLOW}${new_build_args[$key]}${NC}"
+            fi
           fi
-        fi
-      done
+        done
+      fi
       echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     fi
   fi

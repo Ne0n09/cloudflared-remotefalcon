@@ -1,6 +1,17 @@
 # Release Notes
 
-## 2025.22.1
+## 2025.10.24.1
+
+- Updated configure-rf to force image build for all images if GH REPO set and all images are still tagged to latest in compoes.yaml.
+
+- Updated run_workflow to only pull images for individual containers instead of all containers.
+
+- Updated setup_cloudflare to auto download .env in order to populate the DOMAIN and TUNNEL_TOKEN for initial installs where configure-rf has not yet been run
+
+- Updated update_containers to pin MinIO to release RELEASE.2025-09-07T16-13-09Z as the latest release since MinIO no longer producing images:
+https://github.com/minio/minio/issues/21647#issuecomment-3418675115
+
+## 2025.10.22.1
 
 - Easier updates! When running configure-rf.sh it will display current local versions of [scripts](about/scripts.md), [files](about/files.md), and workflow versions and compare them to the latest available versions on GitHub.
 

@@ -63,10 +63,12 @@ If issues are encountered with the script you can still follow the sections belo
 2. Run the command below. The command will download the [setup_cloudflare](../about/scripts.md#setup_cloudflaresh) script, make it executable, and run it automatically.
    
       ```sh
+      sudo apt-get update && sudo apt-get install jq curl openssl; \
       curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/setup_cloudflare.sh; \
       chmod +x setup_cloudflare.sh; \
       ./setup_cloudflare.sh
       ```
+3. After the script completes you may move onto GitHub [configuration](github.md) if you want to build Remote Falcon images through GitHub or you can skip to the [Remote Falcon installation](remotefalcon.md) if you want to build images locally.
 
 ## Manual Configuration
 
@@ -272,4 +274,4 @@ Scroll down and you should see the Cloudflare Nameservers.
 
 Ensure that you are using these name servers with your domain name registrar/provider.
 
-Next is GitHub [configuration](github.md) if you want to build Remote Falcon images through GitHub or you can skip to the Remote Falcon [installation](remotefalcon.md) if you want to build images locally.
+Next is GitHub [configuration](github.md) if you want to build Remote Falcon images through GitHub or you can skip to the [Remote Falcon installation](remotefalcon.md) if you want to build images locally.

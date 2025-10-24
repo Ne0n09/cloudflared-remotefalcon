@@ -58,6 +58,6 @@ Configure GitHub to remotely build Remote Falcon Images via GitHub Actions workf
 
 7. Click the :material-content-copy: to copy your token and paste it in a notepad
 
-8. Run `configure-rf` and enter `Y` at the question to update GitHub configuration.
+8. Move onto the [Remote Falcon installation](remotefalcon.md) and enter `Y` at the question to update GitHub configuration after running the [configure-rf](../about/scripts.md#configure-rfsh) script.
 
 ![github_pat_settings_v2.png](../images/github_pat_settings_v2.png)

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.10.19.1
+# VERSION=2025.10.24.1
 
 # This script assist with automatically setting up Cloudflare domain, certificate, SSL/TLS, tunnel, and DNS settings.
 # A Cloudflare API Token with appropriate permissions is required.
@@ -60,8 +60,8 @@ read_env_file() {
   echo -e "${BLUE}🔍 Reading configuration from ${ENV_FILE}...${NC}"
   
   if [ ! -f "${ENV_FILE}" ]; then
-    echo -e "${RED}❌ .env file not found at ${ENV_FILE}${NC}"
-    exit 1
+    echo -e "$${YELLOW}⚠️ .env file not found at ${ENV_FILE}. Downloading .env file...${NC}"
+    mkdir -p remotefalcon; curl -o remotefalcon/.env https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/.env
   fi
   
   mkdir -p "${CERT_DIR}"
