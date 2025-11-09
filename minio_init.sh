@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.5.31.1
+# VERSION=2025.11.8.1
 
 #set -euo pipefail
 
@@ -67,7 +67,7 @@ check_minio_health() {
   # Check if MinIO is healthy inside the container
   retry_count=0
 
-  until sudo docker exec "$CONTAINER_NAME" curl -s -o /dev/null http://127.0.0.1:9000/minio/health/ready || true; do
+  until curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:9000/minio/health/ready || true; do
     ((retry_count++))
     if [[ $retry_count -ge $max_retries ]]; then
       echo -e "${RED}❌ MinIO did not become ready after $max_retries attempts. Exiting...${NC}"

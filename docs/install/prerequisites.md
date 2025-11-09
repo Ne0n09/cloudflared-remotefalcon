@@ -17,9 +17,9 @@ You will need your own domain name and server capable of running Docker and Mong
 
 ## Server OS
 
-- 64-bit Debian
+- 64-bit [Debian](https://www.debian.org/distrib/)
 
-- 64-bit Ubuntu
+- 64-bit [Ubuntu](https://ubuntu.com/download/server)
 
 - Other 64-bit operating systems that can run Docker will require Docker to be manually installed if it is not already.
 
@@ -27,5 +27,17 @@ You will need your own domain name and server capable of running Docker and Mong
 
     !!! note
         If running in a VM ensure the VM's CPU type supports AVX.
+
+## Root or sudo access
+
+### Debian
+
+To install and add a user to the sudo group follow the steps below.
+
+1. Switch to the root user `su -`
+
+2. Install sudo `apt install sudo`
+
+3. Add user to sudo group `usermod -aG sudo {username-here}`
 
 If you meet the prerequisites you can move on to the [Cloudflare](cloudflare.md) setup!

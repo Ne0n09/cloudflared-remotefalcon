@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2025.10.20.1
+# COMPOSE_VERSION=2025.11.8.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -36,7 +36,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
   minio:
-    image: minio/minio:latest
+    image: coollabsio/minio:latest
     container_name: remote-falcon-images.minio
     restart: always
     ports:
@@ -76,19 +76,19 @@ services:
     container_name: control-panel
     restart: always
     environment:
-      - server.port=8081
-      - web.url=https://${DOMAIN}
-      - auto-validate-email=${AUTO_VALIDATE_EMAIL}
-      - jwt.user=${USER_JWT_KEY}
-      - spring.data.mongodb.uri=${MONGO_URI}
-      - github.pat=
-      - sendgrid.key=${SENDGRID_KEY}
-      - client.header=${CLIENT_HEADER}
-      - s3.endpoint=${S3_ENDPOINT}
-      - s3.accessKey=${S3_ACCESS_KEY}
-      - s3.secretKey=${S3_SECRET_KEY}
-      - wattson.endpoint=
-      - wattson.key=
+      - SERVER_PORT=8081
+      - WEB_URL=https://${DOMAIN}
+      - AUTO_VALIDATE_EMAIL=${AUTO_VALIDATE_EMAIL}
+      - JWT_USER=${USER_JWT_KEY}
+      - SPRING_DATA_MONGODB_URI=${MONGO_URI}
+      - GITHUB_PAT= # This is only needed for the 'Work Item Tracker' for people to post issues to GitHub for your RF instance
+      - SENDGRID_KEY=${SENDGRID_KEY}
+      - CLIENT_HEADER=${CLIENT_HEADER}
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - S3_ACCESSKEY=${S3_ACCESS_KEY}
+      - S3_SECRETKEY=${S3_SECRET_KEY}
+      - WATTSON_ENDPOINT=
+      - WATTSON_KEY=
     depends_on:
       - mongo
   viewer:
@@ -140,8 +140,8 @@ services:
     container_name: external-api
     restart: always
     environment:
-      - server.port=8084
-      - spring.data.mongodb.uri=${MONGO_URI}
-      - viewer.api.url=https://${DOMAIN}/remote-falcon-viewer
+      - SERVER_PORT=8084
+      - SPRING_DATA_MONGODB_URI=${MONGO_URI}
+      - VIEWER_API_URL=https://${DOMAIN}/remote-falcon-viewer
     depends_on:
       - mongo

@@ -1,8 +1,97 @@
 #!/bin/bash
 
-# VERSION=2025.10.24.1
+# VERSION=2025.11.8.1
 
 #set -euo pipefail
+
+# ./configure-rf.sh [-y|--non-interactive] [--update-all|--update-scripts|--update-files|--update-workflows|--no-updates] [--set KEY=VALUE ...]
+
+NON_INTERACTIVE=false
+UPDATE_MODES=()
+DEBUG_INPUT=false # Used to debug input parsing when running in NON_INTERACTIVE mode
+
+declare -A OVERRIDES=()
+
+# Parse CLI arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -y|--non-interactive)
+      NON_INTERACTIVE=true
+      shift
+      ;;
+    --update-all)
+      UPDATE_MODES=("all")
+      shift
+      ;;
+    --update-scripts)
+      UPDATE_MODES=("scripts")
+      shift
+      ;;
+    --update-files)
+      UPDATE_MODES=("files")
+      shift
+      ;;
+    --update-workflows)
+      UPDATE_MODES=("workflows")
+      shift
+      ;;
+    --no-updates)
+      UPDATE_MODES="none"
+      shift
+      ;;
+    --set)
+      # support: --set KEY=VALUE  (argument form)
+      if [[ -n "${2-}" && "${2}" == *=* ]]; then
+        kv="$2"
+        shift 2
+      else
+        echo "Error: --set requires KEY=VALUE" >&2
+        exit 2
+      fi
+      key="${kv%%=*}"
+      val="${kv#*=}"
+      OVERRIDES["$key"]="$val"
+      ;;
+    --set=*)
+      # support: --set=KEY=VALUE  (equals form)
+      kv="${1#--set=}"
+      shift
+      key="${kv%%=*}"
+      val="${kv#*=}"
+      OVERRIDES["$key"]="$val"
+      ;;
+    -h|--help)
+      echo "Usage: $0 [options]"
+      echo
+      echo "Options:"
+      echo "  -y|--non-interactive      Run non-interactively (no prompts)"
+      echo "  --update-all              Update scripts, files, and workflows"
+      echo "  --update-scripts          Update only scripts"
+      echo "  --update-files            Update only compose.yaml, .env, and default.conf files"
+      echo "  --update-workflows        Update only image builder GitHub workflows"
+      echo "  --set KEY=VALUE           Set configuration override for config questions(can be used multiple times)"
+      echo "  -h, --help                Show this help message"
+      exit 0
+      ;;
+      *)
+      # unknown argument — keep or handle as you need
+      # If you want to pass-through remaining args to other tools, break
+      # break
+      echo "Unknown option: $1" >&2
+      shift
+      ;;
+  esac
+done
+
+if [ "${DEBUG_INPUT:-false}" = true ] ; then
+  echo "--------------------------------------------"
+  echo "⚙️  Arg Parse Debug (stderr):"
+  echo "  NON_INTERACTIVE=$NON_INTERACTIVE" >&2
+  for k in "${!OVERRIDES[@]}"; do
+    echo "  OVERRIDE: $k=${OVERRIDES[$k]}" >&2
+  done
+  echo "--------------------------------------------" >&2
+fi
 
 CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/configure-rf.sh"
 
@@ -16,6 +105,7 @@ HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefal
 MINIO_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/minio_init.sh"
 RUN_WORKFLOW_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/run_workflow.sh"
 SYNC_REPO_SECRETS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/sync_repo_secrets.sh"
+SETUP_CLOUDFLARE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/setup_cloudflare.sh"
 SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo minio)
 ANY_SERVICE_RUNNING=false
 TEMPLATE_REPO="Ne0n09/remote-falcon-image-builder" # Template repo for image builder workflows
@@ -24,6 +114,29 @@ TEMPLATE_REPO="Ne0n09/remote-falcon-image-builder" # Template repo for image bui
 # For GHCR builds these get synced with sync_repo_secrets.sh
 # "CONTROL_PANEL_API" "VIEWER_API" not included because we only want to track if DOMAIN is changed
 #### This will need to be updated down in update_env() if any new build context args are added - sync_repo_secrets will also need to be updated
+
+# Function to check update arguments
+check_update_modes() {
+  local type="$1"
+
+  # If "all" is requested, always run
+  for mode in "${UPDATE_MODES[@]}"; do
+    if [ "$mode" = "all" ]; then
+      return 0
+    elif [ "$mode" = "$type" ]; then
+      return 0
+    elif [ "$mode" = "none" ]; then
+      return 1
+    fi
+  done
+
+  # Default: nothing requested, run everything
+  if [ "${#UPDATE_MODES[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  return 1
+}
 
 # Function to download file if it does not exist
 download_file() {
@@ -57,9 +170,10 @@ source "$SCRIPT_DIR/shared_functions.sh"
 download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
 download_file $HEALTH_CHECK_URL "health_check.sh"
 download_file $MINIO_INIT_URL "minio_init.sh"
+download_file $SETUP_CLOUDFLARE_URL "setup_cloudflare.sh"
 download_file $RUN_WORKFLOW_URL "run_workflow.sh"
 download_file $SYNC_REPO_SECRETS_URL "sync_repo_secrets.sh"
-chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "minio_init.sh" "run_workflow.sh" "sync_repo_secrets.sh"
+chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "minio_init.sh" "setup_cloudflare.sh" "run_workflow.sh" "sync_repo_secrets.sh"
 
 ## Check for script updates
 BASE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main"
@@ -72,6 +186,7 @@ declare -A FILES=(
   [health_check.sh]="VERSION="
   [sync_repo_secrets.sh]="VERSION="
   [minio_init.sh]="VERSION="
+  [setup_cloudflare.sh]="VERSION="
   [run_workflow.sh]="VERSION="
   [compose.yaml]="COMPOSE_VERSION="
   [.env]="ENV_VERSION="
@@ -90,7 +205,7 @@ check_updates() {
   local files=("$@")       # file list
 
   echo -e "${CYAN}${title}${NC}"
-  
+
   local outdated=()
 
   printf "%-25s %-15s %-15s %-7s\n" "File" "Local Version" "Remote Version" "Status"
@@ -122,14 +237,18 @@ check_updates() {
   done
 
   printf "${YELLOW}%-25s %-15s %-15s %-7s${NC}\n" "─────────────────────────" "───────────────" "───────────────" "───────"
-  
+
   if [[ ${#outdated[@]} -eq 0 ]]; then
     echo -e "${GREEN}✅ All ${type_name} are up to date!${NC}"
     UPDATED_FILES=()
     return
   fi
 
-  read -rp "❓ Would you like to update all outdated ${type_name} now? (y/n) [n]: " ans
+  if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+    ans="y"
+  else
+    read -rp "❓ Would you like to update all outdated ${type_name} now? (y/n) [n]: " ans
+  fi
   [[ ! "$ans" =~ ^[Yy]$ ]] && echo -e "⏭️ Skipped ${type_name} updates." && UPDATED_FILES=() && return
 
   echo -e "⬇️ Updating outdated ${type_name}..."
@@ -138,7 +257,11 @@ check_updates() {
 
 # Function to display and check for updates to the helper scripts with a prompt to upddate all that are out of date
 update_scripts() {
-  local files=(shared_functions.sh update_containers.sh health_check.sh sync_repo_secrets.sh minio_init.sh run_workflow.sh configure-rf.sh)
+  if ! check_update_modes "scripts"; then
+    echo -e "${YELLOW}⚠️ Skipping script updates.${NC}"
+    return
+  fi
+  local files=(shared_functions.sh update_containers.sh health_check.sh sync_repo_secrets.sh minio_init.sh setup_cloudflare.sh run_workflow.sh configure-rf.sh)
   check_updates "📜 Checking for script updates..." "scripts" "$SCRIPT_DIR" "" "${files[@]}"
 
   # If user accepted updates
@@ -162,6 +285,10 @@ update_scripts() {
 
 # Function to display and check for updates to the compose, .env, and default.conf files with a prompt to upddate all that are out of date
 update_files() {
+  if ! check_update_modes "files"; then
+    echo -e "${YELLOW}⚠️ Skipping file updates.${NC}"
+    return
+  fi
   local files=(compose.yaml .env default.conf)
   check_updates "🧩 Checking for file updates..." "files" "$WORKING_DIR" "remotefalcon" "${files[@]}"
 
@@ -245,15 +372,15 @@ update_files() {
       while IFS= read -r line; do
         # Skip empty lines and comments
         [[ -z "$line" || "$line" =~ ^# ]] && continue
-        
+
         # Extract key (before first '=') and value (everything after)
         key="${line%%=*}"
         value="${line#*=}"
-        
+
         # Trim whitespace (optional)
         key=$(echo "$key" | xargs)
         value=$(echo "$value" | xargs)
-        
+
         # Skip ENV_VERSION
         [[ "$key" == "ENV_VERSION" ]] && continue
 
@@ -287,10 +414,13 @@ update_files() {
 }
 
 update_scripts
-update_files
 
 # Function to check for updates to the image builder workflows if REPO is configured.
 check_image_builder_updates() {
+  if ! check_update_modes "workflows"; then
+    echo -e "${YELLOW}⚠️ Skipping image builder workflow updates.${NC}"
+    return
+  fi
   # Check if .env file exists before proceeding
   if [[ ! -f $ENV_FILE ]]; then
     return
@@ -338,9 +468,8 @@ check_image_builder_updates() {
  # --- Prompt for updates ---
   if (( ${#outdated[@]} > 0 )); then
     echo -e "${BLUE}🔗 https://github.com/Ne0n09/remote-falcon-image-builder/${NC}"
-    echo -ne "$❓ Would you like to update all image builder workflows now? (y/n) [n]: "
-    read -r answer
-    if [[ "$answer" =~ ^[Yy]$ ]]; then
+
+    if [[ "$(get_input "❓ Would you like to update all image builder workflows now? (y/n)" "n")" =~ ^[Yy]$ ]]; then
       TMP_DIR=$(mktemp -d)
       echo -e "${CYAN}⬇️ Downloading updates to temporary directory...${NC}"
       for file in "${outdated[@]}"; do
@@ -390,14 +519,48 @@ check_image_builder_updates() {
 
 check_image_builder_updates
 
-# Function to get user input for configuration questions
+# Function to get user input for configuration questions in the format of get_input KEY PROMPT DEFAULT
 get_input() {
-  local prompt="$1"
-  local default="$2"
-  local input
+  local key=""
+  local prompt=""
+  local default=""
+  local input=""
 
+  # Accept DEBUG_INPUT values like "true" (string)
+  local debug="${DEBUG_INPUT:-false}"
+
+  # Detect args
+  if [ $# -eq 3 ]; then
+    key="$1"; prompt="$2"; default="$3"
+  elif [ $# -eq 2 ]; then
+    key=""; prompt="$1"; default="$2"
+  else
+    printf '%s\n' "get_input: invalid number of arguments" >&2
+    return 1
+  fi
+
+  if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+    if [ -n "$key" ] && [ -n "${OVERRIDES[$key]+set}" ]; then
+      input="${OVERRIDES[$key]}"
+    else
+      # Auto-yes logic for yes/no prompts in non-interactive mode
+      if [[ "$prompt" =~ \(\s*[Yy]\/[Nn]\s*\) ]] && [[ "$default" =~ ^[Nn]$ ]]; then
+        input="y"
+      else
+        input="$default"
+      fi
+    fi
+
+    # Log automated input to console
+    printf '%s\n' "⚙️: $prompt [$default]: $input" >&2
+
+    printf '%s' "$input"
+    return 0
+  fi
+
+  # Interactive mode: prompt the user, keep any prompt output on stdout
   read -rp "$prompt [$default]: " input
-  echo "${input:-$default}"
+  printf '%s' "${input:-$default}"
 }
 
 # Function to update the the .env file with required variables to run RF and some optional variables
@@ -407,52 +570,53 @@ update_env() {
 
   # Declare NEW variables to check against existing .env values to detect if anything changed
   declare -A new_env_vars=(
-    ["REPO"]="$repo"
-    ["TUNNEL_TOKEN"]="$tunneltoken"
-    ["DOMAIN"]="$domain"
-#    ["HOSTNAME_PARTS"]="$hostnameparts"
-    ["AUTO_VALIDATE_EMAIL"]="$autovalidateemail"
-#    ["NGINX_CONF"]="$NGINX_CONF"
-    ["NGINX_CERT"]="./${domain}_origin_cert.pem"
-    ["NGINX_KEY"]="./${domain}_origin_key.pem"
-#    ["HOST_ENV"]="$HOST_ENV"
-    ["GOOGLE_MAPS_KEY"]="$googlemapskey"
-    ["PUBLIC_POSTHOG_KEY"]="$publicposthogkey"
-    ["GA_TRACKING_ID"]="$gatrackingid"
-    ["MIXPANEL_KEY"]="$mixpanelkey"
+    ["REPO"]="$REPO"
+    ["TUNNEL_TOKEN"]="$TUNNEL_TOKEN"
+    ["DOMAIN"]="$DOMAIN"
+#    ["HOSTNAME_PARTS"]="$HOSTNAME_PARTS"
+    ["AUTO_VALIDATE_EMAIL"]="$AUTO_VALIDATE_EMAIL"
+    ["NGINX_CERT"]="./${DOMAIN}_origin_cert.pem"
+    ["NGINX_KEY"]="./${DOMAIN}_origin_key.pem"
+    ["GOOGLE_MAPS_KEY"]="$GOOGLE_MAPS_KEY"
+    ["PUBLIC_POSTHOG_KEY"]="$PUBLIC_POSTHOG_KEY"
+    ["GA_TRACKING_ID"]="$GA_TRACKING_ID"
+    ["MIXPANEL_KEY"]="$MIXPANEL_KEY"
 #    ["CLIENT_HEADER"]="$CLIENT_HEADER"
 #    ["SENDGRID_KEY"]="$SENDGRID_KEY"
-    ["GITHUB_PAT"]="$githubpat"
-    ["SOCIAL_META"]="$socialmeta"
-    ["SEQUENCE_LIMIT"]="$sequencelimit"
-    ["SWAP_CP"]="$swapCP"
-    ["VIEWER_PAGE_SUBDOMAIN"]="$viewerPageSubdomain"
-    ["CLARITY_PROJECT_ID"]="$clarity_project_id"
+    ["GITHUB_PAT"]="$GITHUB_PAT"
+    ["SOCIAL_META"]="$SOCIAL_META"
+    ["SEQUENCE_LIMIT"]="$SEQUENCE_LIMIT"
+    ["SWAP_CP"]="$SWAP_CP"
+    ["VIEWER_PAGE_SUBDOMAIN"]="$VIEWER_PAGE_SUBDOMAIN"
+    ["CLARITY_PROJECT_ID"]="$CLARITY_PROJECT_ID"
   )
 
   # If any of these are changed, an image rebuild will be required.
   declare -A new_build_args=(
-    ["VERSION"]="$version"
-    ["HOST_ENV"]="$hostenv"
-    ["DOMAIN"]="$domain"
-    ["GOOGLE_MAPS_KEY"]="$googlemapskey"
-    ["PUBLIC_POSTHOG_KEY"]="$publicposthogkey"
-    ["PUBLIC_POSTHOG_HOST"]="$publicposthoghost"
-    ["GA_TRACKING_ID"]="$gatrackingid"
-    ["MIXPANEL_KEY"]="$mixpanelkey"
-    ["HOSTNAME_PARTS"]="$hostnameparts"
-    ["SOCIAL_META"]="$socialmeta"
-    ["SWAP_CP"]="$swapCP"
-    ["VIEWER_PAGE_SUBDOMAIN"]="$viewerPageSubdomain"
-    ["OTEL_OPTS"]="$otelopts"
-    ["OTEL_URI"]="$oteluri"
-    ["MONGO_URI"]="$mongouri"
-    ["CLARITY_PROJECT_ID"]="$clarity_project_id"
+    ["VERSION"]="$VERSION"
+    ["HOST_ENV"]="$HOST_ENV"
+    ["DOMAIN"]="$DOMAIN"
+    ["GOOGLE_MAPS_KEY"]="$GOOGLE_MAPS_KEY"
+    ["PUBLIC_POSTHOG_KEY"]="$PUBLIC_POSTHOG_KEY"
+    ["PUBLIC_POSTHOG_HOST"]="$PUBLIC_POSTHOG_HOST"
+    ["GA_TRACKING_ID"]="$GA_TRACKING_ID"
+    ["MIXPANEL_KEY"]="$MIXPANEL_KEY"
+    ["HOSTNAME_PARTS"]="$HOSTNAME_PARTS"
+    ["SOCIAL_META"]="$SOCIAL_META"
+    ["SWAP_CP"]="$SWAP_CP"
+    ["VIEWER_PAGE_SUBDOMAIN"]="$VIEWER_PAGE_SUBDOMAIN"
+    ["OTEL_OPTS"]="$OTEL_OPTS"
+    ["OTEL_URI"]="$OTEL_URI"
+    ["MONGO_URI"]="$MONGO_URI"
+    ["CLARITY_PROJECT_ID"]="$CLARITY_PROJECT_ID"
   )
 
+# Compare new_env_vars to existing_env_vars
   for key in "${!new_env_vars[@]}"; do
-    current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
-    if [[ "${new_env_vars[$key]}" != "$current_val" ]]; then
+    local current_val="${existing_env_vars[$key]}"
+    local new_val="${new_env_vars[$key]}"
+
+    if [[ "$new_val" != "$current_val" ]]; then
       pending_changes=true
       break
     fi
@@ -462,8 +626,10 @@ update_env() {
     pending_arg_changes=true
   else
     for key in "${!new_build_args[@]}"; do
-      current_val=$(grep -E "^${key}=" .env | cut -d'=' -f2-)
-      if [[ "${new_build_args[$key]}" != "$current_val" ]]; then
+      local current_val="${existing_env_vars[$key]}"
+      local new_val="${new_build_args[$key]}"
+
+      if [[ "$new_val" != "$current_val" ]]; then
         pending_arg_changes=true
         break
       fi
@@ -481,10 +647,11 @@ update_env() {
     # Iterate over the original order of keys
     for key in "${original_keys[@]}"; do
       if [[ -v new_env_vars[$key] ]]; then  # Ensures empty values are displayed
-        echo -e "${RED}🔸 $key${NC}=${YELLOW}${new_env_vars[$key]}${NC}"
+        echo -e "${BLUE}🔸 $key${NC}=${YELLOW}${new_env_vars[$key]}${NC}"
       fi
     done
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
     if [ "$pending_arg_changes" = true ]; then
       echo
       if ! tag_has_latest; then
@@ -501,6 +668,19 @@ update_env() {
       fi
       echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     fi
+  fi
+
+  # Validate the variables before writing to .env
+  echo -e "${CYAN}🔍 Validating variables: ${vars_to_validate[*]}${NC}"
+
+  vars_to_validate=(TUNNEL_TOKEN DOMAIN AUTO_VALIDATE_EMAIL HOSTNAME_PARTS SEQUENCE_LIMIT SWAP_CP VIEWER_PAGE_SUBDOMAIN)
+
+  # Run validation
+  if ! validate_variables "${vars_to_validate[@]}"; then
+    echo -e "${RED}❌ Validation failed. .env file was not updated.${NC}"
+    return 1
+  else
+    echo -e "${GREEN}✅ All environment variables validated successfully.${NC}"
   fi
 
   # Write the variables to the .env file if answer is y
@@ -556,24 +736,146 @@ update_env() {
   fi
 }
 
+# Function to validate variable input and display a mesage if invalid.
+validate_variables() {
+  local valid=true
+
+  if [[ "$DEBUG_INPUT" == "true" ]]; then
+    echo -e "${CYAN}DEBUG: validate_variables called with args: $@${NC}" >&2
+  fi
+
+  while (( "$#" )); do
+    local var_name="$1"
+    local test_value=""
+    shift
+
+    # Check if next argument is a *direct value*, not a variable name
+    if (( $# )) && [[ ! "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      test_value="$1"
+      shift
+    else
+      # If not provided, use indirect expansion
+      test_value="${!var_name:-}"
+    fi
+
+    case "$var_name" in
+      TUNNEL_TOKEN)
+        if [[ -z "$test_value" || "$test_value" == "cloudflare_token" ]]; then
+          echo -e "${RED}❌ $var_name is missing or placeholder (value: '${test_value:-empty}').${NC}" >&2
+          valid=false
+        fi
+        ;;
+      DOMAIN)
+        if [[ -z "$test_value" || "$test_value" == "your_domain.com" ]]; then
+          echo -e "${RED}❌ $var_name is invalid or placeholder (value: '${test_value:-empty}').${NC}" >&2
+          valid=false
+        elif [[ ! "$test_value" =~ ^([a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
+          echo -e "${RED}❌ $var_name ('$test_value') is not a valid domain format (yourdomain.com).${NC}" >&2
+          valid=false
+        fi
+        ;;
+      AUTO_VALIDATE_EMAIL)
+        test_value="${test_value,,}" # Convert to lower case
+        if [[ "$test_value" != "true" && "$test_value" != "false" ]]; then
+          echo -e "${RED}❌ $var_name must be 'true' or 'false' (current: '${test_value:-empty}').${NC}" >&2
+          valid=false
+        fi
+        ;;
+      HOSTNAME_PARTS)
+        if [[ ! "$test_value" =~ ^[23]$ ]]; then
+          echo -e "${RED}❌ $var_name must be 2 or 3 (current: '${test_value:-empty}').${NC}" >&2
+          valid=false
+        fi
+        ;;
+      GITHUB_PAT)
+#        if [[ -z "$test_value" ]]; then
+#          echo -e "${RED}❌ GitHub Personal Access Token cannot be blank.${NC}" >&2
+#          valid=false
+        if [[ -n "$test_value" ]] && [[ ! "$test_value" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$test_value" =~ ^gh[pousr]_[A-Za-z0-9_]{36,255}$ ]]; then
+          echo -e "${RED}❌ GitHub Personal Access Token is not in the correct format (current: '${test_value:-empty}').${NC}" >&2
+          valid=false
+        fi
+        ;;
+      SEQUENCE_LIMIT)
+        if [[ ! "$test_value" =~ ^[1-9][0-9]*$ ]]; then
+          echo -e "${RED}❌ Please enter a valid whole number greater than 0 (current: '${test_value:-empty}').${NC}" >&2
+          valid=false
+        fi
+        ;;
+      SWAP_CP)
+        test_value="${test_value,,}" # Convert to lower case
+        if [[ "$test_value" != "true" && "$test_value" != "false" ]]; then
+          echo -e "${RED}❌ $var_name must be 'true' or 'false' (current: '${test_value:-empty}').${NC}" >&2
+          valid=false
+        fi
+        ;;
+      VIEWER_PAGE_SUBDOMAIN)
+        if [[ $SWAP_CP == "true" ]]; then
+          # Validate: only lowercase letters and digits
+          test_value=$(echo "$test_value" | tr -d '[:space:]')
+          test_value=$(echo "$test_value" | tr '[:upper:]' '[:lower:]')
+          if [[ -z "$test_value" ]]; then
+            echo -e "${RED}❌ Subdomain cannot be empty (current: '${test_value:-empty}').${NC}" >&2
+            valid=false
+          elif [[ "$test_value" =~ [^a-z0-9] ]]; then
+            echo -e "${RED}❌ Subdomain must contain only lowercase letters and numbers (no spaces, symbols, or hyphens) (current: '${test_value:-empty}').${NC}" >&2
+            valid=false
+          else
+            break
+          fi
+        fi
+        ;;
+      *)
+        ;;
+    esac
+  done
+
+  $valid && return 0 || return 1
+}
+
+# Function to ask for variable and perform validation until valid input is provided
+ask_and_validate() {
+  local var_name="$1"
+  local prompt="$2"
+  local current_value="$3"
+  local value
+
+  while true; do
+    value=$(get_input "$var_name" "$prompt" "$current_value")
+
+    # Non-interactive: skip retries but still validate
+    if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+      if ! validate_variables "$var_name" "$value" >/dev/null; then
+        echo -e "${YELLOW}⚠️ Skipping $var_name validation in non-interactive mode (value: '$value').${NC}" >&2
+      fi
+      echo "$value"
+      return 0
+    fi
+
+    # Temporarily assign value for validation
+    # export "${var_name}=${value}"
+
+    # Temporarily assign global value for validation (not exported)
+    declare -g "${var_name}=${value}"
+
+    # Interactive validation
+    if validate_variables "$var_name"; then
+      echo "$value"
+      return 0
+    fi
+  done
+}
+
 # Check for updates to the containers
 run_updates() {
   local update_mode="${1:-}"
 
   if [[ -z "$update_mode" ]]; then
-    update_mode="interactive"  # Default to interactive mode if not provided
-  fi
-
-  if [[ -z "$TUNNEL_TOKEN" || "$TUNNEL_TOKEN" == "cloudflare_token" ]]; then
-    echo -e "${RED}❌ Cloudflared token is missing or still set to a placeholder. Re-run configure-rf.sh to configure.${NC}"
-    exit 1
-  fi
-  if [[ "$DOMAIN" == "your_domain.com" || -z "$DOMAIN" ]]; then
-    echo -e "${RED}❌ 'your_domain.com' is a placeholder. Please enter a valid domain.${NC}"
-    exit 1
-  elif [[ ! "$DOMAIN" =~ ^([a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
-    echo -e "${RED}❌ '$DOMAIN' is not a valid domain format.${NC}"
-    exit 1
+    if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+      update_mode="auto-apply"  # Default to auto-apply in non-interactive mode
+    else
+      update_mode="interactive"  # Default to interactive mode for update_containers.sh if not provided
+    fi
   fi
 
   echo -e "${YELLOW}⚠️ Checking for container updates...${NC}"
@@ -599,35 +901,6 @@ run_updates() {
   health_check health
 }
 
-# Function to list helper script versions
-list_script_versions() {
-  echo -e "${BLUE}📜 Existing script versions:${NC}"
-  grep -H '^# *VERSION=' ./*.sh | while IFS=: read -r file line; do
-    version=$(echo "$line" | sed -E 's/^# *VERSION=//')
-    filename=$(basename "$file")
-    printf "🔹 %-25s ${YELLOW}%s${NC}\n" "$filename" "$version"
-  done
-}
-
-# Function to list version of compose, .env, and default.conf files
-list_file_versions() {
-  echo -e "${BLUE}📜 Existing file versions:${NC}"
-  awk -v YELLOW="$YELLOW" -v NC="$NC" '
-    FILENAME ~ /compose.yaml$/ && $0 ~ /^[[:space:]]*#?[[:space:]]*COMPOSE_VERSION=/ {
-      gsub(/^[[:space:]]*#?[[:space:]]*COMPOSE_VERSION=[[:space:]]*/, "", $0)
-      printf "🔹 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
-    }
-    FILENAME ~ /\.env$/ && $0 ~ /^[[:space:]]*#?[[:space:]]*ENV_VERSION=/ {
-      gsub(/^[[:space:]]*#?[[:space:]]*ENV_VERSION=[[:space:]]*/, "", $0)
-      printf "🔹 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
-    }
-    FILENAME ~ /default.conf$/ && $0 ~ /^[[:space:]]*#?[[:space:]]*VERSION=/ {
-      gsub(/^[[:space:]]*#?[[:space:]]*VERSION=[[:space:]]*/, "", $0)
-      printf "🔹 %-24s %s%s%s\n", FILENAME, YELLOW, $0, NC
-    }
-  ' compose.yaml .env default.conf
-}
-
 repo_init() {
   local username="$1"   # GitHub username
   local new_repo="$2"   # Repo name (without username)
@@ -645,7 +918,7 @@ repo_init() {
   fi
 
   # For updating the REPO value in the .env file
-  repo="${username}/${new_repo}"
+  REPO="${username}/${new_repo}"
 
   # Disable projects quietly since projects is not really needed on the new repo
   gh repo edit "$username/$new_repo" --enable-projects=false &>/dev/null || true
@@ -685,35 +958,37 @@ fi
 
 # Check if Docker is installed and ask to download and install it if not (For Ubuntu and Debian).
 if ! command -v docker >/dev/null 2>&1; then
-  if [[ "$(get_input "Docker is not installed, would you like to install it? (y/n)" "y")" =~ ^[Yy]$ ]]; then
-    echo "Installing docker... you may need to enter your password for the 'sudo' command."
-    # Get OS distribution
-    source /etc/os-release
-    case $ID in
-      ubuntu)
-        echo "Installing Docker for Ubuntu..."
-        sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-        if ! command -v docker >/dev/null 2>&1; then
-          echo -e "${RED}❌ Docker install failed. Please install Docker to proceed.${NC}"
-          exit 1
-        else
-          echo -e "${GREEN}✅ Docker installation for Ubuntu complete!${NC}"
-        fi
-      ;;
-      debian)
-        echo "Installing Docker for Debian.."
-        sudo apt-get update && sudo apt-get install ca-certificates curl && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-        if ! command -v docker >/dev/null 2>&1; then
-          echo -e "${RED}❌ Docker install failed. Please install Docker to proceed.${NC}"
-          exit 1
-        else
-          echo -e "${GREEN}✅ Docker installation for Debian complete!${NC}"
-        fi
-      ;;
-      *) echo -e "${RED}❌ Distribution is not supported by this script! Please install Docker manually.${NC}"
-      ;;
-    esac
-  else
+  echo "Installing docker... you may need to enter your password for the 'sudo' command."
+  # Get OS distribution
+  source /etc/os-release
+  case $ID in
+    ubuntu)
+      echo "Installing Docker for Ubuntu..."
+      sudo apt-get update && sudo apt-get install ca-certificates curl -y && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+      if ! command -v docker >/dev/null 2>&1; then
+        echo -e "${RED}❌ Docker install failed. Please install Docker to proceed.${NC}"
+        exit 1
+      else
+        echo -e "${GREEN}✅ Docker installation for Ubuntu complete!${NC}"
+      fi
+    ;;
+    debian)
+      echo "Installing Docker for Debian.."
+      sudo apt-get update && sudo apt-get install ca-certificates curl -y && sudo install -m 0755 -d /etc/apt/keyrings && sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && sudo chmod a+r /etc/apt/keyrings/docker.asc && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && sudo apt-get update && sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+      if ! command -v docker >/dev/null 2>&1; then
+        echo -e "${RED}❌ Docker install failed. Please install Docker to proceed.${NC}"
+        exit 1
+      else
+        echo -e "${GREEN}✅ Docker installation for Debian complete!${NC}"
+      fi
+    ;;
+    *)
+      echo -e "${RED}❌ Distribution is not supported by this script! Please install Docker manually.${NC}"
+      exit 1
+    ;;
+  esac
+
+  if ! command -v docker >/dev/null 2>&1; then
     echo -e "${RED}❌ Docker must be installed. Please re-run the script to install Docker and to proceed.${NC}"
     exit 1
   fi
@@ -744,10 +1019,13 @@ fi
 if ! command -v jq >/dev/null 2>&1; then
   echo -e "${YELLOW}⚠️ 'jq' is not installed. Installing jq...${NC}"
   sudo apt-get update && sudo apt-get install -y jq
+  if ! command -v jq >/dev/null 2>&1; then
+    echo -e "${RED}❌ jq install failed. Please install jq to proceed.${NC}"
+    exit 1
+  else
+    echo -e "${GREEN}✅ jq installation complete!${NC}"
+    fi
 fi
-
-# Get the downloaded script versions and display them
-#list_script_versions
 
 # Ensure the 'remotefalcon' directory exists
 if [ ! -d "$WORKING_DIR" ]; then
@@ -770,11 +1048,13 @@ download_file $NGINX_DEFAULT_URL "default.conf"
 # Print existing .env file, if it exists, otherwise download the default .env file
 if [ -f .env ]; then
   echo "✔  Found existing .env at $ENV_FILE."
-#  list_file_versions
+  # Display versions of existing files and prompt to update if out of date
+  update_files
   echo "🔍 Parsing current .env variables:"
 else
   download_file $DEFAULT_ENV_URL ".env"
-  list_file_versions
+  # Display versions of existing files and prompt to update if out of date
+  update_files
   echo "🔍 Parsing default .env variables:"
 fi
 
@@ -785,38 +1065,33 @@ print_env
 # Function for the GitHub configuration flow to configure GITHUB_PAT and REPO
 configure_github() {
   # Get GITHUB_PAT and validate input is not default or empty
-  while true; do
-    githubpat=$(get_input "🔑 Enter your GitHub Personal Access Token, required scopes are 'read:org', 'workflow', 'read:packages', 'repo':" "$GITHUB_PAT")
-    if [[ -z "$githubpat" ]]; then
-      echo -e "${RED}❌ GitHub Personal Access Token cannot be blank.${NC}"
-      continue
-    elif [[ ! "$githubpat" =~ ^[0-9a-f]{40}$ ]] && [[ ! "$githubpat" =~ ^gh[pousr]_[A-Za-z0-9_]{36,255}$ ]]; then
-      echo -e "${RED}❌ GitHub Personal Access Token is not in the correct format.${NC}"
-    else
-      break
-    fi
-  done
+  GITHUB_PAT=$(ask_and_validate GITHUB_PAT "🔑 Enter your GitHub Personal Access Token, required scopes are read:org, workflow, read:packages, repo:" "$GITHUB_PAT")
 
   # Only continue if PAT is set
-  if [[ -n "$githubpat" ]]; then
+  if [[ -n "$GITHUB_PAT" ]]; then
     # Validate the GITHUB_PAT by using the GitHub CLI to login
-    validate_github_user "$githubpat" || exit 1
+    validate_github_user "$GITHUB_PAT" || exit 1
+
+    # Set a default GitHub REPO name based on the DOMAIN name if not already set
+    if [[ -z "$REPO" || "$REPO" == "username/repo" ]]; then
+      REPO="${DOMAIN}-image-builder"
+    fi
 
     # Get the GitHub REPO name and then validate it exists or create it from template if it does not exist
     while true; do
-      repo_input=$(get_input "🐙 Enter your GitHub Repository (either 'repo' or 'username/repo'). The username will be set to '$GH_USER':" "$REPO")
+      REPO=$(ask_and_validate REPO "🐙 Enter your GitHub Repository (either 'repo' or 'username/repo'). The username will be set to '$GH_USER':" "$REPO")
 
       # Reject blank/default
-      if [[ -z "$repo_input" || "$repo_input" == "username/repo" || "$repo_input" == "repo" ]]; then
+      if [[ -z "$REPO" || "$REPO" == "username/repo" || "$REPO" == "repo" ]]; then
         echo -e "${RED}❌ Repository is blank or still set to default.${NC}"
         continue
       fi
 
       # Strip username if provided
-      if [[ "$repo_input" == */* ]]; then
-        repo_name="${repo_input#*/}"
+      if [[ "$REPO" == */* ]]; then
+        repo_name="${REPO#*/}"
       else
-        repo_name="$repo_input"
+        repo_name="$REPO"
       fi
 
       # Validate repo name format
@@ -831,16 +1106,23 @@ configure_github() {
 
       # If repo does not exist, create it from template via repo_init, else set the repo variable to the correct format for the existing repo
       if ! validate_github_repo "$repo_name"; then
-        if [[ "$(get_input "❓ Would you like to create private repository '$repo_name' from template 🔗 https://github.com/$TEMPLATE_REPO ? (y/n)" "y")" =~ ^[Yy]$ ]]; then     
+        if [[ "$(get_input "❓ Would you like to create private repository '$repo_name' from template 🔗 https://github.com/$TEMPLATE_REPO ? (y/n)" "y")" =~ ^[Yy]$ ]]; then
           # Create from template if missing
           repo_init "$username" "$repo_name"
+        else
+          echo -e "${YELLOW}⚠️ Setting GITHUB_PAT and REPO back to defaults.${NC}"
+          GITHUB_PAT=""
+          REPO="username/repo"
         fi
       else
         # set the temp repo value to the correct format, if user confirms at the update .env prompt it will be written to .env
-        repo="${username}/${repo_name}"
+        REPO="${username}/${repo_name}"
       fi
       break
     done
+  else
+    # If GITHUB_PAT is blank, reset REPO to default
+    REPO="username/repo"
   fi
 }
 
@@ -848,194 +1130,180 @@ configure_github() {
 if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ ]]; then
   # Configuration walkthrough questions. Questions will pull existing or default values from the sourced .env file
   echo
-  echo -e "${YELLOW}⚠️ Answer the following questions to update your compose .env variables.${NC}"
+  echo -e "Answer the following questions to update your compose .env variables."
   echo "Press ENTER to accept the existing values that are between the brackets [ ]."
   echo "You will be asked to confirm the changes before the file is modified."
   echo
   # ====== START variable questions ======
 
   # ====== START REQUIRED variables ======
+  # Get domain name and validate input is not default, empty, or not in valid domain format
+  DOMAIN=$(ask_and_validate DOMAIN "🌐 Enter your domain name (e.g., yourdomain.com):" "$DOMAIN")
+
   # If no repo is configured, display a warning message if less than 16GB of RAM is detected to encourage adding more RAM or confiure GitHub
   if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then
     if ! memory_check; then
       echo -e "⚡ ${Yellow}If the images fail to build either add more system memory or configure GitHub for building images remotely.${NC}"
     fi
   fi
-  if [[ "$(get_input "❓ Update GitHub configuration for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-    # If REPO is not blank or not the default ask to disable it, else ask to configure it
-    if [[ -n "$repo" && "$repo" != "username/repo" ]]; then
-      echo -e "${YELLOW}⚠️ Existing GitHub repository configuration found: $repo${NC}"
-      if [[ "$(get_input "❓ Would you like to disable it and build images locally? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-        echo -e "${YELLOW}⚠️ GITHUB_PAT and REPO will be set to default values if .env changes are accepted.${NC}"
-        githubpat=" "
-        repo="username/repo"
+
+  if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+    echo -e "${CYAN}ℹ️ Non-interactive mode enabled.${NC}"
+    configure_github
+  else
+    # Interactive mode (ask user)
+    if [[ "$(get_input "❓ Update GitHub configuration for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
+        echo -e "${YELLOW}⚠️ Existing GitHub configuration detected: $REPO${NC}"
+
+        case "$(get_input "❓ Choose an option: [1] Disable remote builds  [2] Modify config  [3] Keep as-is" "3")" in
+          1)
+            echo -e "${YELLOW}⚠️ Disabling remote builds.${NC}"
+            GITHUB_PAT=""
+            REPO="username/repo"
+            ;;
+          2)
+            configure_github
+            ;;
+          3)
+            echo -e "${CYAN}ℹ️ Keeping existing configuration.${NC}"
+            ;;
+        esac
       else
-        if [[ "$(get_input "❓ Modify the existing GitHub configuration to update the GITHUB_PAT or REPO? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-          configure_github
-        fi
-      fi
-    else # REPO is blank or set to default
-      if [[ "$(get_input "❓ Configure GITHUB_PAT and REPO for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         configure_github
       fi
     fi
   fi
 
   # Get the Cloudflared tunnel token and validate input is not default, empty, or not in valid format
-  while true; do
-    tunneltoken=$(get_input "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
-    if [[ -z "$tunneltoken" || "$tunneltoken" == "cloudflare_token" ]]; then
-      echo -e "${RED}❌ Token is missing or still set to a placeholder.${NC}"
+  if [[ "${NON_INTERACTIVE:-false}" == "false" && ( "$TUNNEL_TOKEN" == "cloudflare_token" || -z "$TUNNEL_TOKEN" ) ]]; then
+    echo -e "${YELLOW}⚠️ TUNNEL_TOKEN is not set or is set to the default value.${NC}"
+    if [[ "$(get_input "❓ Run the automatic Cloudflare configuration script? You will need a Cloudflare API token (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      if [ -f "$SCRIPT_DIR/setup_cloudflare.sh" ]; then
+        bash "$SCRIPT_DIR/setup_cloudflare.sh"
+
+        if [[ -z "$TUNNEL_TOKEN" && -f "tunnel_token.txt" ]]; then
+          TUNNEL_TOKEN=$(<tunnel_token.txt)
+        fi
+      else
+        echo -e "${YELLOW}⚠️ setup_cloudflare.sh script not found. Skipping automatic Cloudflare configuration.${NC}"
+        TUNNEL_TOKEN=$(ask_and_validate TUNNEL_TOKEN "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
+      fi
     else
-      break
-    fi
-  done
-
-  # Get domain name and validate input is not default, empty, or not in valid domain format
-  while true; do
-    domain=$(get_input "🌐 Enter your domain name (e.g., yourdomain.com):" "$DOMAIN")
-    if [[ "$domain" == "your_domain.com" || -z "$domain" ]]; then
-      echo -e "${RED}❌ 'your_domain.com' is a placeholder. Please enter a valid domain.${NC}"
-    elif [[ ! "$domain" =~ ^([a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$ ]]; then
-      echo -e "${RED}❌ '$domain' is not a valid domain format.${NC}"
-    else
-      break
-    fi
-  done
-
-  # Validate auto validate email input, only accept true or false
-  while true; do
-    autovalidateemail=$(get_input "📧 Enable auto validate email? While set to 'true' anyone can create a viewer page account on your site (true/false):" "$AUTO_VALIDATE_EMAIL")
-    autovalidateemail="${autovalidateemail,,}"  # lowercase
-    if [[ "$autovalidateemail" == "true" || "$autovalidateemail" == "false" ]]; then
-      break
-    else
-      echo -e "${RED}❌ Please enter 'true' or 'false' only.${NC}"
-    fi
-  done
-
-  # Removed this hostnameparts question to avoid issues - .env can be manually edited if you have ACM and want a 3 part domain.
-  #echo "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com')"
-  #hostnameparts=$(get_input "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month):" "$HOSTNAME_PARTS" )
-  #echo
-
-  #if [[ $hostnameparts == 3 ]]; then
-  #  echo -e "${YELLOW}⚠️ You are using a 3 part domain. Please ensure you have Advanced Certificate Manager enabled in Cloudflare.${NC}"
-  #fi
-
-  # Ask if Cloudflare origin certificates should be updated if they exist. Otherwise prompt if cert/key files are missing
-  # This will create the cert/key in the current directory and append the domain name to the beginning of the file name
-  if [[ -f "${domain}_origin_cert.pem" && -f "${domain}_origin_key.pem" ]]; then
-    if [[ "$(get_input "❓ Update existing origin certificate and key? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-      read -p "Press ENTER to open nano to paste the origin certificate. Ctrl+X, y, and ENTER to save."
-      nano "${domain}_origin_cert.pem"
-      read -p "Press ENTER to open nano to paste the origin private key. Ctrl+X, y, and ENTER to save."
-      nano "${domain}_origin_key.pem"
+      TUNNEL_TOKEN=$(ask_and_validate TUNNEL_TOKEN "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
     fi
   else
-    # If origin cert missing
-    if [[ ! -f "${domain}_origin_cert.pem" ]]; then
-      echo -e "${YELLOW}⚠️ Origin certificate ${domain}_origin_cert.pem not found. Please paste it now.${NC}"
-      read -p "Press ENTER to open nano to paste the origin certificate. Ctrl+X, y, and ENTER to save."
-      nano "${domain}_origin_cert.pem"
-    fi
+    TUNNEL_TOKEN=$(ask_and_validate TUNNEL_TOKEN "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
+  fi
 
-    # If origin key missing
-    if [[ ! -f "${domain}_origin_key.pem" ]]; then
-      echo -e "${YELLOW}⚠️ Origin private key ${domain}_origin_key.pem not found. Please paste it now.${NC}"
-      read -p "Press ENTER to open nano to paste the origin private key. Ctrl+X, y, and ENTER to save."
-      nano "${domain}_origin_key.pem"
+  # Validate auto validate email input, only accept true or false
+  AUTO_VALIDATE_EMAIL=$(ask_and_validate AUTO_VALIDATE_EMAIL "📧 Enable auto validate email? While set to 'true' anyone can create a viewer page account on your site (true/false):" "$AUTO_VALIDATE_EMAIL" | tr '[:upper:]' '[:lower:]')
+
+  # Removed this HOSTNAME_PARTS question to avoid issues - .env can be manually edited if you have ACM and want a 3 part domain.
+  #echo "Enter the number of parts in your hostname. For example, domain.com would be two parts ('domain' and 'com'), and sub.domain.com would be 3 parts ('sub', 'domain', and 'com')"
+  #HOSTNAME_PARTS=$(ask_and_validate HOSTNAME_PARTS "Cloudflare free only supports two parts for wildcard domains without Advanced Certicate Manager(\$10/month):" "$HOSTNAME_PARTS" )
+  #echo
+
+  if [[ $HOSTNAME_PARTS == 3 ]]; then
+    echo -e "${YELLOW}⚠️ You are using a 3 part domain. Please ensure you have Advanced Certificate Manager enabled in Cloudflare.${NC}"
+  fi
+
+  if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+    echo -e "${YELLOW}⚠️ Skipping origin certificate/key configuration in non-interactive mode.${NC}"
+  else
+    # Ask if Cloudflare origin certificates should be updated if they exist. Otherwise prompt if cert/key files are missing
+    # This will create the cert/key in the current directory and append the domain name to the beginning of the file name
+    if [[ -f "${DOMAIN}_origin_cert.pem" && -f "${DOMAIN}_origin_key.pem" ]]; then
+      if [[ "$(get_input "❓ Update existing origin certificate and key? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+        read -p "Press ENTER to open nano to paste the origin certificate. Ctrl+X, y, and ENTER to save."
+        nano "${DOMAIN}_origin_cert.pem"
+        read -p "Press ENTER to open nano to paste the origin private key. Ctrl+X, y, and ENTER to save."
+        nano "${DOMAIN}_origin_key.pem"
+      fi
+    else
+      # If origin cert missing
+      if [[ ! -f "${DOMAIN}_origin_cert.pem" ]]; then
+        echo -e "${YELLOW}⚠️ Origin certificate ${DOMAIN}_origin_cert.pem not found. Please paste it now.${NC}"
+        read -p "Press ENTER to open nano to paste the origin certificate. Ctrl+X, y, and ENTER to save."
+        nano "${DOMAIN}_origin_cert.pem"
+      fi
+
+      # If origin key missing
+      if [[ ! -f "${DOMAIN}_origin_key.pem" ]]; then
+        echo -e "${YELLOW}⚠️ Origin private key ${DOMAIN}_origin_key.pem not found. Please paste it now.${NC}"
+        read -p "Press ENTER to open nano to paste the origin private key. Ctrl+X, y, and ENTER to save."
+        nano "${DOMAIN}_origin_key.pem"
+      fi
     fi
   fi
   # ====== END REQUIRED variables ======
 
   # ====== START OPTIONAL variables ======
   if [[ "$(get_input "❓ Update OPTIONAL variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-    read -p "🗺️ Enter your Google maps key: [$GOOGLE_MAPS_KEY]: " googlemapskey
+    # Ask if SEQUENCE_LIMIT variable should be updated
+    SEQUENCE_LIMIT=$(ask_and_validate SEQUENCE_LIMIT "🎶 Enter desired sequence limit:" "$SEQUENCE_LIMIT")
 
-    # Ask if analytics env variables should be set for PostHog, Google Analytics, or Mixpanel
-    if [[ "$(get_input "❓ Update analytics variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-      read -p "📊 Enter your PostHog key - https://posthog.com/: [$PUBLIC_POSTHOG_KEY]: " publicposthogkey
-      read -p "📊 Enter your Google Analytics Measurement ID - https://analytics.google.com/: [$GA_TRACKING_ID]: " gatrackingid
-      read -p "📊 Enter your Mixpanel key - https://mixpanel.com/: [$MIXPANEL_KEY]: " mixpanelkey
-      read -p "📊 Enter your Microsoft Clarity code - https://clarity.microsoft.com/: [$CLARITY_PROJECT_ID]: " clarity_project_id
+    # Validate SWAP_CP input, only accept true or false
+    #echo -e "🔁 SWAP_CP = true will make your\n  Viewer Page Subdomain accessible at: ${BLUE}🔗 https://$DOMAIN${NC}\n  Control Panel accessible at: ${BLUE}🔗 https://controlpanel.$DOMAIN${NC}"
+    #echo -e "🔁 SWAP_CP = false will make your\n  Control Panel accessible at: ${BLUE}🔗 https://$DOMAIN${NC}\n  Viewer Page Subdomain accessible at: ${BLUE}🔗 https://yoursubdomain.$DOMAIN${NC}"
+    echo -e "🔁 SWAP_CP = true  →  Viewer: ${BLUE}🔗 https://$DOMAIN${NC}  |  Control Panel: ${BLUE}🔗 https://controlpanel.$DOMAIN${NC}"
+    echo -e "🔁 SWAP_CP = false →  Control Panel: ${BLUE}🔗 https://$DOMAIN${NC} |  Viewer: ${BLUE}🔗 https://yoursubdomain.$DOMAIN${NC}"
+    SWAP_CP=$(ask_and_validate SWAP_CP "❓ Enable or disable swapping the Control Panel and Viewer Page Subdomain URLS? (true/false):" "$SWAP_CP" | tr '[:upper:]' '[:lower:]')
+
+    # If SWAP_CP is set to true ask to update the Viewer Page Subdomain
+    if [[ $SWAP_CP == true ]]; then
+      VIEWER_PAGE_SUBDOMAIN=$(ask_and_validate VIEWER_PAGE_SUBDOMAIN "🌐 Enter your Viewer Page Subdomain:" "$VIEWER_PAGE_SUBDOMAIN")
+
+      # Remove all whitespace (leading, trailing, and internal)
+      VIEWER_PAGE_SUBDOMAIN=$(echo "$VIEWER_PAGE_SUBDOMAIN" | tr -d '[:space:]')
+      # Convert to lowercase
+      VIEWER_PAGE_SUBDOMAIN=$(echo "$VIEWER_PAGE_SUBDOMAIN" | tr '[:upper:]' '[:lower:]')
     fi
+
+    GOOGLE_MAPS_KEY=$(get_input GOOGLE_MAPS_KEY "🗺️ Enter your Google maps key:" "$GOOGLE_MAPS_KEY")
 
     # Ask if SOCIAL_META variable should be updated
     if [[ "$(get_input "❓ Update social meta tag? (y/n)" "n")" =~ ^[Yy]$ ]]; then
       echo "See the RF docs for details on the SOCIAL_META tag:"
       echo -e "${BLUE}🔗 https://docs.remotefalcon.com/docs/developer-docs/running-it/digitalocean-droplet?#update-docker-composeyaml${NC}"
       echo
-      echo "🏷️ Update SOCIAL_META tag or leave as default - Enter on one line only"
+      echo -e "🏷️ Update SOCIAL_META tag or leave as default - Enter on one line only"
       echo
-      read -p "[$SOCIAL_META]: " socialmeta
+      SOCIAL_META=$(get_input SOCIAL_META "" "$SOCIAL_META")
     fi
 
-    # Ask if SEQUENCE_LIMIT variable should be updated
-    while true; do
-      sequencelimit=$(get_input "🎶 Enter desired sequence limit:" "$SEQUENCE_LIMIT")
-      if [[ "$sequencelimit" =~ ^[1-9][0-9]*$ ]]; then
-        break
-      else
-        echo -e "${RED}❌ Please enter a valid whole number greater than 0.${NC}"
-      fi
-    done
-
-    # Ask if the user wants to switch the Viewer Page and Control Panel URLs
-    if [[ -z "$SWAP_CP" || "$SWAP_CP" == false ]]; then
-      if [[ "$(get_input "🔁 Would you like to swap the Control Panel and Viewer Page Subdomain URLs? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-        swapCP=true
-      fi
-    else
-      if [[ "$(get_input "🔁 Would you like to REVERT the Control Panel and Viewer Page Subdomain URLs back to the default? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-        swapCP=false
-      fi
-    fi
-
-    # If swapCP is set to true ask to update the Viewer Page Subdomain
-    if [[ $swapCP == true ]]; then
-      while true; do
-        viewerPageSubdomain=$(get_input "🌐 Enter your Viewer Page Subdomain:" "$VIEWER_PAGE_SUBDOMAIN")
-
-        # Remove all whitespace (leading, trailing, and internal)
-        viewerPageSubdomain=$(echo "$viewerPageSubdomain" | tr -d '[:space:]')
-        # Convert to lowercase
-        viewerPageSubdomain=$(echo "$viewerPageSubdomain" | tr '[:upper:]' '[:lower:]')
-
-        # Validate: only lowercase letters and digits
-        if [[ -z "$viewerPageSubdomain" ]]; then
-          echo -e "${RED}❌ Subdomain cannot be empty.${NC}"
-        elif [[ "$viewerPageSubdomain" =~ [^a-z0-9] ]]; then
-          echo -e "${RED}❌ Subdomain must contain only lowercase letters and numbers (no spaces, symbols, or hyphens).${NC}"
-        else
-          break
-        fi
-      done
+    # Ask if analytics env variables should be set for PostHog, Google Analytics, or Mixpanel
+    if [[ "$(get_input "❓ Update analytics variables? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+      PUBLIC_POSTHOG_KEY=$(get_input PUBLIC_POSTHOG_KEY "📊 Enter your PostHog key - https://posthog.com/:" "$PUBLIC_POSTHOG_KEY")
+      GA_TRACKING_ID=$(get_input GA_TRACKING_ID "Enter your Google Analytics Measurement ID - https://analytics.google.com/:" "$GA_TRACKING_ID")
+      MIXPANEL_KEY=$(get_input MIXPANEL_KEY "📊 Enter your Mixpanel key - https://mixpanel.com/:" "$MIXPANEL_KEY")
+      CLARITY_PROJECT_ID=$(get_input CLARITY_PROJECT_ID "📊 Enter your Microsoft Clarity code - https://clarity.microsoft.com/:" "$CLARITY_PROJECT_ID")
     fi
   fi
+
   # Ensure optional variables are set to the current values regardless if they were updated or not
-  repo=${repo:-$REPO}
-  githubpat=${githubpat:-$GITHUB_PAT}
-  hostnameparts=${hostnameparts:-$HOSTNAME_PARTS}
-  googlemapskey=${googlemapskey:-$GOOGLE_MAPS_KEY}
-  publicposthogkey=${publicposthogkey:-$PUBLIC_POSTHOG_KEY}
-  gatrackingid=${gatrackingid:-$GA_TRACKING_ID}
-  mixpanelkey=${mixpanelkey:-$MIXPANEL_KEY}
-  clarity_project_id=${clarity_project_id:-$CLARITY_PROJECT_ID}
-  socialmeta=${socialmeta:-$SOCIAL_META}
-  sequencelimit=${sequencelimit:-$SEQUENCE_LIMIT}
-  viewerPageSubdomain=${viewerPageSubdomain:-$VIEWER_PAGE_SUBDOMAIN}
-  swapCP=${swapCP:-$SWAP_CP}
+  REPO=${REPO:-$REPO}
+  GITHUB_PAT=${GITHUB_PAT:-$GITHUB_PAT}
+  HOSTNAME_PARTS=${HOSTNAME_PARTS:-$HOSTNAME_PARTS}
+  GOOGLE_MAPS_KEY=${GOOGLE_MAPS_KEY:-$GOOGLE_MAPS_KEY}
+  PUBLIC_POSTHOG_KEY=${PUBLIC_POSTHOG_KEY:-$PUBLIC_POSTHOG_KEY}
+  GA_TRACKING_ID=${GA_TRACKING_ID:-$GA_TRACKING_ID}
+  MIXPANEL_KEY=${MIXPANEL_KEY:-$MIXPANEL_KEY}
+  CLARITY_PROJECT_ID=${CLARITY_PROJECT_ID:-$CLARITY_PROJECT_ID}
+  SOCIAL_META=${SOCIAL_META:-$SOCIAL_META}
+  SEQUENCE_LIMIT=${SEQUENCE_LIMIT:-$SEQUENCE_LIMIT}
+  VIEWER_PAGE_SUBDOMAIN=${VIEWER_PAGE_SUBDOMAIN:-$VIEWER_PAGE_SUBDOMAIN}
+  SWAP_CP=${SWAP_CP:-$SWAP_CP}
   # ====== END OPTIONAL variables ======
 
   # ====== START BUILD ARGs ======
   # Capture the current values of any BUILD args(from sourced .env) that weren't asked for above
-  version=${version:-$VERSION}
-  hostenv=${hostenv:-$HOST_ENV}
-  publicposthoghost=${publicposthoghost:-$PUBLIC_POSTHOG_HOST}
-  otelopts=${otelopts:-$OTEL_OPTS}
-  oteluri=${oteluri:-$OTEL_URI}
-  mongouri=${mongouri:-$MONGO_URI}
+  VERSION=${VERSION:-$VERSION}
+  HOST_ENV=${HOST_ENV:-$HOST_ENV}
+  PUBLIC_POSTHOG_HOST=${PUBLIC_POSTHOG_HOST:-$PUBLIC_POSTHOG_HOST}
+  OTEL_OPTS=${OTEL_OPTS:-$OTEL_OPTS}
+  OTEL_URI=${OTEL_URI:-$OTEL_URI}
+  MONGO_URI=${MONGO_URI:-$MONGO_URI}
 
   # ====== START Automatically configured variables ======
   # Check VIEWER_JWT_KEY and USER_JWT_KEY .env variables and generate a random Base64 value if set to default 123456
@@ -1164,7 +1432,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
           echo -e "${GREEN}🚀 Bringing up existing containers to apply any .env changes...${NC}"
           run_updates auto-apply
         else # No containers running, no image rebuild required, and no 'latest' tags found so just bring the containers up
-          # Run interactive updates since update_containers will verify if the image exists in the repo and build indvidually if missing
+          # Run interactive updates since update_containers will verify if the image exists in the REPO and build indvidually if missing
           if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
             echo -e "${GREEN}🚀 Bringing up stopped containers with update_container.sh...${NC}"
             run_updates

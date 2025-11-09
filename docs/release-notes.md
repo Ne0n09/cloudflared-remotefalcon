@@ -1,5 +1,25 @@
 # Release Notes
 
+## 2025.11.8.1
+
+- Many updates to configure-rf.sh to support running it non-interactively to automate deployment: `./configure-rf.sh [-y|--non-interactive] [--update-all|--update-scripts|--update-files|--update-workflows|--no-updates] [--set KEY=VALUE ...]`
+
+- Updated setup_cloudflare.sh to add flags to run the script automatically: `./setup_cloudflare.sh [-y|--non-interactive] [--domain <domain.com>] [--api-token <api-token>]`
+
+- Example of combining both to spin up a basic installation automatically that uses GitHub for image building: `./setup_cloudflare.sh -y --domain <yourdomain.com> --api-token <your_Cloudflare_API_token> && ./configure-rf.sh -y --no-updates --set GITHUB_PAT=<GitHub_PAT_for_image_builder>`
+
+- Updated compose.yaml to use coollabsio/minio image since MinIO is no longer providing builds and added health check.
+
+- Updated compose.yaml to change the environmental variables for control-panel and external-api.
+
+- Updated update_containers.sh to use coollabsio/minio for MinIO updates.
+
+- Updated share_functions.sh to remove yellow coloring from the existing .env variable display.
+
+- Udpated minio_init.sh to check if the container is ready via host curl instead of docker exec curl.
+
+- Other misc changes.
+
 ## 2025.10.24.1
 
 - Updated configure-rf to force image build for all images if GH REPO set and all images are still tagged to latest in compoes.yaml.
