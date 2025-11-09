@@ -6,9 +6,11 @@ This page covers the Cloudflare [domain name](cloudflare.md#add-domain-name-to-c
 
 ## Automatic Configuration
 
-With a Cloudflare API key the steps below can be automated utilizing the [setup_cloudflare.sh](../about/scripts.md#setup_cloudflaresh) script.
+- With a Cloudflare API key the manual configuration steps below can be automated utilizing the [configure-rf](../about/scripts.md#configure-rfsh) script and providing the Cloudflare API token when prompted.
 
-If issues are encountered with the script you can still follow the sections below to verify settings manually.
+- The configure-rf script will then call the [setup_cloudflare](../about/scripts.md#setup_cloudflaresh) script.
+
+- If issues are encountered with the script you can still follow the sections below to verify settings manually.
 
 ### Create Cloudflare API Token
 
@@ -46,29 +48,12 @@ If issues are encountered with the script you can still follow the sections belo
 
     ![Cloudflare API key](../images/cloudflare_api_key.PNG)
 
-### Download and run setup_cloudflare script
+8. Proceed to GitHub [configuration](github.md) if you want to build Remote Falcon images through GitHub or you can skip to the [Remote Falcon installation](remotefalcon.md) if you want to build images locally.
 
-- This script is intended for new installations, but can be re-run to ensure settings are correct, create new certificates, and to delete and re-create the tunnel and tunnel settings.
-
-- The script will ask you for your Cloudflare API token.
-
-- The Cloudflare API token is not stored.
-
-1. Download the script to your desired directory. Your current directory can be verified with `#!sh pwd` command.
-
-    !!! note
-
-        The script must be outside of the 'remotefalcon' directory if it already exists.
-
-2. Run the command below. The command will download the [setup_cloudflare](../about/scripts.md#setup_cloudflaresh) script, make it executable, and run it automatically.
-   
-      ```sh
-      sudo apt-get update && sudo apt-get install jq curl openssl; \
-      curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/setup_cloudflare.sh; \
-      chmod +x setup_cloudflare.sh; \
-      ./setup_cloudflare.sh
-      ```
-3. After the script completes you may move onto GitHub [configuration](github.md) if you want to build Remote Falcon images through GitHub or you can skip to the [Remote Falcon installation](remotefalcon.md) if you want to build images locally.
+9. During the Remote Falcon installation enter your Cloudflare API Token at the prompt:
+```sh title="configure-rf Cloudfalre API Token prompt" 
+🔑 Enter your Cloudflare API Token to automatically configure Cloudflare or leave blank for manual configuration: []: 
+```
 
 ## Manual Configuration
 

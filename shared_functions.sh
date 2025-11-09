@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2025.11.8.1
+# SHARED_FUNCTIONS_VERSION=2025.11.9.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -370,7 +370,7 @@ replace_compose_tag() {
       sed -i.bak -E "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$tag|" "$COMPOSE_FILE"
       ;;
     minio)
-      sed -i.bak -E "s|minio/minio:[^[:space:]]+|minio/minio:$tag|" "$COMPOSE_FILE"
+      sed -i.bak -E "/^[[:space:]]*image:[[:space:]]*(coollabsio\/)?minio(\/minio)?:/ s|:[^[:space:]]+|:$tag|" "$COMPOSE_FILE"
       ;;
     *)
       echo -e "${RED}❌ Failed to replace compose tags. Unsupported container: $service_name${NC}" >&2

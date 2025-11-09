@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.11.8.1
+# VERSION=2025.11.9.1
 
 #set -euo pipefail
 
@@ -69,6 +69,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --update-scripts          Update only scripts"
       echo "  --update-files            Update only compose.yaml, .env, and default.conf files"
       echo "  --update-workflows        Update only image builder GitHub workflows"
+      echo "  --no-updates              Skip all updates(except container updates)"
       echo "  --set KEY=VALUE           Set configuration override for config questions(can be used multiple times)"
       echo "  -h, --help                Show this help message"
       exit 0
@@ -539,6 +540,7 @@ get_input() {
     return 1
   fi
 
+  # Answer prompt with override value in non-interactive mode or auto answer yes to yes/no
   if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
     if [ -n "$key" ] && [ -n "${OVERRIDES[$key]+set}" ]; then
       input="${OVERRIDES[$key]}"
@@ -588,7 +590,6 @@ update_env() {
     ["SEQUENCE_LIMIT"]="$SEQUENCE_LIMIT"
     ["SWAP_CP"]="$SWAP_CP"
     ["VIEWER_PAGE_SUBDOMAIN"]="$VIEWER_PAGE_SUBDOMAIN"
-    ["CLARITY_PROJECT_ID"]="$CLARITY_PROJECT_ID"
   )
 
   # If any of these are changed, an image rebuild will be required.
@@ -608,7 +609,6 @@ update_env() {
     ["OTEL_OPTS"]="$OTEL_OPTS"
     ["OTEL_URI"]="$OTEL_URI"
     ["MONGO_URI"]="$MONGO_URI"
-    ["CLARITY_PROJECT_ID"]="$CLARITY_PROJECT_ID"
   )
 
 # Compare new_env_vars to existing_env_vars
@@ -665,8 +665,8 @@ update_env() {
             fi
           fi
         done
+        echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
       fi
-      echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     fi
   fi
 
@@ -677,8 +677,8 @@ update_env() {
 
   # Run validation
   if ! validate_variables "${vars_to_validate[@]}"; then
-    echo -e "${RED}❌ Validation failed. .env file was not updated.${NC}"
-    return 1
+    echo -e "${RED}❌ Validation failed. The .env file was not updated.${NC}"
+    exit 1
   else
     echo -e "${GREEN}✅ All environment variables validated successfully.${NC}"
   fi
@@ -1176,13 +1176,33 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   fi
 
   # Get the Cloudflared tunnel token and validate input is not default, empty, or not in valid format
-  if [[ "${NON_INTERACTIVE:-false}" == "false" && ( "$TUNNEL_TOKEN" == "cloudflare_token" || -z "$TUNNEL_TOKEN" ) ]]; then
-    echo -e "${YELLOW}⚠️ TUNNEL_TOKEN is not set or is set to the default value.${NC}"
-    if [[ "$(get_input "❓ Run the automatic Cloudflare configuration script? You will need a Cloudflare API token (y/n)" "n")" =~ ^[Yy]$ ]]; then
+#  if [[ "$TUNNEL_TOKEN" == "cloudflare_token" || -z "$TUNNEL_TOKEN" ]]; then
+#    echo -e "${YELLOW}⚠️ TUNNEL_TOKEN is not set or is set to the default value.${NC}"
+#  fi
+  if [[ "${NON_INTERACTIVE:-false}" == "false" ]]; then
+    CF_API_TOKEN=$(ask_and_validate CF_API_TOKEN "🔑 Enter your Cloudflare API Token to automatically configure Cloudflare or leave blank for manual configuration:" "$CF_API_TOKEN")
+    if [[ -n "$CF_API_TOKEN" ]]; then
       if [ -f "$SCRIPT_DIR/setup_cloudflare.sh" ]; then
-        bash "$SCRIPT_DIR/setup_cloudflare.sh"
+        bash "$SCRIPT_DIR/setup_cloudflare.sh" --api-token "${CF_API_TOKEN}"
 
-        if [[ -z "$TUNNEL_TOKEN" && -f "tunnel_token.txt" ]]; then
+        if [[ -f "tunnel_token.txt" ]]; then
+          TUNNEL_TOKEN=$(<tunnel_token.txt)
+        fi
+      else
+        echo -e "${YELLOW}⚠️ setup_cloudflare.sh script not found. Skipping automatic Cloudflare configuration.${NC}"
+        TUNNEL_TOKEN=$(ask_and_validate TUNNEL_TOKEN "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
+      fi
+    else # Manual configuration as CF_API_TOKEN is blank
+      TUNNEL_TOKEN=$(ask_and_validate TUNNEL_TOKEN "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
+    fi
+  else # Non-interactive will always attempt automatic configuration if CF_API_TOKEN is set
+    CF_API_TOKEN=$(ask_and_validate CF_API_TOKEN "🔑 Enter your Cloudflare API Token to automatically configure Cloudflare or leave blank for manual configuration:" "$CF_API_TOKEN")
+    if [[ -n "$CF_API_TOKEN" ]]; then
+      echo -e "${CYAN}ℹ️ CF_API_TOKEN is set, attempting automatic Cloudflare configuration...${NC}"
+      if [ -f "$SCRIPT_DIR/setup_cloudflare.sh" ]; then
+        bash "$SCRIPT_DIR/setup_cloudflare.sh" -y --api-token "${CF_API_TOKEN}"
+
+        if [[ -f "tunnel_token.txt" ]]; then
           TUNNEL_TOKEN=$(<tunnel_token.txt)
         fi
       else
@@ -1192,8 +1212,6 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     else
       TUNNEL_TOKEN=$(ask_and_validate TUNNEL_TOKEN "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
     fi
-  else
-    TUNNEL_TOKEN=$(ask_and_validate TUNNEL_TOKEN "🔐 Enter your Cloudflare Tunnel token:" "$TUNNEL_TOKEN")
   fi
 
   # Validate auto validate email input, only accept true or false
@@ -1248,7 +1266,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     #echo -e "🔁 SWAP_CP = false will make your\n  Control Panel accessible at: ${BLUE}🔗 https://$DOMAIN${NC}\n  Viewer Page Subdomain accessible at: ${BLUE}🔗 https://yoursubdomain.$DOMAIN${NC}"
     echo -e "🔁 SWAP_CP = true  →  Viewer: ${BLUE}🔗 https://$DOMAIN${NC}  |  Control Panel: ${BLUE}🔗 https://controlpanel.$DOMAIN${NC}"
     echo -e "🔁 SWAP_CP = false →  Control Panel: ${BLUE}🔗 https://$DOMAIN${NC} |  Viewer: ${BLUE}🔗 https://yoursubdomain.$DOMAIN${NC}"
-    SWAP_CP=$(ask_and_validate SWAP_CP "❓ Enable or disable swapping the Control Panel and Viewer Page Subdomain URLS? (true/false):" "$SWAP_CP" | tr '[:upper:]' '[:lower:]')
+    SWAP_CP=$(ask_and_validate SWAP_CP "❓ Enable or disable SWAP_CP to swap the Control Panel and Viewer Page Subdomain URLS? (true/false):" "$SWAP_CP" | tr '[:upper:]' '[:lower:]')
 
     # If SWAP_CP is set to true ask to update the Viewer Page Subdomain
     if [[ $SWAP_CP == true ]]; then
@@ -1277,7 +1295,6 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       PUBLIC_POSTHOG_KEY=$(get_input PUBLIC_POSTHOG_KEY "📊 Enter your PostHog key - https://posthog.com/:" "$PUBLIC_POSTHOG_KEY")
       GA_TRACKING_ID=$(get_input GA_TRACKING_ID "Enter your Google Analytics Measurement ID - https://analytics.google.com/:" "$GA_TRACKING_ID")
       MIXPANEL_KEY=$(get_input MIXPANEL_KEY "📊 Enter your Mixpanel key - https://mixpanel.com/:" "$MIXPANEL_KEY")
-      CLARITY_PROJECT_ID=$(get_input CLARITY_PROJECT_ID "📊 Enter your Microsoft Clarity code - https://clarity.microsoft.com/:" "$CLARITY_PROJECT_ID")
     fi
   fi
 
@@ -1289,7 +1306,6 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   PUBLIC_POSTHOG_KEY=${PUBLIC_POSTHOG_KEY:-$PUBLIC_POSTHOG_KEY}
   GA_TRACKING_ID=${GA_TRACKING_ID:-$GA_TRACKING_ID}
   MIXPANEL_KEY=${MIXPANEL_KEY:-$MIXPANEL_KEY}
-  CLARITY_PROJECT_ID=${CLARITY_PROJECT_ID:-$CLARITY_PROJECT_ID}
   SOCIAL_META=${SOCIAL_META:-$SOCIAL_META}
   SEQUENCE_LIMIT=${SEQUENCE_LIMIT:-$SEQUENCE_LIMIT}
   VIEWER_PAGE_SUBDOMAIN=${VIEWER_PAGE_SUBDOMAIN:-$VIEWER_PAGE_SUBDOMAIN}
@@ -1329,8 +1345,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       current_version=$(get_current_version "$service")
       compose_tag=$(get_current_compose_tag "$service")
 
-      # Compare running container tags to the compose.yaml tags and update compose.yaml if compose tag is
-      # Check if the running container's tag is in the valid format
+      # Check if the running container's tag is in the valid format. replacee_compose_tag is defined in shared_functions.sh
       if check_tag_format "$service" "$current_version"; then
         # If the compose tag does not match the current running version, update the compose tag in compose.yaml - this is useful if compose.yaml was replaced and all are tagged to 'latest'
         if [[ "$compose_tag" != "$current_version" ]]; then
@@ -1444,18 +1459,26 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       fi
     fi
   else # update_env returned false - Ask to run update check anyway
+    # Run validation to make sure default values aren't set
+    vars_to_validate=(TUNNEL_TOKEN DOMAIN AUTO_VALIDATE_EMAIL HOSTNAME_PARTS SEQUENCE_LIMIT SWAP_CP VIEWER_PAGE_SUBDOMAIN)
+    if validate_variables "${vars_to_validate[@]}"; then
+      if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+        run_updates
+      elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+        health_check health
+      fi
+    fi
+  fi
+else # User chose not to update the .env file
+  echo -e "${YELLOW}⚠️ No .env variables modified.${NC}"
+  # Run validation to make sure default values aren't set
+  vars_to_validate=(TUNNEL_TOKEN DOMAIN AUTO_VALIDATE_EMAIL HOSTNAME_PARTS SEQUENCE_LIMIT SWAP_CP VIEWER_PAGE_SUBDOMAIN)
+  if validate_variables "${vars_to_validate[@]}"; then
     if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
       run_updates
     elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
       health_check health
     fi
-  fi
-else # User chose not to update the .env file
-  echo -e "${YELLOW}⚠️ No .env variables modified.${NC}"
-  if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-    run_updates
-  elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-    health_check health
   fi
 fi
 

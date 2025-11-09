@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.11.7.1
+# VERSION=2025.11.9.1
 
 # This script assist with automatically setting up Cloudflare domain, certificate, SSL/TLS, tunnel, and DNS settings.
 # A Cloudflare API Token with appropriate permissions is required.
@@ -202,13 +202,17 @@ get_user_input() {
   echo -e "${BLUE}⚙️ Starting Cloudflare setup for ${RED}Remote Falcon${NC}...${NC}"
   echo
   if [[ "$NON_INTERACTIVE" == false ]]; then
-    read -rp "🔑 Enter your Cloudflare API Token: " CF_API_TOKEN
+    if [ -z "${CF_API_TOKEN:-}" ]; then
+      read -rp "🔑 Enter your Cloudflare API Token: " CF_API_TOKEN
+    else
+      echo -e "${GREEN}✔ Using Cloudflare API Token provided via --api-token${NC}"
+    fi
   else
     if [ -z "${CF_API_TOKEN:-}" ]; then
       echo -e "${RED}❌ CF_API_TOKEN must be provided with --api-token in non-interactive mode.${NC}"
       exit 1
     else
-      echo -e "${GREEN}✔  Using Cloudflare API Token provided via --api-token${NC}"
+      echo -e "${GREEN}✔ Using Cloudflare API Token provided via --api-token${NC}"
     fi
   fi
   
@@ -348,11 +352,11 @@ create_origin_certificate() {
   KEY_FILE="${CERT_DIR}/${DOMAIN}_origin_key.pem"
 
   if [ -f "${CERT_FILE}" ] && [ -f "${KEY_FILE}" ]; then
-    echo -e "${GREEN}✔  Origin certificates exist${NC}"
+    echo -e "${GREEN}✔  Origin certificates exist on the system${NC}"
     if [[ "$NON_INTERACTIVE" == false ]]; then
       read -rp "❓ Create new certificate? (y/n) [n]: " CREATE_NEW
-    else
-      CREATE_NEW="n"
+    else # Non-interactive mode always create new certificates
+      CREATE_NEW="y"
     fi
     [[ ! "$CREATE_NEW" =~ ^[Yy]$ ]] && return
   fi
@@ -395,7 +399,7 @@ create_origin_certificate() {
 }
 
 create_tunnel() {
-  COMPOSE_FILE="./remotefalcon/compose.yaml"
+#  COMPOSE_FILE="./remotefalcon/compose.yaml" # Removed as it's defined in shared_functions.sh
   CLOUDFLARED_WAS_STOPPED=false
   TUNNEL_NAME="rf-${DOMAIN}"
 
@@ -419,7 +423,7 @@ create_tunnel() {
       RECREATE="y"
     fi
     if [[ "$RECREATE" =~ ^[Yy]$ ]]; then
-      if is_container_running "clouflared"; then #is_container_running is defined in shared_functions.sh
+      if is_container_running "cloudflared"; then #is_container_running is defined in shared_functions.sh
         echo -e "${BLUE}🛑 Cloudflared is running... Ensuring cloudflared is stopped...${NC}"
         sudo docker compose -f "$COMPOSE_FILE" down cloudflared 2>/dev/null && CLOUDFLARED_WAS_STOPPED=true
         sleep 3
@@ -636,7 +640,7 @@ print_summary() {
   echo -e "${GREEN}🎉 CLOUDFLARE SETUP COMPLETE!${NC}"
   echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo
-  echo -e "${BLUE}📋 Configuration Summary:${NC}"
+  echo -e "${BLUE}📋 Cloudflare Configuration Summary:${NC}"
   echo -e "${CYAN}  Domain: ${DOMAIN}${NC}"
   echo -e "${CYAN}  Tunnel Name: ${TUNNEL_NAME}${NC}"
   TUNNEL_ID=$(cat "${CERT_DIR}/tunnel_id.txt" 2>/dev/null || echo "N/A")
@@ -656,7 +660,8 @@ print_summary() {
   echo -e "${CYAN}  - DOMAIN=${DOMAIN}${NC}"
   echo -e "${CYAN}  - TUNNEL_TOKEN=<token>${NC}"
   echo
-  echo -e "${GREEN}✨ Setup complete!${NC}"
+  echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo
 }
 
 main() {

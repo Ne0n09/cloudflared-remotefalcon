@@ -16,8 +16,40 @@ Click the name of the script to expand the section to display details about the 
 
     - Automatically downloads the [compose.yaml](files.md#composeyaml), [.env](files.md#env), and [default.conf](files.md#defaultconf) files if they are missing.
 
+    - Can be run interactively(defualt) or non-interactively for a more automated setup.
+
+    - Prompts to update helper scripts unless run non-interactively with --no-updates
+
     ```sh title="Run configure-rf.sh"
     ./configure-rf.sh
+    ./configure-rf.sh -y|--non-interactive      Run non-interactively (no prompts)"
+    ./configure-rf.sh --update-all              Update scripts, files, and workflows"
+    ./configure-rf.sh --update-scripts          Update only scripts"
+    ./configure-rf.sh --update-files            Update only compose.yaml, .env, and default.conf files"
+    ./configure-rf.sh --update-workflows        Update only image builder GitHub workflows"
+    ./configure-rf.sh --no-updates              Skip all updates(except container updates)"
+    ./configure-rf.sh --set KEY=VALUE           Set configuration override for config questions(can be used multiple times)"
+    ./configure-rf.sh -h, --help                Shows usage help "
+    ```
+
+    ```sh title="Install with automatic Cloudflare configuration and remote image building on GitHub"
+    ./configure-rf.sh -y \
+    --set DOMAIN=YOURDOMAIN.COM \
+    --set CF_API_TOKEN=REPLACE_WITH_YOUR_CF_API_TOKEN \
+    --set GITHUB_PAT=REPLACE_WITH_YOUR_GITHUB_PAT
+    ```
+
+    ```sh title="Install with automatic Cloudflare configuration and local image building"
+    ./configure-rf.sh -y \
+    --set DOMAIN=YOURDOMAIN.COM \
+    --set CF_API_TOKEN=REPLACE_WITH_YOUR_CF_API_TOKEN
+    ```
+
+    ```sh title="Skip any updates and swap your viewer page with the Control Panel and disable auto validate email"
+    ./configure-rf.sh -y --no-updates \
+    --set AUTO_VALIDATE_EMAIL=false \
+    --set SWAP_CP=true \
+    --set VIEWER_PAGE_SUBDOMAIN=yourviewerpage
     ```
 
     ![Configure-rf demo](../images/configure-rf-clean-install.gif)
@@ -227,3 +259,16 @@ Click the name of the script to expand the section to display details about the 
     #### setup_cloudflare.sh
 
     - This is a script to automatically set up Cloudflare domain, certificate, SSL/TLS, tunnel, and DNS settings.
+
+    - This script is intended for new installations, but can be re-run to ensure settings are correct, create new certificates, and to delete and re-create the tunnel and tunnel settings.
+
+    - The script will ask you for your Cloudflare API token.
+
+    - The Cloudflare API token is not stored.
+
+    - The script can be run non-interactively or arguments passed:
+
+    ```sh title="setup_cloudflare script syntax examples" 
+    # Usage:./setup_cloudflare.sh [ -y|--non-interactive | --domain <domain> | --api-token <token> ]
+    ./setup_cloudflare.sh -y --domain yourdomain.com --api-token your_CF_API_TOKEN # Runs the script to automatically configure Cloudflare without any prompting.
+    ```

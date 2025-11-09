@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2025.11.8.1
+# COMPOSE_VERSION=2025.11.9.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -124,7 +124,6 @@ services:
         - SOCIAL_META=${SOCIAL_META}
         - SWAP_CP=${SWAP_CP}
         - VIEWER_PAGE_SUBDOMAIN=${VIEWER_PAGE_SUBDOMAIN}
-        - CLARITY_PROJECT_ID=${CLARITY_PROJECT_ID}
     image: ui:latest
     container_name: ui
     restart: always

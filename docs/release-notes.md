@@ -1,12 +1,47 @@
 # Release Notes
 
+## 2025.11.8.2
+
+- Updated configure-rf.sh to ask for Cloudflare API token for automatic Cloudflare installation
+
+- Removed CLARITY_PROJECT_ID arg from compose.yaml and configure-rf.sh.
+
+- Updated setup_cloudflare.sh to support passing the Cloudflare API token via arg either interactively or non-interactively.
+
+- This allows for even simpler automatic installation: 
+  
+    ```sh
+    ./configure-rf.sh -y --no-updates \
+    --set DOMAIN=<yourdomain.com> \
+    --set CF_API_TOKEN=<your_Cloudflare_API_token> \
+    --set GITHUB_PAT=<GitHub_PAT_for_image_builder>
+    ```
+
+- Updated setup_cloudflare.sh to fix a typo in the cloudflared container check.
+
+- Updated shared_function.sh to properly tag coollabs/minio images when replace_compose_tag is called. 
+
+- Other misc configure-rf.sh fixes.
+
 ## 2025.11.8.1
 
-- Many updates to configure-rf.sh to support running it non-interactively to automate deployment: `./configure-rf.sh [-y|--non-interactive] [--update-all|--update-scripts|--update-files|--update-workflows|--no-updates] [--set KEY=VALUE ...]`
+- Many updates to configure-rf.sh to support running it non-interactively to automate deployment: 
 
-- Updated setup_cloudflare.sh to add flags to run the script automatically: `./setup_cloudflare.sh [-y|--non-interactive] [--domain <domain.com>] [--api-token <api-token>]`
+    ```sh
+    ./configure-rf.sh [-y|--non-interactive] [--update-all|--update-scripts|--update-files|--update-workflows|--no-updates] [--set KEY=VALUE ...]
+    ```
 
-- Example of combining both to spin up a basic installation automatically that uses GitHub for image building: `./setup_cloudflare.sh -y --domain <yourdomain.com> --api-token <your_Cloudflare_API_token> && ./configure-rf.sh -y --no-updates --set GITHUB_PAT=<GitHub_PAT_for_image_builder>`
+- Updated setup_cloudflare.sh to add flags to run the script automatically: 
+
+    ```sh
+    ./setup_cloudflare.sh [-y|--non-interactive] [--domain <domain.com>] [--api-token <api-token>]
+    ```
+
+- Example of combining both to spin up a basic installation automatically that uses GitHub for image building: 
+
+    ```sh
+    ./setup_cloudflare.sh -y --domain <yourdomain.com> --api-token <your_Cloudflare_API_token> && ./configure-rf.sh -y --no-updates --set GITHUB_PAT=<GitHub_PAT_for_image_builder>
+    ```
 
 - Updated compose.yaml to use coollabsio/minio image since MinIO is no longer providing builds and added health check.
 
