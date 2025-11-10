@@ -1,6 +1,6 @@
 # Release Notes
 
-## 2025.11.8.2
+## 2025.11.9.1
 
 - Updated configure-rf.sh to ask for Cloudflare API token for automatic Cloudflare installation
 
