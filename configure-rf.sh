@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.11.9.1
+# VERSION=2025.11.20.1
 
 #set -euo pipefail
 
@@ -1378,8 +1378,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
             viewer=$(get_current_version "viewer") \
             ui=$(get_current_version "ui") \
             external-api=$(get_current_version "external-api"); then
-              echo -e "${GREEN}🚀 Bringing up containers...${NC}"
-              sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+              echo -e "${Green}✅ Workflow to build all Remote Falcon images to current versions completed successfully!${NC}"
           else
               echo -e "${RED}❌ Workflow to build all Remote Falcon images to current versions did not complete successfully, aborting.${NC}"
               exit 1

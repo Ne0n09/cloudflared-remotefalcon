@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.10.24.1
+# VERSION=2025.11.20.1
 
 # This script will run the GitHub Actions workflow in the REPO configured in the .env to build: plugins-api, control-panel, viewer, ui, and external-api.
 # It will call either the build-container.yml or build-all.yml workflow depending on the arguments passed.
@@ -195,13 +195,9 @@ trigger_workflow() {
       update_compose_image_path
       # Ensure new images get pulled if rebuilt with the same version, otherwise update script won't detect arg changes on same versions
       echo -e "🐳 ${BLUE} Pulling newly built images from GitHub Container Registry(GHCR)...${NC}"
-      if [[ "$service" == "ALL_SERVICES" ]]; then
-        sudo docker compose -f "$COMPOSE_FILE" pull "${CONTAINERS[@]}"
-        sudo docker compose -f "$COMPOSE_FILE" up -d "${CONTAINERS[@]}"
-      else
-        sudo docker compose -f "$COMPOSE_FILE" pull "$service"
-        sudo docker compose -f "$COMPOSE_FILE" up -d "$service"
-      fi
+      sudo docker compose -f "$COMPOSE_FILE" pull
+      echo -e "${GREEN}🚀 Bringing up containers...${NC}"
+      sudo docker compose -f "$COMPOSE_FILE" up -d --force-recreate
       exit 0
     else
       echo -e "${RED}❌ Workflow failed (some jobs did not succeed).${NC}"
