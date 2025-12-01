@@ -46,7 +46,7 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 - Current image versions and build context lines in the [compose.yaml](about/files.md#composeyaml) will be copied to the new compose.yaml.
 
-- The [default.conf](about/files#defaultconf) has no values that are copied and will be replaced completely.
+- The [default.conf](about/files.md#defaultconf) has no values that are copied and will be replaced completely.
 
 - You can check the [release notes](release-notes.md) to see what is updated.
 

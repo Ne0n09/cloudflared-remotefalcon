@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.11.20.1
+# VERSION=2025.11.30.1
 
 #set -euo pipefail
 
@@ -1480,6 +1480,9 @@ else # User chose not to update the .env file
     fi
   fi
 fi
+
+echo -e "${YELLOW}⚠️ If running FPP 9 ensure Apache CSP is updated or sequences will not sync!${NC}"
+echo -e "${BLUE}🔗 https://ne0n09.github.io/cloudflared-remotefalcon/post-install/${NC}"
 
 echo -e "${GREEN}🎉 Done! Exiting ${RED}RF${NC}${GREEN} configuration script...${NC}"
 exit 0

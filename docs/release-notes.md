@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2025.11.30.1
+
+- Updated configure-rf.sh to add a warning for FPP 9 to update Apache CSP and to also link to post-install docs.
+
+- Updated post-install and updates documentation.
+
 ## 2025.11.20.1
 
 - Updated run_workflow.sh and configure-rf.sh to fix images not being pulled from GHCR if rebuilding at current version.

@@ -12,6 +12,20 @@
 
 4. Click the :material-content-copy: button to copy your `Show Token`.
 
+## Update the FPP plugin
+
+It's always a good idea to make sure the plugin is up to date to avoid any potential issues.
+
+1. In FPP go to Content Setup -> Plugin Manager
+
+2. Click :fontawesome-solid-arrows-rotate: Check for Updates for Remote Falcon
+
+3. If any updates are availabe, click to apply the update.
+
+!!! note
+
+    In some instances you may have to uninstall and re-install the plugin. If any issues are encountered after updating try re-installing.
+
 ## FPP 9 and below - Update the FPP plugin settings
 
 1. In FPP go to Content Setup -> Remote Falcon
@@ -42,20 +56,22 @@
 
 ## FPP 9 and above - Update the FPP plugin settings
 
-FPP 9 has some extra steps due to the addition of [Apache CSP](https://github.com/FalconChristmas/fpp/blob/master/docs/ApacheContentSecurityPolicy.md).
+- FPP 9 has some extra steps due to the addition of [Apache CSP](https://github.com/FalconChristmas/fpp/blob/master/docs/ApacheContentSecurityPolicy.md).
 
-You will have to manually add your site to the trusted list or the plugins page will not load with the custom *Plugins API Path*.
+- You will have to manually add your site to the trusted list or the plugins page may not load with the custom *Plugins API Path* and sequences will not be synced.
 
 1. In FPP go to Help -> :fontawesome-solid-terminal: SSH Shell
 
 2. Login. The default user and password is fpp/falcon.
 
+3. Choose the section below based on if you are hosting remotely(`DOMAIN`) or locally(`LAN`) to FPP.
+
 
 === "DOMAIN"
 
-    Follow this if you want to use your domain name to connect to the plugin.
+    - Follow this if you want to use your domain name to connect to the plugin.
     
-    Select the other tab above to use your LAN IP as the commands are a bit different.
+    - Select the other tab above to use your LAN IP as the commands are a bit different.
 
     1. Set the `DOMAIN` and `TOKEN` variable directly on the FPP shell to `https://yourdomain.com` and `yourshowtoken`.
 
@@ -121,9 +137,9 @@ You will have to manually add your site to the trusted list or the plugins page 
 
 === "LAN"
 
-    Follow this if you want to use your LAN IP to connect to the plugin. 
+    - Follow this if you want to use your LAN IP to connect to the plugin. 
     
-    Select the other tab above to use your domain as the commands are a bit different.
+    - Select the other tab above to use your domain as the commands are a bit different.
 
     1. Set the `DOMAIN` and `TOKEN` variable directly on the FPP shell to `http://localip.address.of.remote.falcon:8083` and `yourshowtoken`.
 
@@ -187,9 +203,13 @@ You will have to manually add your site to the trusted list or the plugins page 
 
     3. Now you should be able to update the plugin settings normally in FPP. If you still have issues try rebooting or power cycling your FPP device.
 
-## Swap Viewer Page Subomdain
+## Swap Viewer Page Subdomain
 
-Enable this if you would like visitors to be able to directly visit your show page at `https://yourdomain.com` instead of `https://yourshowname.yourdomain.com`.
+- Enable this if you would like visitors to be able to directly visit your show page at `https://yourdomain.com` instead of `https://yourshowname.yourdomain.com`.
+
+- Your viewer page will always be available at `https://yourshowname.yourdomain.com` regardless if SWAP_CP is enabled or not.
+
+- With SWAP_CP enabled the Control Panel is accessible at `https://controlpanel.yourdomain.com`.
 
 !!! note
 
@@ -198,9 +218,10 @@ Enable this if you would like visitors to be able to directly visit your show pa
 1. Run `./configure-rf`
 2. Enter `y` to change the variables
 3. Press `Enter` to accept current values until you get to **Update OPTIONAL variables?** where you enter `y`
-4. Press `Enter` to accept current values until you get to **Would you like to swap the Control Panel and Viewer Page Subdomain URLs?** where you enter `y`
+4. Press `Enter` to accept current values until you get to **Enable or disable SWAP_CP to swap the Control Panel and Viewer Page Subdomain URLS? (true/false)** where you enter `true`
 5. Type in your Viewer Page Subdomain, example: `mylightshow` and press `Enter`
-6. Enter `y` to accept the changes
+6. Press `Enter` to continue past the remaining questions.
+7. Enter `y` to update the .env file with the change and rebuild containers.
 
 !!!warning
 
