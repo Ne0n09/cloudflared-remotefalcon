@@ -26,7 +26,7 @@ It's always a good idea to make sure the plugin is up to date to avoid any poten
 
     In some instances you may have to uninstall and re-install the plugin. If any issues are encountered after updating try re-installing.
 
-## FPP 9 and below - Update the FPP plugin settings
+## FPP 8 and below - Update the FPP plugin settings
 
 1. In FPP go to Content Setup -> Remote Falcon
 
