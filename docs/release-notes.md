@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.3.30.1
+
+- Updated remote-falcon-image-builder workflows to use new actions versions due to node20 deprecation.
+
+- Fixed configure-rf.sh missing get_input for the image builder workflow update prompt.
+
 ## 2025.11.30.1
 
 - Updated configure-rf.sh to add a warning for FPP 9 to update Apache CSP and to also link to post-install docs.

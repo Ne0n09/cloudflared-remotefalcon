@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.11.30.1
+# VERSION=2026.3.30.1
 
 #set -euo pipefail
 
@@ -275,7 +275,7 @@ update_scripts() {
 
     new_ver=$(grep -Eo "^# ${FILES[$file]}[0-9.]+" "$local_file" | head -n1 | sed -E "s/^# ${FILES[$file]}//" | tr -d '\r')
     echo -e "${GREEN}✅ $file updated to version ${YELLOW}$new_ver${NC}"
-
+ 
     # Special case: restart if configure-rf.sh updated
     if [[ "$file" == "configure-rf.sh" ]]; then
       echo -e "${BLUE}🔁 Restarting script to load new version...${NC}"
@@ -518,8 +518,6 @@ check_image_builder_updates() {
   fi
 }
 
-check_image_builder_updates
-
 # Function to get user input for configuration questions in the format of get_input KEY PROMPT DEFAULT
 get_input() {
   local key=""
@@ -564,6 +562,8 @@ get_input() {
   read -rp "$prompt [$default]: " input
   printf '%s' "${input:-$default}"
 }
+
+check_image_builder_updates
 
 # Function to update the the .env file with required variables to run RF and some optional variables
 update_env() {
