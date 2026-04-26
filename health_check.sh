@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.10.19.1
+# VERSION=2026.4.26.1
 
 #set -euo pipefail
 #set -x
@@ -362,7 +362,11 @@ check_endpoint() {
     '")
 
     if [[ "$subdomains" == *"No subdomains found"* ]]; then
-      echo -e "${YELLOW}⚠️ No shows have been configured in ${NC}${RED}Remote Falcon${NC}${YELLOW}. Create a new account at:${NC} ${BLUE}🔗 https://$DOMAIN/signup${NC}"
+      if [[ $SWAP_CP == true ]]; then
+        echo -e "${YELLOW}⚠️ No shows have been configured in ${NC}${RED}Remote Falcon${NC}${YELLOW}. Create a new account at:${NC} ${BLUE}🔗 https://controlpanel.$DOMAIN/signup${NC}"
+      else
+        echo -e "${YELLOW}⚠️ No shows have been configured in ${NC}${RED}Remote Falcon${NC}${YELLOW}. Create a new account at:${NC} ${BLUE}🔗 https://$DOMAIN/signup${NC}"
+      fi
     else
         while read -r subdomain; do
           echo -e "  ${YELLOW}•${NC} ${BLUE}🔗 https://$subdomain.$DOMAIN${NC}"
