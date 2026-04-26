@@ -233,6 +233,10 @@ If [minio_init](about/scripts.md#minio_initsh) script ran successfully and confi
 
 If it is not configured succesfully, you will be greeted with a blank white page after attempting to upload an image.
 
+!!!warning
+
+    Ignore the steps below if you are running the updates from 2026.4.26.1 as this should now correctly display the image links.
+
 Otherwise, uploading images should display a `image-name.png uploaded successfully.` message and you will see it in the list of images such as below:
 
 | Preview | Image URL                                                                                       | Actions |

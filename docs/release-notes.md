@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2026.4.26.1
+
+- Multiple updates to .env, compose.yaml, default.conf, sync_repo_secrets.sh to allow the Image Hosting page to display the correct Image URL. This adds IMAGES_S3_BUCKET and IMAGES_CDN_ENDPOINT to the .env and compose.yaml.
+
+- Updated remote-falcon-image-builder workflows to use new actions versions and to add caching.
+
+- Small update to health_check.sh to reference https://controlpanel.yourdomain.com/signup if no shows exist in MongoDB.
+
 ## 2026.3.30.1
 
 - Updated remote-falcon-image-builder workflows to use new actions versions due to node20 deprecation.
