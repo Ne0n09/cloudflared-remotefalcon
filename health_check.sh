@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# VERSION=2026.5.3.1
+# VERSION=2026.5.3.2
 
 #set -euo pipefail
 #set -x
 
-SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo minio)
+SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo versitygw)
 HEALTHY=true
 SLEEP_TIME="${1:-}" # Optional sleep time in seconds, defaults to 20s if not provided
 MAX_RETRIES=3 # Max retries for checking RF endpoints
@@ -46,10 +46,6 @@ CONTAINER_PATTERNS["mongo"]='
 Error response from daemon: No such container|Container is not running
 requires a CPU with AVX support|Check that your CPU supports AVX, if running in VM try changing VM CPU to 'host' type.
 '
-
-#CONTAINER_PATTERNS["remote-falcon-images.minio"]='
-#Error response from daemon: No such container|Container is not running
-#'
 
 CONTAINER_PATTERNS["versitygw"]='
 Error response from daemon: No such container|Container is not running
@@ -284,57 +280,6 @@ check_endpoint() {
   else
     echo -e "${RED}❌ $container_name is NOT running.${NC}"
     HEALTHY=false
-  fi
-
-  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  container_name="minio"
-
-  # Check if the minio container is running
-  if is_container_running $container_name; then
-    echo -e "${CYAN}🔄 $container_name is running. Checking the status of the MinIO server...${NC}"
-    lan_ip=$(ip route get 1 | awk '/src/ { for(i=1;i<=NF;i++) if ($i=="src") print $(i+1) }')
-    echo -e "MinIO Console: ${BLUE}🔗 http://$lan_ip:9001${NC}"
-
-    ALIAS_CMD="mc alias set $MINIO_ALIAS $S3_ENDPOINT $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD"
-    sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" $ALIAS_CMD
-    sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc admin info $MINIO_ALIAS
-    echo
-    # Print bucket and object information
-    echo "Checking bucket '$IMAGES_S3_BUCKET' and object information..."
-    #sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc du --recursive $MINIO_ALIAS
-    output=$(sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc du --recursive "$MINIO_ALIAS" 2>/dev/null || true)
-    echo "$output"
-    if echo "$output" | grep -qE '\bremote-falcon-images\b'; then
-      echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' found in $container_name.${NC}"
-    else
-      echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' not found in $container_name. Re-run ./minio_init.sh${NC}"
-    fi
-
-    if sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc anonymous get "$MINIO_ALIAS/$BUCKET_NAME" | grep -q "Access permission.*is.*public"; then
-      echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' is public.${NC}"
-    else
-      echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' is NOT public.${NC}"
-    fi
-    # Get the non-expiring access key (expiration == 1970-01-01T00:00:00Z)
-    minio_3_access_key=$(sudo docker compose -f "$COMPOSE_FILE" exec $container_name mc admin accesskey ls --json $MINIO_ALIAS \
-      | grep -B3 '"expiration":"1970-01-01T00:00:00Z"' \
-      | grep '"accessKey"' \
-      | head -n1 \
-      | sed -E 's/.*"accessKey":"([^"]+)".*/\1/')
-
-    # Compare to the S3_SECRET_KEY
-    if [[ "$minio_3_access_key" == "$S3_ACCESS_KEY" ]]; then
-      echo -e "${GREEN}✅ S3 access key matches S3_ACCESS_KEY in $ENV_FILE.${NC}"
-    else
-      echo -e "${RED}❌ S3 access key does NOT match S3_ACCESS_KEY in $ENV_FILE.${NC}"
-      echo -e "${YELLOW}MinIO Key: ${minio_3_access_key}${NC}"
-      echo -e "${YELLOW}S3_ACCESS_KEY: ${S3_ACCESS_KEY}${NC}"
-    fi
-
-    # Verify control-panel has a valid S3_ACCESS_KEY
-    if sudo docker logs control-panel 2>&1 | grep -q "InvalidAccessKeyId"; then
-      echo -e "${RED}❌ control-panel is reporting InvalidAccessKeyId. You may want to re-run ./minio_init.sh to correct this.${NC}"
-    fi
   fi
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

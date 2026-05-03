@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2026.5.3.2
+
+- A few fixes to the versitygw_init.sh and health_check.sh scripts.
+
+- The MinIO migration will now check the running MinIO container to migrate to Versity Gateway.
+
+- To kick off the migration to Versity Gateway from MinIO you must run ./configure-rf.sh and check for container updates.
+
 ## 2026.5.3.1
 
 - MinIO has been replaced with [Versity Gateway](https://www.versity.com/products/versitygw/)!

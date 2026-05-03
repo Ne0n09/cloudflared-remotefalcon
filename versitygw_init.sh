@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# VERSION=2026.5.3.1
+# VERSION=2026.5.3.2
 
 # Configure new VersityGW container
 #set -euo pipefail
 
 CONTAINER_NAME="versitygw"
+MINIO_PATH="/home/minio-volume"
 
 # Source shared functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -215,7 +216,7 @@ if check_bucket_policy "$CONTAINER_NAME"; then
   echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' policy is already set for public access.${NC}"
 else
   echo "🪣 Applying public policy to bucket '$IMAGES_S3_BUCKET'..."
-    sudo docker run --rm --network "container:$CONTAINER_NAME" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url http://$CONTAINER_NAME:7070 s3api put-bucket-policy --bucket "$IMAGES_S3_BUCKET" --policy "$POLICY"
+  sudo docker run --rm --network "container:$CONTAINER_NAME" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url http://$CONTAINER_NAME:7070 s3api put-bucket-policy --bucket "$IMAGES_S3_BUCKET" --policy "$POLICY"
 fi
 
 # Check for existing MinIO installation and migrate from MinIO to VersityGW
@@ -279,7 +280,7 @@ migrate_minio_to_versitygw() {
   }
 
   # Check if MINIO_PATH is set in .env and if it is set to a path that exists on the host machine, if so we assume the user has an existing MinIO installation and we want to migrate that data to the VersityGW S3 storage
-  if [[ -n "$MINIO_PATH" && -d "$MINIO_PATH" ]]; then
+  if [[ -d "$MINIO_PATH" ]]; then
     echo -e "${YELLOW}⚠️ MINIO_PATH is set to '$MINIO_PATH' and the directory exists. Assuming existing MinIO installation...${NC}"
     echo -e "${BLUE}🔄 Attempting to migrate existing MinIO data to Versity Gateway storage...${NC}"
     echo -e "${YELLOW}⚠️ Checking for existing MinIO container...${NC}"
@@ -290,14 +291,22 @@ migrate_minio_to_versitygw() {
 
     if [[ -n "$MINIO_CONTAINER" ]]; then
       echo -e "${GREEN}✅ Found running MinIO container: $MINIO_CONTAINER${NC}"
+      # Capture existing MINIO_ROOT_USER and MINIO_ROOT_PASSWORD from the running container's environment variables as these get removed from the updated .env
+      MINIO_ROOT_USER=$(sudo docker inspect remote-falcon-images.minio \
+      --format '{{range .Config.Env}}{{if eq (index (split . "=") 0) "MINIO_ROOT_USER"}}{{index (split . "=") 1}}{{end}}{{end}}')
+
+      MINIO_ROOT_PASSWORD=$(sudo docker inspect remote-falcon-images.minio \
+      --format '{{range .Config.Env}}{{if eq (index (split . "=") 0) "MINIO_ROOT_PASSWORD"}}{{index (split . "=") 1}}{{end}}{{end}}')
+
     else
-      echo -e "${YELLOW}⚠️ No running MinIO container found. Starting temporary container...${NC}"
+      echo -e "${RED}❌ No running MinIO container found. Data will not be migrated${NC}"
+      return 1
 
       MINIO_CONTAINER="minio"
       TEMP_MINIO=true
 
       # Start a temporary MinIO container with the existing data directory mounted
-      sudo docker run -d --name "$MINIO_CONTAINER" --network "$RF_NETWORK" -v "$MINIO_PATH:/data" -p 9000:9000 -p 9001:9001 -e MINIO_ROOT_USER="$MINIO_ROOT_USER" -e MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" coollabsio/minio:latest server /data --address ":9000" >/dev/null
+      # sudo docker run -d --name "$MINIO_CONTAINER" --network "$RF_NETWORK" -v "$MINIO_PATH:/data" -p 9000:9000 -p 9001:9001 -e MINIO_ROOT_USER="$MINIO_ROOT_USER" -e MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" coollabsio/minio:latest server /data --address ":9000" >/dev/null
     fi
 
     check_minio_health
@@ -358,6 +367,9 @@ migrate_minio_to_versitygw() {
     # Stop MinIO container
     echo -e "${BLUE}🧹 Removing MinIO container...${NC}"
     sudo docker rm -f "$MINIO_CONTAINER" >/dev/null
+    # Restart nginx to ensure old MinIO proxy configuration is removed
+    echo -e "${BLUE}🔄 Restarting nginx to apply new default.conf...${NC}"
+    sudo docker compose -f "$COMPOSE_FILE" restart nginx
 
     echo -e "${GREEN}✅ Migration to Versity Gateway complete.${NC}"
   fi
