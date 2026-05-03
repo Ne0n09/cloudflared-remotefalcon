@@ -8,11 +8,11 @@ Check out the [Remote Falcon Docs](https://docs.remotefalcon.com/) to learn more
 
 ## Architecture
 
-Adding a bit to the Remote Falcon architecture diagram from [here](https://docs.remotefalcon.com/docs/developer-docs/how-it-works/architecture), we have Cloudflared and MinIO.
+Adding a bit to the Remote Falcon architecture diagram from [here](https://docs.remotefalcon.com/docs/developer-docs/how-it-works/architecture), we have Cloudflared and Versity Gateway.
 
 All web traffic goes through [Cloudflared](about/containers.md#cloudflared){ data-preview } directly into [NGINX](about/containers.md#nginx){ data-preview }.
 
-Then we also have [MinIO](about/containers.md#minio){ data-preview } to provide object storage. The [control-panel](about/containers.md#control-panel){ data-preview } connects directly to MinIO and MinIO is connected to NGINX to allow for images to be viewable when used on the viewer page.
+Then we also have [Versity Gateway](about/containers.md#versitygw){ data-preview } to provide object storage. The [control-panel](about/containers.md#control-panel){ data-preview } connects directly to Versity Gateway and Versity Gateway is connected to NGINX to allow for images to be viewable when used on the viewer page.
 
 ### cloudflared-remotefalcon flowchart
 
@@ -33,12 +33,12 @@ flowchart LR
   nginx([nginx])
   cloudflared([cloudflared])
   mongo([MongoDB])
-  minio([MinIO])
+  versitygw([Versity Gateway])
   fpp(["FPP/xSchedule"]) 
 
   %% Connections based on depends_on and service usage
   control_panel --> mongo
-  control_panel --> minio
+  control_panel --> versitygw
   viewer --> mongo
   plugins_api --> mongo
   external_api --> mongo
@@ -50,7 +50,7 @@ flowchart LR
   nginx --> plugins_api
   nginx --> external_api
   nginx --> ui
-  nginx --> minio
+  nginx --> versitygw
   cloudflared --> nginx
   fpp --> plugins_api
 
@@ -61,7 +61,7 @@ flowchart LR
   click ui href "about/containers#ui" "UI Container"
   click nginx href "about/containers#nginx" "NGINX Container"
   click cloudflared href "about/containers#cloudflared" "Cloudflared Container"
-  click minio href "about/containers#minio" "MinIO Container"
+  click versitygw href "about/containers#versitygw" "Versity Gateway Container"
   click mongo href "about/containers#mongo" "MongoDB Container"
 
 

@@ -1,5 +1,15 @@
 # Release Notes
 
+## 2026.5.3.1
+
+- MinIO has been replaced with [Versity Gateway](https://www.versity.com/products/versitygw/)!
+
+- MinIO is pretty much dead and hasn't been receiving any updates in quite some time.
+
+- There is a new helper script versitygw_init.sh that will configure Versity Gateway and migrate any existing MinIO data to the new S3 bucket on Versity Gateway.
+
+- The following files have been updated for this change: .env, compose.yaml, default.conf, configure-rf.sh, health_check.sh, shared_functions.sh, and update_containers.sh.
+
 ## 2026.4.26.1
 
 - Multiple updates to .env, compose.yaml, default.conf, sync_repo_secrets.sh to allow the Image Hosting page to display the correct Image URL. This adds IMAGES_S3_BUCKET and IMAGES_CDN_ENDPOINT to the .env and compose.yaml.

@@ -229,7 +229,7 @@ It's always a good idea to make sure the plugin is up to date to avoid any poten
 
 ## Remote Falcon Image hosting
 
-If [minio_init](about/scripts.md#minio_initsh) script ran successfully and configured MinIO then you are able to make use of the Image Hosting page in the Control Panel.
+If [versitygw_init](about/scripts.md#versitygw_initsh) script ran successfully and configured Versity Gateway then you are able to make use of the Image Hosting page in the Control Panel.
 
 If it is not configured succesfully, you will be greeted with a blank white page after attempting to upload an image.
 

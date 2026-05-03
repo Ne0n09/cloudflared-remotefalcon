@@ -20,7 +20,7 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 - Otherwise the images are built locally.
 
-## Updating Mongo, MinIO, NGINX, and Cloudflared containers
+## Updating Mongo, Versity Gateway, NGINX, and Cloudflared containers
 
 Run the [update_containers](about/scripts.md#update_containerssh) script: 
 
@@ -89,7 +89,7 @@ File                      Local Version   Remote Version  Status
 🔸 update_containers.sh    2025.9.8.1      2025.9.8.1      ✅ OK
 🔸 health_check.sh         2025.10.19.1    2025.10.19.1    ✅ OK
 🔸 sync_repo_secrets.sh    2025.10.12.1    2025.10.13.1    🔄 Update
-🔸 minio_init.sh           2025.5.31.1     2025.5.31.1     ✅ OK
+🔸 versitygw_init.sh       2025.5.31.1     2025.5.31.1     ✅ OK
 🔸 run_workflow.sh         2025.10.12.1    2025.10.13.1    🔄 Update
 🔸 configure-rf.sh         2025.10.19.1    2025.10.19.1    ✅ OK
 ───────────────────────── ─────────────── ─────────────── ───────
@@ -102,7 +102,7 @@ File                      Local Version   Remote Version  Status
 
 1. Remove the scripts:
 ```sh
-rm configure-rf.sh shared_functions.sh health_check.sh minio_init.sh update_containers.sh update_rf_containers.sh run_workflow.sh sync_repo_secrets.sh
+rm configure-rf.sh shared_functions.sh health_check.sh versitygw_init.sh update_containers.sh update_rf_containers.sh run_workflow.sh sync_repo_secrets.sh
 ```
 
 2. The command below will re-download the configure-rf script and run it which will then re-download the helper scripts:

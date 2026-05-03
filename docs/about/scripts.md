@@ -81,7 +81,7 @@ Click the name of the script to expand the section to display details about the 
 
     - Accepts three arguments:
 
-        1. `[all|mongo|minio|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api]`
+        1. `[all|mongo|versitygw|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api]`
 
             - `container_name`: You can specify an individual container or all. If left blank with no other arguments it will check all containers in interactive mode.
 
@@ -98,7 +98,7 @@ Click the name of the script to expand the section to display details about the 
             - Add `health` after the first two arguments to automatically run the health_check script.
 
     ```sh title="update_containers script syntax examples" 
-    ./update_containers.sh [all|mongo|minio|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api] [dry-run|auto-apply|interactive] [health]
+    ./update_containers.sh [all|mongo|versitygw|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api] [dry-run|auto-apply|interactive] [health]
     ./update_containers.sh
     ./update_containers.sh all dry-run health
     ./update_containers.sh all auto-apply
@@ -123,7 +123,7 @@ Click the name of the script to expand the section to display details about the 
 
     - Checks NGINX configuration and tests it.
 
-    - Checks various MinIO configuration details for Image Hosting.
+    - Checks various Versity Gateway configuration details for Image Hosting.
 
     - Checks Mongo to search for any shows that are configured and provides their URL.
 
@@ -230,23 +230,21 @@ Click the name of the script to expand the section to display details about the 
 
     ![Make_admin demo](../images/revert.gif)
 
-??? example "minio_init.sh"
+??? example "versitygw_init.sh"
 
-    #### minio_init.sh
+    #### versitygw_init.sh
 
-    - This script will configure MinIO. Minio is a lightweight object storage server.
+    - This script will configure Versity Gateway. Versity Gateway is an object storage server.
 
     - The script is called when 'configure-rf.sh' is run and if certain default values are found in the .env file for a hands-off setup and configuration.
 
-    - The minio container is configured for local direct access to the control-panel container.
+    - The versitygw container is configured for local direct access to the control-panel container.
 
     - This lets you use the Image Hosting tab in the Control Panel which allows you to self host your viewer page images.
 
-    - The script can be run again manually with no ill-effects to ensure MinIO is configured properly.
+    - The script can be run again manually with no ill-effects to ensure Versity Gateway is configured properly.
 
     - The script is automatically downloaded by configure-rf.
-
-    ![Minio_init demo](../images/minio_init-clean-install.gif)
 
 ??? example "shared_functions.sh"
 

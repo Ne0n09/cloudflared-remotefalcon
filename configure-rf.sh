@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.3.30.1
+# VERSION=2026.5.3.1
 
 #set -euo pipefail
 
@@ -103,11 +103,11 @@ NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefa
 DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/.env"
 UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_containers.sh"
 HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/health_check.sh"
-MINIO_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/minio_init.sh"
+VERSITYGW_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/versitygw_init.sh"
 RUN_WORKFLOW_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/run_workflow.sh"
 SYNC_REPO_SECRETS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/sync_repo_secrets.sh"
 SETUP_CLOUDFLARE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/setup_cloudflare.sh"
-SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo minio)
+SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo versitygw)
 ANY_SERVICE_RUNNING=false
 TEMPLATE_REPO="Ne0n09/remote-falcon-image-builder" # Template repo for image builder workflows
 
@@ -170,11 +170,11 @@ source "$SCRIPT_DIR/shared_functions.sh"
 # Download extra helper scripts if they do not exist and make them executable
 download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
 download_file $HEALTH_CHECK_URL "health_check.sh"
-download_file $MINIO_INIT_URL "minio_init.sh"
+download_file $VERSITYGW_INIT_URL "versitygw_init.sh"
 download_file $SETUP_CLOUDFLARE_URL "setup_cloudflare.sh"
 download_file $RUN_WORKFLOW_URL "run_workflow.sh"
 download_file $SYNC_REPO_SECRETS_URL "sync_repo_secrets.sh"
-chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "minio_init.sh" "setup_cloudflare.sh" "run_workflow.sh" "sync_repo_secrets.sh"
+chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "versitygw_init.sh" "setup_cloudflare.sh" "run_workflow.sh" "sync_repo_secrets.sh"
 
 ## Check for script updates
 BASE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main"
@@ -186,7 +186,7 @@ declare -A FILES=(
   [update_containers.sh]="VERSION="
   [health_check.sh]="VERSION="
   [sync_repo_secrets.sh]="VERSION="
-  [minio_init.sh]="VERSION="
+  [versitygw_init.sh]="VERSION="
   [setup_cloudflare.sh]="VERSION="
   [run_workflow.sh]="VERSION="
   [compose.yaml]="COMPOSE_VERSION="
@@ -262,7 +262,7 @@ update_scripts() {
     echo -e "${YELLOW}⚠️ Skipping script updates.${NC}"
     return
   fi
-  local files=(shared_functions.sh update_containers.sh health_check.sh sync_repo_secrets.sh minio_init.sh setup_cloudflare.sh run_workflow.sh configure-rf.sh)
+  local files=(shared_functions.sh update_containers.sh health_check.sh sync_repo_secrets.sh versitygw_init.sh setup_cloudflare.sh run_workflow.sh configure-rf.sh)
   check_updates "📜 Checking for script updates..." "scripts" "$SCRIPT_DIR" "" "${files[@]}"
 
   # If user accepted updates
@@ -889,13 +889,13 @@ run_updates() {
       ;;
   esac
 
-  # Check if the minio_init.sh script exists and run it if it any of the MinIO credentials are set to default values
-  if [[ $MINIO_ROOT_USER == "12345678" || $MINIO_ROOT_PASSWORD == "12345678" || $S3_ACCESS_KEY == "123456" || $S3_SECRET_KEY == "123456" ]]; then
-    echo -e "${YELLOW}⚠️ MinIO variables are set to the default values. Running minio_init.sh to configure MiniO...${NC}"
-    if [ -f "$SCRIPT_DIR/minio_init.sh" ]; then
-      bash "$SCRIPT_DIR/minio_init.sh"
+  # Check if the versitygw_init.sh script exists and run it if it any of the VersityGW credentials are set to default values
+  if [[ $S3_ROOT_USER == "12345678" || $S3_ROOT_PASSWORD == "12345678" || $S3_ACCESS_KEY == "123456" || $S3_SECRET_KEY == "123456" ]]; then
+    echo -e "${YELLOW}⚠️ Versity Gateway variables are set to the default values. Running versitygw_init.sh to configure Versity Gateway for S3 storage...${NC}"
+    if [ -f "$SCRIPT_DIR/versitygw_init.sh" ]; then
+      bash "$SCRIPT_DIR/versitygw_init.sh"
     else
-      echo -e "${YELLOW}⚠️ minio_init.sh script not found. Skipping MinIO initialization.${NC}"
+      echo -e "${YELLOW}⚠️ versitygw_init.sh script not found. Skipping Versity Gateway initialization.${NC}"
     fi
   fi
   health_check health

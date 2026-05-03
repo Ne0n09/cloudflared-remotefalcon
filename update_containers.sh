@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# VERSION=2025.11.8.1
+# VERSION=2026.5.3.1
 
-# This script will check for and display updates for containers: cloudflared, nginx, mongo,  minio, plugins-api, control-panel, viewwer, ui, and external-api.
+# This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
 # ./update_containers.sh cloudflared
 # ./update_containers.sh nginx
 # Include 'health' as the third argument to run the health check script after updating.
-# Usage: ./update_containers.sh [all|mongo|minio|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api] [dry-run|auto-apply|interactive] [health]
+# Usage: ./update_containers.sh [all|mongo|versitygw|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api] [dry-run|auto-apply|interactive] [health]
 
 #set -euo pipefail
 #set -x
@@ -26,11 +26,11 @@ source "$SCRIPT_DIR/shared_functions.sh"
 check_env_exists
 parse_env
 
-SERVICE_NAME="${1:-}" # Options: all, mongo, minio, nginx, cloudflared
+SERVICE_NAME="${1:-}" # Options: all, mongo, versitygw, nginx, cloudflared
 MODE="${2:-}"  # Options: dry-run, auto-apply, or interactive, defaults to interactive if not provided
 HEALTH_CHECK="${3:-}" # Options: health or empty
 # CONTAINERS defines the order that the containers will be updated in if no name is provided
-CONTAINERS=("mongo" "minio" "plugins-api" "control-panel" "viewer" "ui" "external-api" "nginx" "cloudflared" )
+CONTAINERS=("mongo" "versitygw" "plugins-api" "control-panel" "viewer" "ui" "external-api" "nginx" "cloudflared" )
 BACKED_UP=false # Flag to track if a backup was made
 REMOTE_FALCON_REPO="Remote-Falcon/remote-falcon-" # Main repo to compare sha
 
@@ -112,8 +112,8 @@ get_latest_version() {
     "mongo")
       grep -oP 'mongo:\K[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?' | grep -v -- '-' | sort -Vu
       ;;
-    "minio")
-      grep -oP '"tag_name":\s*"\KRELEASE\.\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z' | head -n 1
+    "versitygw")
+      jq -r '.[0].tag_name'
       ;;
     plugins-api|control-panel|viewer|ui|external-api)
       # Map shorthand service name to actual repo name
@@ -207,13 +207,15 @@ prompt_to_update() {
 # ========== Main update logic ==========
 # If REPO and GITHUB_PAT are configured, validate GitHub CLI and GHCR docker login are successful in order to build and pull images, these are in shared_functions.sh
 # Validate the REPO variable is set to a non-default value in the correct format
-if [[ ! -z "$REPO" && ! "$REPO" == "username/repo" && "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ && ! -z "$GITHUB_PAT" ]]; then
-  validate_github_user "$GITHUB_PAT" || exit 1
-  validate_github_repo "$REPO" || exit 1
-  validate_docker_user || exit 1
+if [[ "$SERVICE_NAME" == "all" || "$SERVICE_NAME" =~ ^(plugins-api|control-panel|viewer|ui|external-api)$ ]]; then
+  if [[ ! -z "$REPO" && ! "$REPO" == "username/repo" && "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ && ! -z "$GITHUB_PAT" ]]; then
+    validate_github_user "$GITHUB_PAT" || exit 1
+    validate_github_repo "$REPO" || exit 1
+    validate_docker_user || exit 1
+  fi
+  # Removes or adds ghcr.io/${REPO}/ prefix to the compose.yaml image paths based on the current $REPO value configured in the .env
+  update_compose_image_path
 fi
-# Removes or adds ghcr.io/${REPO}/ prefix to the compose.yaml image paths based on the current $REPO value configured in the .env
-update_compose_image_path
 
 check_for_update() {
   local service_name="$1"
@@ -226,7 +228,7 @@ check_for_update() {
   if ! is_container_running "$service_name"; then
     echo -e "${YELLOW}⚠️ $service_name does not exist or is not running.${NC}"
     case "$service_name" in
-      cloudflared|nginx|mongo|minio)
+      cloudflared|nginx|mongo|versitygw)
         echo -e "${BLUE}🔄 Attempting to start $service_name to check its version directly...${NC}"
         sudo docker compose -f "$COMPOSE_FILE" up -d "$service_name"
         # Retry up to 10 times to get the current version from the running container if it was just started
@@ -243,7 +245,7 @@ check_for_update() {
           # Fail if we still can't get the current version
           if [[ -z "$CURRENT_VERSION" ]]; then
             echo -e "${RED}❌ Failed to fetch the current version for $service_name after 10 attempts.${NC}"
-            exit 1
+            #exit 1
           fi
         fi
         ;;
@@ -280,8 +282,8 @@ check_for_update() {
     "mongo")
       RELEASE_NOTES_URL="https://raw.githubusercontent.com/docker-library/repo-info/refs/heads/master/repos/mongo/tag-details.md"
       ;;
-    "minio")
-      RELEASE_NOTES_URL="https://api.github.com/repos/minio/minio/releases"
+    "versitygw")
+      RELEASE_NOTES_URL="https://api.github.com/repos/versity/versitygw/releases"
       ;;
     plugins-api|control-panel|viewer|ui|external-api)
       RELEASE_NOTES_URL="https://github.com/${REMOTE_FALCON_REPO}${service_name}/commits/main/"
@@ -306,7 +308,7 @@ check_for_update() {
     exit 1
   fi
 
-  # Update logic for each container: cloudflared, nginx, mongo, minio
+  # Update logic for each container: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewer, ui, external-api
   case "$service_name" in
       "cloudflared")
         sed_command="s|cloudflare/$service_name:[^[:space:]]+|cloudflare/$service_name:$LATEST_VERSION|"
@@ -385,9 +387,9 @@ check_for_update() {
           fi
         fi
         ;;
-      "minio")
-        sed_command="s|coollabsio/minio:[^[:space:]]+|coollabsio/minio:$LATEST_VERSION|"
-        format="^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$"
+      "versitygw")
+        sed_command="s|versity/versitygw:[^[:space:]]+|versity/versitygw:$LATEST_VERSION|"
+        format="^v?[0-9]+\.[0-9]+\.[0-9]+$"
         check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
@@ -399,8 +401,8 @@ check_for_update() {
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
-          echo -e "${BLUE}🔗 https://github.com/minio/minio/compare/${CURRENT_VERSION}...${LATEST_VERSION}${NC}"
-          prompt_to_update "minio" $LATEST_VERSION $sed_command
+          echo -e "${BLUE}🔗 https://github.com/versity/versitygw/compare/${CURRENT_VERSION}...${LATEST_VERSION}${NC}"
+          prompt_to_update "versitygw" $LATEST_VERSION $sed_command
         fi
         ;;
       plugins-api|control-panel|viewer|ui|external-api)
@@ -514,12 +516,12 @@ check_for_update() {
       *)
         echo -e "${RED}❌ Unsupported container: $service_name${NC}" >&2
         echo "Usage:"
-        echo "./update_containers.sh [all|mongo|minio|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api] [dry-run|auto-apply|interactive] [health]"
+        echo "./update_containers.sh [all|mongo|versitygw|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api] [dry-run|auto-apply|interactive] [health]"
         echo "./update_containers.sh all"
         echo "./update_containers.sh cloudflared auto-apply"
         echo "./update_containers.sh external-api dry-run"
         echo "./update_containers.sh mongo"
-        echo "./update_containers.sh minio auto-apply health"
+        echo "./update_containers.sh versitygw auto-apply health"
         exit 1
         ;;
   esac

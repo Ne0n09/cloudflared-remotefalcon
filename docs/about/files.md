@@ -10,7 +10,7 @@ There is typically no need to manually edit this file.
 
 Most of the ports in the compose are not 'published' to help isolate the containers from the local network.
 
-The exceptions are plugins-api(8083:8083) and MinIO(9000:9000,9001:9001) which allows for direct LAN access to these containers. 
+The exceptions are plugins-api(8083:8083) which allows for direct LAN access. 
 
 === "plugins-api"
 
@@ -25,17 +25,6 @@ The exceptions are plugins-api(8083:8083) and MinIO(9000:9000,9001:9001) which a
         restart: always
         ports:
         - "8083:8083"
-    ```
-=== "minio"
-
-    ```yaml title="compose.yaml" linenums="35" hl_lines="6-7"
-    minio:
-        image: minio/minio:latest
-        container_name: remote-falcon-images.minio
-        restart: always
-        ports:
-        - '9000:9000'
-        - '9001:9001'
     ```
 
 ## .env
@@ -152,17 +141,17 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     :   Combines the MongoDB root username and password together into the URI path. There is no need to modify this.
 
-    `MINIO_PATH`
+    `VERSITYGW_PATH`
 
-    :   This specifies the path where the MinIO container data is stored on your server. The default is: `#!sh /home/minio-volume`. The configure-rf script does NOT modify this.
+    :   This specifies the path where the Versity Gateway container data is stored on your server. The default is: `#!sh /home/versitygw-volume`. The configure-rf script does NOT modify this.
 
-    `MINIO_ROOT_USER`
+    `S3_ROOT_USER`
 
-    :   Specifies the root user for MinIO. The [minio_init](scripts.md#minio_initsh) script will automatically update the default value to a random value.
+    :   Specifies the root user for Versity Gateway. The [versitygw_init](scripts.md#versitygw_initsh) script will automatically update the default value to a random value.
 
-    `MINIO_ROOT_PASSWORD`
+    `S3_ROOT_PASSWORD`
 
-    :   Specifies the root password for MinIO. The [minio_init](scripts.md#minio_initsh) script will automatically update the default value to a random value.
+    :   Specifies the root password for Versity Gateway. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
 
     `S3_ENDPOINT`
 
@@ -170,11 +159,19 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `S3_ACCESS_KEY`
 
-    :   Specifies the S3 access key for MinIO 'remote-falcon-images' bucket. The [minio_-_init](scripts.md#minio_initsh) script will automatically update the default value to a random value.
+    :   Specifies the S3 access key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
 
     `S3_SECRET_KEY`
 
-    :   Specifies the S3 seceret key for MinIO 'remote-falcon-images' bucket. The [minio_init](scripts.md#minio_initsh) script will automatically update the default value to a random value.
+    :   Specifies the S3 seceret key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
+
+    'IMAGES_S3_BUCKET'=remote-falcon-images
+
+    :   Specifies the S3 bucket name that should be used. Default is 'remote-falcon-images'.
+
+    'IMAGES_CDN_ENDPOINT'
+
+    :   Specifies the endpoint path for the S3 bucket. Default is 'https://${DOMAIN}/${IMAGES_S3_BUCKET}'.
 
     `OTEL_URI`
 
@@ -191,10 +188,6 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
     `VIEWER_PAGE_SUBDOMAIN`
 
     :   The configure-rf script guides on setting this. This is used with `SWAP_CP` to swap the Control Panel with the subdomain that is defined here.
-
-    `CLARITY_PROJECT_ID `
-
-    :   This is used for analytics. You can create a free account at [Microsoft Clarity](https://clarity.microsoft.com/).
 
 ## default.conf
 

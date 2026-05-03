@@ -36,9 +36,9 @@ Below is a summary of each container and/or links to also learn more about them.
 
 - [GitHub - control-panel](https://github.com/Remote-Falcon/remote-falcon-control-panel)
 
-#### minio
+#### versitygw
 
-[MinIO](https://hub.docker.com/r/minio/minio) provides object storage that can be used to store viewer page images.
+[Versity Gateway](https://github.com/versity/versitygw) provides object storage that can be used to store viewer page images. By default these are stored under /home/versitygw-volume/s3/remote-falcon-images.
 
 #### nginx
 
@@ -48,3 +48,6 @@ Below is a summary of each container and/or links to also learn more about them.
 
 [Cloudflared](https://hub.docker.com/r/cloudflare/cloudflared) is a client for Cloudflare Tunnel which allows us to route all web traffic through Cloudflare to NGINX. 
 
+##### minio
+
+[MinIO](https://hub.docker.com/r/minio/minio) is depracated and no longer being updated but was previously used for object storage to store viewer page images.

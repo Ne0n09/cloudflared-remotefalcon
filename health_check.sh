@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.4.26.1
+# VERSION=2026.5.3.1
 
 #set -euo pipefail
 #set -x
@@ -47,7 +47,11 @@ Error response from daemon: No such container|Container is not running
 requires a CPU with AVX support|Check that your CPU supports AVX, if running in VM try changing VM CPU to 'host' type.
 '
 
-CONTAINER_PATTERNS["remote-falcon-images.minio"]='
+#CONTAINER_PATTERNS["remote-falcon-images.minio"]='
+#Error response from daemon: No such container|Container is not running
+#'
+
+CONTAINER_PATTERNS["versitygw"]='
 Error response from daemon: No such container|Container is not running
 '
 
@@ -296,20 +300,20 @@ check_endpoint() {
     sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc admin info $MINIO_ALIAS
     echo
     # Print bucket and object information
-    echo "Checking bucket '$BUCKET_NAME' and object information..."
+    echo "Checking bucket '$IMAGES_S3_BUCKET' and object information..."
     #sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc du --recursive $MINIO_ALIAS
     output=$(sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc du --recursive "$MINIO_ALIAS" 2>/dev/null || true)
     echo "$output"
     if echo "$output" | grep -qE '\bremote-falcon-images\b'; then
-      echo -e "${GREEN}✅ Bucket '$BUCKET_NAME' found in $container_name.${NC}"
+      echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' found in $container_name.${NC}"
     else
-      echo -e "${RED}❌ Bucket '$BUCKET_NAME' not found in $container_name. Re-run ./minio_init.sh${NC}"
+      echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' not found in $container_name. Re-run ./minio_init.sh${NC}"
     fi
 
     if sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc anonymous get "$MINIO_ALIAS/$BUCKET_NAME" | grep -q "Access permission.*is.*public"; then
-      echo -e "${GREEN}✅ Bucket '$BUCKET_NAME' is public.${NC}"
+      echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' is public.${NC}"
     else
-      echo -e "${RED}❌ Bucket '$BUCKET_NAME' is NOT public.${NC}"
+      echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' is NOT public.${NC}"
     fi
     # Get the non-expiring access key (expiration == 1970-01-01T00:00:00Z)
     minio_3_access_key=$(sudo docker compose -f "$COMPOSE_FILE" exec $container_name mc admin accesskey ls --json $MINIO_ALIAS \
@@ -331,12 +335,75 @@ check_endpoint() {
     if sudo docker logs control-panel 2>&1 | grep -q "InvalidAccessKeyId"; then
       echo -e "${RED}❌ control-panel is reporting InvalidAccessKeyId. You may want to re-run ./minio_init.sh to correct this.${NC}"
     fi
+  fi
 
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  container_name="versitygw"
 
-   # sudo docker compose -f "$COMPOSE_FILE" exec "$container_name" mc ls --summarize --recursive $MINIO_ALIAS
+  # Check if the VersityGW container is running
+  if is_container_running $container_name; then
+    echo -e "${CYAN}🔄 $container_name is running. Checking the status of the VersityGW server...${NC}"
+ 
+    output=$(sudo docker exec "$container_name" wget -qO- http://127.0.0.1:7070/health 2>/dev/null || true)
+
+    if [[ "$output" == "OK" ]]; then
+      echo -e "${GREEN}✅ $container_name is ready.${NC}"
+    fi
+
+    # Check if bucket exists
+    echo "🔍 Checking if bucket '$IMAGES_S3_BUCKET' exists..."
+    bucket_owner=$(sudo docker exec "$container_name" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 list-buckets | awk -v bucket="$IMAGES_S3_BUCKET" 'NR>2 && $1==bucket {print $2}')
+    if [[ -n "$bucket_owner" ]]; then
+      if [[ "$bucket_owner" == "$S3_ACCESS_KEY" ]]; then
+        echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' exists and is owned by '$S3_ACCESS_KEY'.${NC}"
+      else
+        echo -e "${YELLOW}⚠️ Bucket '$IMAGES_S3_BUCKET' exists but is owned by '$bucket_owner'. Re-run ./versitygw_init.sh${NC}"
+      fi
+
+      # Check bucket policy for public access
+      if check_bucket_policy "$container_name"; then
+        echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' policy is already set for public access.${NC}"
+      else
+        echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' policy is not set for public access. Re-run ./versitygw_init.sh${NC}"
+      fi
+    else
+      echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' not found in $container_name. Re-run ./versitygw_init.sh${NC}"
+    fi
+
+    # Print bucket and object information
+    echo "🔍 Checking bucket '$IMAGES_S3_BUCKET' object information..."
+    #sudo docker run --rm --network "container:$container_name" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url http://$container_name:7070 s3 ls s3://$IMAGES_S3_BUCKET --summarize --recursive --human-readable
+    sudo docker run --rm --network "container:$container_name" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url "http://127.0.0.1:7070" s3 ls "s3://$IMAGES_S3_BUCKET" --recursive \
+    | awk '
+    {
+      size=$3
+      key=$4
+
+      split(key, parts, "/")
+      prefix=parts[1]
+
+      count[prefix]++
+      bytes[prefix]+=size
+    }
+    END {
+      for (p in bytes) {
+        printf "%8.1f MiB  %5d objects      %s/%s\n",
+          bytes[p]/1024/1024,
+          count[p],
+          "'$IMAGES_S3_BUCKET'",
+          p
+      }
+    }
+    '
+
+    # Verify control-panel has a valid S3_ACCESS_KEY
+    if sudo docker logs control-panel 2>&1 | grep -q "InvalidAccessKeyId"; then
+      echo -e "${RED}❌ control-panel is reporting InvalidAccessKeyId. You may want to re-run ./versitygw_init.sh to correct this.${NC}"
+    fi
+
   else
     echo -e "${RED}❌ $container_name is NOT running.${NC}"
-  fi
+  fi  
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   container_name="mongo"

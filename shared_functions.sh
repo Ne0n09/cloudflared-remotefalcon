@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2025.11.9.1
+# SHARED_FUNCTIONS_VERSION=2026.5.3.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -12,9 +12,6 @@ BACKUP_DIR="$SCRIPT_DIR/remotefalcon-backups"
 COMPOSE_FILE="$WORKING_DIR/compose.yaml"
 ENV_FILE="$WORKING_DIR/.env"
 HEALTH_CHECK_SCRIPT="$SCRIPT_DIR/health_check.sh"
-MINIO_ALIAS="minio"
-BUCKET_NAME="remote-falcon-images"
-ACCESS_KEY_NAME="remote-falcon-key"
 
 # Used to store .env variables
 declare -gA existing_env_vars
@@ -291,13 +288,10 @@ memory_check() {
   fi
 }
 
-# Function to match compose service name with container name to handle the special case of minio
+# Function to match compose service name with container name
 get_container_name() {
   local service_name="$1"
   case "$service_name" in
-    minio)
-      echo "remote-falcon-images.minio"
-      ;;
     *)
       echo "$service_name"
       ;;
@@ -321,8 +315,8 @@ get_current_version() {
     mongo)
       sudo docker exec "$(get_container_name "$service_name")" bash -c "mongod --version | grep -oP 'db version v\\K[\\d\\.]+'" | tr -d '[:space:]'
       ;;
-    minio)
-      sudo docker exec "$(get_container_name "$service_name")" minio --version | sed -n 's/^minio version \(RELEASE\.[^ ]\+\).*/\1/p'
+    versitygw)
+      sudo docker exec "$(get_container_name "$service_name")" versitygw --version | awk '/^Version/ {print $3}'
       ;;
     *)
       echo -e "${RED}❌ Failed to get current version. Unsupported container: $service_name${NC}" >&2
@@ -361,16 +355,16 @@ replace_compose_tag() {
       sed -i -E "s|(^[[:space:]]*image:[[:space:]]*\"?)([^\"[:space:]]*${service_name}):[^\"[:space:]]+(\"?)|\1\2:${tag}\3|" "$COMPOSE_FILE"
       ;;
     cloudflared)
-      sed -i.bak -E "s|cloudflare/$service_name:[^[:space:]]+|cloudflare/$service_name:$tag|" "$COMPOSE_FILE"
+      sed -i.bak -E "s|cloudflare/cloudflared:[^[:space:]]+|cloudflare/cloudflared:$tag|" "$COMPOSE_FILE"
       ;;
     nginx)
-      sed -i.bak -E "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$tag|" "$COMPOSE_FILE"
+      sed -i.bak -E "/^\s*image:\s*nginx:[^[:space:]]+/s|nginx:[^[:space:]]+|nginx:$tag|" "$COMPOSE_FILE"
       ;;
     mongo)
-      sed -i.bak -E "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$tag|" "$COMPOSE_FILE"
+      sed -i.bak -E "/^\s*image:\s*mongo:[^[:space:]]+/s|mongo:[^[:space:]]+|mongo:$tag|" "$COMPOSE_FILE"
       ;;
-    minio)
-      sed -i.bak -E "/^[[:space:]]*image:[[:space:]]*(coollabsio\/)?minio(\/minio)?:/ s|:[^[:space:]]+|:$tag|" "$COMPOSE_FILE"
+    versitygw)
+      sed -i.bak -E "s|versity/versitygw:[^[:space:]]+|versity/versitygw:$tag|" "$COMPOSE_FILE"
       ;;
     *)
       echo -e "${RED}❌ Failed to replace compose tags. Unsupported container: $service_name${NC}" >&2
@@ -403,9 +397,9 @@ check_tag_format() {
       format_regex="^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" 
       format="XX.X.XX"
       ;;
-    minio)
-      format_regex="^RELEASE\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$"
-      format="RELEASE.YYYY-MM-DDTHH-MM-SSZ"
+    versitygw)
+      format_regex="^v?[0-9]+\.[0-9]+\.[0-9]+$"
+      format="vX.X.X"
       ;;
     *)
       echo -e "${RED}❌ Failed to check version format. Unsupported container: $service_name${NC}" >&2
@@ -427,6 +421,47 @@ is_container_running() {
   local service_name="$1"
 
   sudo docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^${service_name}$"
+}
+
+get_container_network() {
+  sudo docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$1" | head -n1
+}
+
+# Function to check if the bucket policy for the images bucket is set correctly by using the aws-cli container on the same Docker network to query the S3 API for the bucket policy and then using jq to validate that the correct policy statements are present
+check_bucket_policy() {
+  local container_name="$1"
+
+  policy_json=$(sudo docker run --rm --network "container:$container_name" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url http://$container_name:7070 s3api get-bucket-policy --bucket "$IMAGES_S3_BUCKET" 2>/dev/null)
+
+  rc=$?
+
+  # No policy exists
+  if [[ $rc -ne 0 ]]; then
+    return 1
+  fi
+
+  # Extract inner JSON string
+  policy=$(echo "$policy_json" | jq -r '.Policy | fromjson')
+
+  # Validate required pieces
+  echo "$policy" | jq -e \
+    --arg bucket "$IMAGES_S3_BUCKET" \
+    --arg key "$S3_ACCESS_KEY" '
+      (
+        .Statement[] |
+        select(.Sid=="PublicRead") |
+        select(.Effect=="Allow") |
+        select(.Principal=="*") |
+        select(.Action[]=="s3:GetObject") |
+        select(.Resource[]=="arn:aws:s3:::\($bucket)/*")
+      )
+      and
+      (
+        .Statement[] |
+        select(.Sid=="AppAccessUserOnly") |
+        select(.Principal.AWS==$key)
+      )
+    ' >/dev/null 2>&1
 }
 
 # ========== END Shared Functions ==========
