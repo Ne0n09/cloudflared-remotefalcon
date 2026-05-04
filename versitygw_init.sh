@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.3.2
+# VERSION=2026.5.4.1
 
 # Configure new VersityGW container
 #set -euo pipefail
@@ -43,8 +43,10 @@ for var_def in "${REQUIRED_S3_VARS[@]}"; do
   fi
 done
 
-# Defines a variable for the the bucket policy we want to apply to the images bucket to allow public read access to the objects in the bucket.
-POLICY=$(cat <<EOF
+# Builds the bucket policy after credential defaults have been replaced so the
+# principal matches the VersityGW user that actually exists.
+build_bucket_policy() {
+  cat <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -74,7 +76,7 @@ POLICY=$(cat <<EOF
   ]
 }
 EOF
-)
+}
 
 # Function to check if VersityGW is healthy inside the container by checking the VersityGW health endpoint
 check_versitygw_health() {
@@ -146,7 +148,7 @@ if [[ $S3_ROOT_USER == "12345678" ]]; then
   echo -e "${YELLOW}⚠️ S3_ROOT_USER is set to default value 12345678. Generating a random user and writing it to $ENV_FILE...${NC}"
   S3_ROOT_USER=$(openssl rand -hex 16)
   sed -i "s|^S3_ROOT_USER=.*|S3_ROOT_USER=$S3_ROOT_USER|" "$ENV_FILE"
-  changes_creds=true
+  changed_creds=true
 fi
 # Check S3_ROOT_PASSWORD .env variable and generate a random password if set to default 12345678
 if [[ $S3_ROOT_PASSWORD == "12345678" ]]; then
@@ -171,11 +173,11 @@ if [[ $S3_ACCESS_KEY == "123456" ]]; then
   echo -e "${YELLOW}⚠️ S3_ACCESS_KEY is set to default value 123456. Generating a random user and writing it to $ENV_FILE...${NC}"
   S3_ACCESS_KEY=$(openssl rand -hex 16)
   sed -i "s|^S3_ACCESS_KEY=.*|S3_ACCESS_KEY=$S3_ACCESS_KEY|" "$ENV_FILE"
-  changes_creds=true
+  changed_creds=true
 fi
 # Check S3_SECRET_KEY .env variable and generate a random password if set to default 123456
 if [[ $S3_SECRET_KEY == "123456" ]]; then
-  echo -e "${YELLOW}⚠️ S3_ROOT_PASSWORD is set to default value 123456. Generating a random password and writing it to $ENV_FILE...${NC}"
+  echo -e "${YELLOW}⚠️ S3_SECRET_KEY is set to default value 123456. Generating a random password and writing it to $ENV_FILE...${NC}"
   S3_SECRET_KEY=$(openssl rand -hex 16)
   sed -i "s|^S3_SECRET_KEY=.*|S3_SECRET_KEY=$S3_SECRET_KEY|" "$ENV_FILE"
   changed_creds=true
@@ -190,11 +192,11 @@ else
 fi
 
 # Check if a user has been created with the S3_ACCESS_KEY and S3_SECRET_KEY values and if not create a new user with those credentials
-if sudo docker exec $CONTAINER_NAME versitygw admin -a $S3_ROOT_USER -s $S3_ROOT_PASSWORD -er http://127.0.0.1:7071 list-users | awk 'NR>2 {print $1}' | grep -qx "$S3_ACCESS_KEY"; then
+if sudo docker exec "$CONTAINER_NAME" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 list-users | awk 'NR>2 {print $1}' | grep -qx "$S3_ACCESS_KEY"; then
   echo -e "${GREEN}✅ S3 user '$S3_ACCESS_KEY' already exists.${NC}"
 else
   echo "Creating user '$S3_ACCESS_KEY'..."
-  sudo docker exec $CONTAINER_NAME versitygw admin -a $S3_ROOT_USER -s $S3_ROOT_PASSWORD -er http://127.0.0.1:7071 create-user -a $S3_ACCESS_KEY -s $S3_SECRET_KEY -r user
+  sudo docker exec $CONTAINER_NAME versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 create-user -a "$S3_ACCESS_KEY" -s "$S3_SECRET_KEY" -r user
 fi
 
 # Check if the 'remote-falcon-images' bucket already exists else create it
@@ -204,11 +206,11 @@ if [[ -n "$bucket_owner" ]]; then
     echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' already exists and is owned by '$S3_ACCESS_KEY'.${NC}"
   else
     echo -e "${YELLOW}⚠️ Bucket '$IMAGES_S3_BUCKET' exists but is owned by '$bucket_owner'. Updating owner to'$S3_ACCESS_KEY'.${NC}"
-    sudo docker exec "$CONTAINER_NAME" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 change-bucket-owner -b $IMAGES_S3_BUCKET -o $S3_ACCESS_KEY
+    sudo docker exec "$CONTAINER_NAME" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 change-bucket-owner -b "$IMAGES_S3_BUCKET" -o "$S3_ACCESS_KEY"
   fi
 else
   echo "🪣 Creating bucket '$IMAGES_S3_BUCKET'..."
-  sudo docker exec $CONTAINER_NAME versitygw admin -a $S3_ROOT_USER -s $S3_ROOT_PASSWORD -er http://127.0.0.1:7071 create-bucket --owner $S3_ACCESS_KEY --bucket $IMAGES_S3_BUCKET
+  sudo docker exec $CONTAINER_NAME versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 create-bucket --owner "$S3_ACCESS_KEY" --bucket "$IMAGES_S3_BUCKET"
 fi
 
 # Set a bucket policy to allow public access check_bucket_policy is sourced from shared_functions.sh
@@ -216,7 +218,11 @@ if check_bucket_policy "$CONTAINER_NAME"; then
   echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' policy is already set for public access.${NC}"
 else
   echo "🪣 Applying public policy to bucket '$IMAGES_S3_BUCKET'..."
-  sudo docker run --rm --network "container:$CONTAINER_NAME" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url http://$CONTAINER_NAME:7070 s3api put-bucket-policy --bucket "$IMAGES_S3_BUCKET" --policy "$POLICY"
+  POLICY=$(build_bucket_policy)
+  if ! sudo docker run --rm --network "container:$CONTAINER_NAME" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url http://$CONTAINER_NAME:7070 s3api put-bucket-policy --bucket "$IMAGES_S3_BUCKET" --policy "$POLICY"; then
+    echo -e "${RED}❌ Failed to apply bucket policy for '$IMAGES_S3_BUCKET'.${NC}"
+    exit 1
+  fi
 fi
 
 # Check for existing MinIO installation and migrate from MinIO to VersityGW
@@ -285,7 +291,7 @@ migrate_minio_to_versitygw() {
     echo -e "${BLUE}🔄 Attempting to migrate existing MinIO data to Versity Gateway storage...${NC}"
     echo -e "${YELLOW}⚠️ Checking for existing MinIO container...${NC}"
 
-    RF_NETWORK=$(get_container_network "versitygw")
+#    RF_NETWORK=$(get_container_network "versitygw")
     MINIO_CONTAINER=$(sudo docker ps --format '{{.Names}}' | grep -E 'minio' | head -n 1)
     TEMP_MINIO=false
 
@@ -302,9 +308,6 @@ migrate_minio_to_versitygw() {
       echo -e "${RED}❌ No running MinIO container found. Data will not be migrated${NC}"
       return 1
 
-      MINIO_CONTAINER="minio"
-      TEMP_MINIO=true
-
       # Start a temporary MinIO container with the existing data directory mounted
       # sudo docker run -d --name "$MINIO_CONTAINER" --network "$RF_NETWORK" -v "$MINIO_PATH:/data" -p 9000:9000 -p 9001:9001 -e MINIO_ROOT_USER="$MINIO_ROOT_USER" -e MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" coollabsio/minio:latest server /data --address ":9000" >/dev/null
     fi
@@ -313,9 +316,9 @@ migrate_minio_to_versitygw() {
 
     # Configure mc alias for MinIO and VersityGW
     echo -e "${BLUE}🔧 Configuring mc alias for minio...${NC}"
-    sudo docker exec $MINIO_CONTAINER mc alias set minio http://minio:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
+    sudo docker exec "$MINIO_CONTAINER" mc alias set minio http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
     echo -e "${BLUE}🔧 Configuring mc alias for versitygw...${NC}"
-    sudo docker exec $MINIO_CONTAINER mc alias set versitygw http://versitygw:7070 $S3_ROOT_USER $S3_ROOT_PASSWORD
+    sudo docker exec "$MINIO_CONTAINER" mc alias set versitygw http://versitygw:7070 "$S3_ROOT_USER" "$S3_ROOT_PASSWORD"
     echo -e "${GREEN}✅ Aliases configured.${NC}"
 
     # List contents of source and destination buckets for verification
@@ -323,8 +326,8 @@ migrate_minio_to_versitygw() {
     check_bucket_exists "$MINIO_CONTAINER" "versitygw" "$IMAGES_S3_BUCKET" || exit 1
 
     # Check if source and destination bucket object count match
-    src_count=$(sudo docker exec "$MINIO_CONTAINER" mc ls minio/$IMAGES_S3_BUCKET --recursive | wc -l)
-    dst_count=$(sudo docker exec "$MINIO_CONTAINER" mc ls versitygw/$IMAGES_S3_BUCKET --recursive | wc -l)
+    src_count=$(sudo docker exec "$MINIO_CONTAINER" mc ls minio/"$IMAGES_S3_BUCKET" --recursive | wc -l)
+    dst_count=$(sudo docker exec "$MINIO_CONTAINER" mc ls versitygw/"$IMAGES_S3_BUCKET" --recursive | wc -l)
 
     if [[ "$src_count" -eq "$dst_count" ]]; then
       echo -e "${GREEN}✅ No migration needed. Buckets are in sync.${NC}"
@@ -344,12 +347,12 @@ migrate_minio_to_versitygw() {
 #      else
         # Perform the migration
         echo -e "${BLUE}📦 Migrating data from MinIO to Versity Gateway...${NC}"
-        sudo docker exec $MINIO_CONTAINER mc mirror --overwrite minio/$IMAGES_S3_BUCKET versitygw/$IMAGES_S3_BUCKET
+        sudo docker exec "$MINIO_CONTAINER" mc mirror --overwrite minio/"$IMAGES_S3_BUCKET" versitygw/"$IMAGES_S3_BUCKET"
 
         # Verify the migration completed by comparing object counts
         echo -e "${BLUE}🔍 Verifying migration...${NC}"
-        src_count=$(sudo docker exec $MINIO_CONTAINER mc ls minio/$IMAGES_S3_BUCKET --recursive | wc -l)
-        dst_count=$(sudo docker exec $MINIO_CONTAINER mc ls versitygw/$IMAGES_S3_BUCKET --recursive | wc -l)
+        src_count=$(sudo docker exec "$MINIO_CONTAINER" mc ls minio/"$IMAGES_S3_BUCKET" --recursive | wc -l)
+        dst_count=$(sudo docker exec "$MINIO_CONTAINER" mc ls versitygw/"$IMAGES_S3_BUCKET" --recursive | wc -l)
 
         echo -e "📊 MinIO objects:      $src_count"
         echo -e "📊 VersityGW objects: $dst_count"
@@ -377,8 +380,5 @@ migrate_minio_to_versitygw() {
 
 migrate_minio_to_versitygw
 
-
 echo "🚀 Done! Exiting versitygw_init script..."
 exit 0
-
-# Need to check for already running minio container when compose.yaml is updated

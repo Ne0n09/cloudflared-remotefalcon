@@ -1,5 +1,15 @@
 # Release Notes
 
+## 2026.5.4.1
+
+- Updated versitygw_init.sh so the bucket policy is built after default S3 credentials are replaced, preventing an invalid policy principal when reusing an existing Versity Gateway data directory.
+
+- Fixed credential change tracking so Versity Gateway and control-panel containers restart when generated root or S3 credentials change.
+
+- Added safer quoting around Versity Gateway admin and MinIO migration commands.
+
+- Cleaned up Versity Gateway initialization messages and removed unused MinIO migration fallback code.
+
 ## 2026.5.3.2
 
 - A few fixes to the versitygw_init.sh and health_check.sh scripts.

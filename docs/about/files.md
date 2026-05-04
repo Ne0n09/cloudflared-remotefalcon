@@ -165,13 +165,13 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     :   Specifies the S3 seceret key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
 
-    'IMAGES_S3_BUCKET'=remote-falcon-images
+    `IMAGES_S3_BUCKET`
 
-    :   Specifies the S3 bucket name that should be used. Default is 'remote-falcon-images'.
+    :   Specifies the S3 bucket name that should be used. Default is `remote-falcon-images`.
 
-    'IMAGES_CDN_ENDPOINT'
+    `IMAGES_CDN_ENDPOINT`
 
-    :   Specifies the endpoint path for the S3 bucket. Default is 'https://${DOMAIN}/${IMAGES_S3_BUCKET}'.
+    :   Specifies the endpoint path for the S3 bucket. Default is `https://${DOMAIN}/${IMAGES_S3_BUCKET}`.
 
     `OTEL_URI`
 
@@ -183,7 +183,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `SWAP_CP`
 
-    :   The configure-rf script guides on setting this. When set to 'true' and `VIEWER_PAGE_SUBDOMAIN` is set to a valid subdomain then the Viewer Page Subdomain will be accessible at https://yourdomain.com and the Control Panel will be accessible at https://controlpanel.yourdomain.com.
+    :   The configure-rf script guides on setting this. When set to 'true' and `VIEWER_PAGE_SUBDOMAIN` is set to a valid subdomain then the Viewer Page Subdomain will be accessible at https://yourdomain.com and the Control Panel will be accessible at `https://controlpanel.yourdomain.com`.
 
     `VIEWER_PAGE_SUBDOMAIN`
 
