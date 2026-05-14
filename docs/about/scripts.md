@@ -72,7 +72,7 @@ Click the name of the script to expand the section to display details about the 
     ```yaml linenums="50" hl_lines="3 6"
       plugins-api:
         build:
-          context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git#cc1593aab27dc195a4c55b5b1410ddc06e96a60c
+          context: https://github.com/Remote-Falcon/remote-falcon-platform.git#cc1593aab27dc195a4c55b5b1410ddc06e96a60c:apps/plugins-api
           args:
             - OTEL_OPTS=${OTEL_OPTS}
         image: plugins-api:cc1593a

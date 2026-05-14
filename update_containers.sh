@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.3.1
+# VERSION=2026.5.14.1
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -32,7 +32,7 @@ HEALTH_CHECK="${3:-}" # Options: health or empty
 # CONTAINERS defines the order that the containers will be updated in if no name is provided
 CONTAINERS=("mongo" "versitygw" "plugins-api" "control-panel" "viewer" "ui" "external-api" "nginx" "cloudflared" )
 BACKED_UP=false # Flag to track if a backup was made
-REMOTE_FALCON_REPO="Remote-Falcon/remote-falcon-" # Main repo to compare sha
+REMOTE_FALCON_REPO="$REMOTE_FALCON_PLATFORM_REPO" # Main repo to compare sha
 
 if [[ -z "$SERVICE_NAME" ]]; then
   SERVICE_NAME="all"  # Default to all if not provided
@@ -116,8 +116,7 @@ get_latest_version() {
       jq -r '.[0].tag_name'
       ;;
     plugins-api|control-panel|viewer|ui|external-api)
-      # Map shorthand service name to actual repo name
-      local full_sha=$(curl -s "https://api.github.com/repos/${REMOTE_FALCON_REPO}${service_name}/commits/main" | jq -r .sha)
+      local full_sha=$(curl -s "https://api.github.com/repos/${REMOTE_FALCON_REPO}/commits?sha=main&path=${REMOTE_FALCON_APPS_DIR}/${service_name}&per_page=1" | jq -r '.[0].sha')
       echo "$full_sha"
       ;;
     *)
@@ -145,7 +144,7 @@ perform_update() {
   case "$service_name" in
     plugins-api|control-panel|viewer|ui|external-api)
       # Update the build context line in compose.yaml to allow local builds from the correct commit
-      sed -i -E "s|(context: https://github.com/Remote-Falcon/remote-falcon-${service_name}\.git)(#.*)?|\1#$latest_version|g" "$COMPOSE_FILE"
+      update_rf_build_context "$service_name" "$latest_version"
       latest_version=${latest_version:0:7} # Use short sha for image tag
       # Update the image tag in the compose.yaml
       sed -i.bak -E "s|(^[[:space:]]*image:[[:space:]]*\"?)([^\"[:space:]]*${service_name}):[^\"[:space:]]+(\"?)|\1\2:${latest_version}\3|" "$COMPOSE_FILE"
@@ -286,7 +285,7 @@ check_for_update() {
       RELEASE_NOTES_URL="https://api.github.com/repos/versity/versitygw/releases"
       ;;
     plugins-api|control-panel|viewer|ui|external-api)
-      RELEASE_NOTES_URL="https://github.com/${REMOTE_FALCON_REPO}${service_name}/commits/main/"
+      RELEASE_NOTES_URL="https://github.com/${REMOTE_FALCON_REPO}/commits/main/${REMOTE_FALCON_APPS_DIR}/${service_name}"
       ;;
     *)
       echo -e "${RED}❌ Unsupported container: $service_name${NC}" >&2
@@ -430,7 +429,7 @@ check_for_update() {
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $short_sha):${NC}"
-          echo -e "${BLUE}🔗 https://github.com/${REMOTE_FALCON_REPO}${service_name}/commits/main/${NC}"
+          echo -e "${BLUE}🔗 https://github.com/${REMOTE_FALCON_REPO}/commits/main/${REMOTE_FALCON_APPS_DIR}/${service_name}${NC}"
 
           case "$MODE" in
             "dry-run")

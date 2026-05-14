@@ -8,33 +8,33 @@ Below is a summary of each container and/or links to also learn more about them.
 
 #### external-api
 
-- The [External API](https://github.com/Remote-Falcon/remote-falcon-external-api) allows you to create your own viewer page outside of the Remote Falcon viewer pages. See the [API documentation](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon/20241115.1), [examples](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample), and [here](../extra.md).
+- The [External API](https://github.com/Remote-Falcon/remote-falcon-platform/tree/main/apps/external-api) allows you to create your own viewer page outside of the Remote Falcon viewer pages. See the [API documentation](https://app.swaggerhub.com/apis/whitesoup12/RemoteFalcon/20241115.1), [examples](https://github.com/Remote-Falcon/remote-falcon-issue-tracker/tree/main/external-api-sample), and [here](../extra.md).
 
-- [GitHub - external-api](https://github.com/Remote-Falcon/remote-falcon-external-api)
+- [GitHub - external-api](https://github.com/Remote-Falcon/remote-falcon-platform/tree/main/apps/external-api)
 
 #### ui
 
 - See the [Remote Falcon Developer Docs - ui](https://docs.remotefalcon.com/docs/developer-docs/how-it-works/architecture#remote-falcon-ui) for more details.
 
-- [GitHub - ui](https://github.com/Remote-Falcon/remote-falcon-ui)
+- [GitHub - ui](https://github.com/Remote-Falcon/remote-falcon-platform/tree/main/apps/ui)
 
 #### plugins-api
 
 - See the [Remote Falcon Developer Docs - plugins-api](https://docs.remotefalcon.com/docs/developer-docs/how-it-works/architecture#remote-falcon-plugins-api) for more details.
 
-- [GitHub - plugins-api](https://github.com/Remote-Falcon/remote-falcon-plugins-api)
+- [GitHub - plugins-api](https://github.com/Remote-Falcon/remote-falcon-platform/tree/main/apps/plugins-api)
 
 #### viewer
 
 - See the [Remote Falcon Developer Docs - viewer](https://docs.remotefalcon.com/docs/developer-docs/how-it-works/architecture#remote-falcon-viewer) for more details.
 
-- [GitHub - viewer](https://github.com/Remote-Falcon/remote-falcon-viewer)
+- [GitHub - viewer](https://github.com/Remote-Falcon/remote-falcon-platform/tree/main/apps/viewer)
 
 #### control-panel
 
 - See the [Remote Falcon Developer Docs - control-panel](https://docs.remotefalcon.com/docs/developer-docs/how-it-works/architecture#remote-falcon-control-panel) for more details.
 
-- [GitHub - control-panel](https://github.com/Remote-Falcon/remote-falcon-control-panel)
+- [GitHub - control-panel](https://github.com/Remote-Falcon/remote-falcon-platform/tree/main/apps/control-panel)
 
 #### versitygw
 

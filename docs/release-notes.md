@@ -1,5 +1,27 @@
 # Release Notes
 
+## 2026.5.14.1
+
+- Updated Remote Falcon app build contexts for the new [remote-falcon-platform](https://github.com/Remote-Falcon/remote-falcon-platform) monorepo layout.
+
+- compose.yaml now builds ui, control-panel, external-api, viewer, and plugins-api from `https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/<service>`.
+
+- Updated update_containers.sh to check the latest commit for each app path under `apps/<service>` instead of the retired individual Remote Falcon repositories.
+
+- Updated shared_functions.sh, run_workflow.sh, and configure-rf.sh so pinned SHA builds and restored compose contexts use the monorepo context format: `remote-falcon-platform.git#<sha>:apps/<service>`.
+
+- Updated run_workflow.sh to allow for longer Remote Falcon monorepo builds by changing the workflow wait guidance from 15 minutes to 20 minutes.
+
+- Updated documentation links and examples for the Remote Falcon app directories in the monorepo.
+
+- Updated [Remote Falcon Image Builder template repostiry ](https://github.com/Ne0n09/remote-falcon-image-builder) to use app-specific Remote Falcon commits for image tags.
+
+- Update the [build-all](https://github.com/Ne0n09/remote-falcon-image-builder/blob/main/.github/workflows/build-all.yml) and [build-container](https://github.com/Ne0n09/remote-falcon-image-builder/blob/main/.github/workflows/build-container.yml) workflows to build from the [remote-falcon-platform](https://github.com/Remote-Falcon/remote-falcon-platform) monorepo and derive image tags from the latest commit touching each selected app under apps/<service>.
+
+- This prevents scheduled builds from treating every service as changed when only the monorepo HEAD changes, allowing GHCR image existence checks to skip unchanged app images.
+
+- Also update workflow build context/dockerfile resolution for monorepo app paths and refresh the README wording around private image builds and Remote Falcon documentation links.
+
 ## 2026.5.4.1
 
 - Updated versitygw_init.sh so the bucket policy is built after default S3 credentials are replaced, preventing an invalid policy principal when reusing an existing Versity Gateway data directory.
@@ -276,7 +298,7 @@ https://github.com/minio/minio/issues/21647#issuecomment-3418675115
 ```yaml title="compose.yaml" linenums="1" hl_lines="3"
 control-panel:
     build:
-      context: https://github.com/Remote-Falcon/remote-falcon-control-panel.git#f12f5fbfa90c6f2358a2843ec340de771a7e88bf
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#f12f5fbfa90c6f2358a2843ec340de771a7e88bf:apps/control-panel
       args:
         - OTEL_OPTS=
     image: control-panel:f12f5fb

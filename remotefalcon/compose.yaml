@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2026.5.3.1
+# COMPOSE_VERSION=2026.5.14.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -55,7 +55,7 @@ services:
       VGW_HEALTH: "health"
   plugins-api:
     build:
-      context: https://github.com/Remote-Falcon/remote-falcon-plugins-api.git
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/plugins-api
       args:
         - OTEL_OPTS=${OTEL_OPTS}
         - OTEL_URI=${OTEL_URI}
@@ -72,7 +72,7 @@ services:
       - mongo
   control-panel:
     build:
-      context: https://github.com/Remote-Falcon/remote-falcon-control-panel.git
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/control-panel
       args:
         - OTEL_OPTS=${OTEL_OPTS}
     image: control-panel:latest
@@ -98,7 +98,7 @@ services:
       - mongo
   viewer:
     build:
-      context: https://github.com/Remote-Falcon/remote-falcon-viewer.git
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/viewer
       args:
         - OTEL_OPTS=${OTEL_OPTS}
         - OTEL_URI=${OTEL_URI}
@@ -113,7 +113,7 @@ services:
       - mongo
   ui:
     build:
-      context: https://github.com/Remote-Falcon/remote-falcon-ui.git
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/ui
       args:
         - HOST_ENV=${HOST_ENV}
         - VERSION=${VERSION}
@@ -137,7 +137,7 @@ services:
       - viewer
   external-api:
     build:
-      context: https://github.com/Remote-Falcon/remote-falcon-external-api.git
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/external-api
       args:
         - OTEL_OPTS=${OTEL_OPTS}
     image: external-api:latest

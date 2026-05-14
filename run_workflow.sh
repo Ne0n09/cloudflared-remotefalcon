@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.11.20.1
+# VERSION=2026.5.14.1
 
 # This script will run the GitHub Actions workflow in the REPO configured in the .env to build: plugins-api, control-panel, viewer, ui, and external-api.
 # It will call either the build-container.yml or build-all.yml workflow depending on the arguments passed.
@@ -64,8 +64,8 @@ get_full_sha() {
     return 1
   fi
 
-  # GitHub API endpoint for a specific commit
-  local api_url="https://api.github.com/repos/Remote-Falcon/remote-falcon-$service_name/commits/$short_sha"
+  # GitHub API endpoint for a specific commit in the Remote Falcon monorepo
+  local api_url="https://api.github.com/repos/${REMOTE_FALCON_PLATFORM_REPO}/commits/$short_sha"
 
   # Fetch full SHA
   local full_sha
@@ -126,7 +126,7 @@ trigger_workflow() {
 
   # Print initial message
   echo -e "⏳ Workflow triggered: ${BLUE}🔗 https://github.com/$REPO/actions/runs/$run_id${NC}"
-  echo -e "${YELLOW}⚠️ This may take up to 15 minutes. Waiting for completion...${NC}"
+  echo -e "${YELLOW}⚠️ This may take up to 20 minutes. Waiting for completion...${NC}"
   echo "Status updates every ${POLL_INTERVAL} seconds..."
 
   line_count=0

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.5.3.1
+# SHARED_FUNCTIONS_VERSION=2026.5.14.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -12,6 +12,9 @@ BACKUP_DIR="$SCRIPT_DIR/remotefalcon-backups"
 COMPOSE_FILE="$WORKING_DIR/compose.yaml"
 ENV_FILE="$WORKING_DIR/.env"
 HEALTH_CHECK_SCRIPT="$SCRIPT_DIR/health_check.sh"
+REMOTE_FALCON_PLATFORM_REPO="Remote-Falcon/remote-falcon-platform"
+REMOTE_FALCON_PLATFORM_GIT_URL="https://github.com/${REMOTE_FALCON_PLATFORM_REPO}.git"
+REMOTE_FALCON_APPS_DIR="apps"
 
 # Used to store .env variables
 declare -gA existing_env_vars
@@ -339,6 +342,32 @@ get_current_compose_tag() {
   fi
 }
 
+# Function to update a Remote Falcon service build context to the monorepo app path
+update_rf_build_context() {
+  local service_name="$1"
+  local ref="$2"
+  local context="${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}:${REMOTE_FALCON_APPS_DIR}/${service_name}"
+  local tmp_file="${COMPOSE_FILE}.tmp"
+
+  awk -v service="$service_name" -v context="$context" '
+    $0 ~ "^[[:space:]][[:space:]]" service ":" {
+      in_service = 1
+      print
+      next
+    }
+    in_service && $0 ~ "^[[:space:]][[:space:]][A-Za-z0-9_-]+:" {
+      in_service = 0
+    }
+    in_service && $0 ~ "^[[:space:]]*context:[[:space:]]*" {
+      sub(/context:.*/, "context: " context)
+      print
+      in_service = 0
+      next
+    }
+    { print }
+  ' "$COMPOSE_FILE" > "$tmp_file" && mv "$tmp_file" "$COMPOSE_FILE"
+}
+
 # Function to replace the compose tag with version for a given service
 replace_compose_tag() {
   local service_name="$1"
@@ -348,7 +377,7 @@ replace_compose_tag() {
     plugins-api|control-panel|viewer|ui|external-api)
       # If full commit is passed then update the build context line in compose.yaml to allow local builds from the correct commit
       if (( ${#tag} > 7 )); then
-        sed -i.bak -E "s|(context: https://github.com/Remote-Falcon/remote-falcon-${service_name}\.git)(#.*)?|\1#$tag|g" "$COMPOSE_FILE"
+        update_rf_build_context "$service_name" "$tag"
       fi
 
       tag=${tag:0:7} # Ensures that we use short sha for image tag if full commit is passed
