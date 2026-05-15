@@ -17,7 +17,8 @@ The exceptions are plugins-api(8083:8083) which allows for direct LAN access.
     ```yaml title="compose.yaml" linenums="50" hl_lines="10"
     plugins-api:
         build:
-        context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/plugins-api
+        context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
+        dockerfile: apps/plugins-api/Dockerfile
         args:
             - OTEL_OPTS=${OTEL_OPTS}
         image: plugins-api:latest

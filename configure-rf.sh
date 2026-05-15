@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.14.1
+# VERSION=2026.5.15.1
 
 #set -euo pipefail
 
@@ -326,18 +326,25 @@ update_files() {
       done < "$local_file"
 
       # Capture context lines
+      current_service=""
       while IFS= read -r line; do
-        if [[ "$line" =~ ^([[:space:]]*)context:[[:space:]]*https://github.com/Remote-Falcon/remote-falcon-(plugins-api|control-panel|viewer|ui|external-api)\.git(#([^:[:space:]]+).*)? ]]; then
-          indent="${BASH_REMATCH[1]}"
-          service="${BASH_REMATCH[2]}"
-          ref="${BASH_REMATCH[4]:-main}"
-          OLD_CONTEXTS["$service"]="${indent}context: ${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}:${REMOTE_FALCON_APPS_DIR}/${service}"
+        if [[ "$line" =~ ^[[:space:]][[:space:]](plugins-api|control-panel|viewer|ui|external-api):[[:space:]]*$ ]]; then
+          current_service="${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ ^[[:space:]][[:space:]][A-Za-z0-9_-]+:[[:space:]]*$ ]]; then
+          current_service=""
+        elif [[ "$line" =~ ^[[:space:]]*context:[[:space:]]*https://github.com/Remote-Falcon/remote-falcon-(plugins-api|control-panel|viewer|ui|external-api)\.git(#([^:[:space:]]+).*)? ]]; then
+          service="${BASH_REMATCH[1]}"
+          ref="${BASH_REMATCH[3]:-main}"
+          OLD_CONTEXTS["$service"]="$ref"
           #echo "Captured context line for service '$service': ${line}"
         elif [[ "$line" =~ ^([[:space:]]*)context:[[:space:]]*https://github.com/Remote-Falcon/remote-falcon-platform\.git#([^:[:space:]]+):apps/([a-zA-Z0-9_-]+) ]]; then
-          indent="${BASH_REMATCH[1]}"
           ref="${BASH_REMATCH[2]}"
           service="${BASH_REMATCH[3]}"
-          OLD_CONTEXTS["$service"]="${indent}context: ${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}:${REMOTE_FALCON_APPS_DIR}/${service}"
+          OLD_CONTEXTS["$service"]="$ref"
+          #echo "Captured context line for service '$service': ${line}"
+        elif [[ -n "$current_service" && "$line" =~ ^[[:space:]]*context:[[:space:]]*https://github.com/Remote-Falcon/remote-falcon-platform\.git#([^:[:space:]]+) ]]; then
+          ref="${BASH_REMATCH[1]}"
+          OLD_CONTEXTS["$current_service"]="$ref"
           #echo "Captured context line for service '$service': ${line}"
         fi
       done < "$local_file"
@@ -350,11 +357,10 @@ update_files() {
 
       # Restore contexts
       for service in "${!OLD_CONTEXTS[@]}"; do
-        old_line="${OLD_CONTEXTS[$service]}"
-        if [[ -n "$old_line" ]]; then
+        old_ref="${OLD_CONTEXTS[$service]}"
+        if [[ -n "$old_ref" ]]; then
           #echo "Restoring context for service '${service}'"
-          # Replace the matching context line for this service
-          sed -i -E "s|^[[:space:]]*context:[[:space:]]*https://github.com/Remote-Falcon/(remote-falcon-${service}|remote-falcon-platform)\.git.*apps/${service}.*|${old_line}|" "$local_file"
+          update_rf_build_context "$service" "$old_ref"
         fi
       done
 

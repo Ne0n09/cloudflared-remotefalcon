@@ -1,20 +1,34 @@
 # Release Notes
 
+## 2026.5.15.1
+
+- Fixed local Remote Falcon builds from the monorepo by using the correct build context for each app type.
+
+- plugins-api, control-panel, viewer, and external-api now build from the monorepo root context with `dockerfile: apps/<service>/Dockerfile`, which preserves access to shared monorepo files referenced by their Dockerfiles.
+
+- ui now builds from `remote-falcon-platform.git#<ref>:apps/ui` without a `dockerfile:` override because its Dockerfile expects `package.json`, `package-lock.json`, and `.npmrc` at the build context root.
+
+- Updated shared_functions.sh so pinned SHA updates preserve the correct context/dockerfile layout per service and remove stale `dockerfile:` lines when switching ui back to its app-directory context.
+
+- Updated configure-rf.sh compose update handling so existing installs keep their pinned Remote Falcon refs while migrating old per-repo or monorepo app-context lines into the correct current compose format.
+
+- Tightened Remote Falcon image tag validation to require an exact 7-character commit tag.
+
 ## 2026.5.14.1
 
 - Updated Remote Falcon app build contexts for the new [remote-falcon-platform](https://github.com/Remote-Falcon/remote-falcon-platform) monorepo layout.
 
-- compose.yaml now builds ui, control-panel, external-api, viewer, and plugins-api from `https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/<service>`.
+- compose.yaml now builds control-panel, external-api, viewer, and plugins-api from the Remote Falcon monorepo root context `https://github.com/Remote-Falcon/remote-falcon-platform.git#main` with `dockerfile: apps/<service>/Dockerfile`. The ui service uses `https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/ui` because its Dockerfile copies npm files from the context root.
 
 - Updated update_containers.sh to check the latest commit for each app path under `apps/<service>` instead of the retired individual Remote Falcon repositories.
 
-- Updated shared_functions.sh, run_workflow.sh, and configure-rf.sh so pinned SHA builds and restored compose contexts use the monorepo context format: `remote-falcon-platform.git#<sha>:apps/<service>`.
+- Updated shared_functions.sh, run_workflow.sh, and configure-rf.sh so pinned SHA builds and restored compose contexts use the correct monorepo context format for each service.
 
 - Updated run_workflow.sh to allow for longer Remote Falcon monorepo builds by changing the workflow wait guidance from 15 minutes to 20 minutes.
 
 - Updated documentation links and examples for the Remote Falcon app directories in the monorepo.
 
-- Updated [Remote Falcon Image Builder template repostiry ](https://github.com/Ne0n09/remote-falcon-image-builder) to use app-specific Remote Falcon commits for image tags.
+- Updated [Remote Falcon Image Builder template repository](https://github.com/Ne0n09/remote-falcon-image-builder) to use app-specific Remote Falcon commits for image tags.
 
 - Update the [build-all](https://github.com/Ne0n09/remote-falcon-image-builder/blob/main/.github/workflows/build-all.yml) and [build-container](https://github.com/Ne0n09/remote-falcon-image-builder/blob/main/.github/workflows/build-container.yml) workflows to build from the [remote-falcon-platform](https://github.com/Remote-Falcon/remote-falcon-platform) monorepo and derive image tags from the latest commit touching each selected app under apps/<service>.
 
@@ -84,8 +98,8 @@
 
 - Updated setup_cloudflare.sh to support passing the Cloudflare API token via arg either interactively or non-interactively.
 
-- This allows for even simpler automatic installation: 
-  
+- This allows for even simpler automatic installation:
+
     ```sh
     ./configure-rf.sh -y --no-updates \
     --set DOMAIN=<yourdomain.com> \
@@ -95,25 +109,25 @@
 
 - Updated setup_cloudflare.sh to fix a typo in the cloudflared container check.
 
-- Updated shared_function.sh to properly tag coollabs/minio images when replace_compose_tag is called. 
+- Updated shared_function.sh to properly tag coollabs/minio images when replace_compose_tag is called.
 
 - Other misc configure-rf.sh fixes.
 
 ## 2025.11.8.1
 
-- Many updates to configure-rf.sh to support running it non-interactively to automate deployment: 
+- Many updates to configure-rf.sh to support running it non-interactively to automate deployment:
 
     ```sh
     ./configure-rf.sh [-y|--non-interactive] [--update-all|--update-scripts|--update-files|--update-workflows|--no-updates] [--set KEY=VALUE ...]
     ```
 
-- Updated setup_cloudflare.sh to add flags to run the script automatically: 
+- Updated setup_cloudflare.sh to add flags to run the script automatically:
 
     ```sh
     ./setup_cloudflare.sh [-y|--non-interactive] [--domain <domain.com>] [--api-token <api-token>]
     ```
 
-- Example of combining both to spin up a basic installation automatically that uses GitHub for image building: 
+- Example of combining both to spin up a basic installation automatically that uses GitHub for image building:
 
     ```sh
     ./setup_cloudflare.sh -y --domain <yourdomain.com> --api-token <your_Cloudflare_API_token> && ./configure-rf.sh -y --no-updates --set GITHUB_PAT=<GitHub_PAT_for_image_builder>
@@ -184,7 +198,7 @@ https://github.com/minio/minio/issues/21647#issuecomment-3418675115
 
 ## 2025.09.8.1
 
-- **GitHub Actions integration!** This will allow you to easily configure a GitHub repo to build images via GitHub Actions workflows. 
+- **GitHub Actions integration!** This will allow you to easily configure a GitHub repo to build images via GitHub Actions workflows.
 
 - The configure-rf and update_containers scripts have been completely overhauled to add this along with other improvements.
 
@@ -232,7 +246,7 @@ https://github.com/minio/minio/issues/21647#issuecomment-3418675115
 
 - Updated generate_jwt to allow selecting by number and updated formatting and coloring.
 
-- Added revert script to assist with reverting back to previous compose.yaml, .env, or MongoDB backups. 
+- Added revert script to assist with reverting back to previous compose.yaml, .env, or MongoDB backups.
 
 ## 2025.06.2.1
 
@@ -254,7 +268,7 @@ https://github.com/minio/minio/issues/21647#issuecomment-3418675115
 
 ## 2025.05.27.1
 
-- Revamped pretty much everything! The configure-rf, update_containers, and update_rf_containers scripts have been updated to add colorization and simplification. 
+- Revamped pretty much everything! The configure-rf, update_containers, and update_rf_containers scripts have been updated to add colorization and simplification.
 
 - Image checking in the update_rf_containers script has been updated.
 
@@ -293,17 +307,18 @@ https://github.com/minio/minio/issues/21647#issuecomment-3418675115
 
 ## 2025.3.6.1
 
-- Updated update_rf_containers script to set the context to the GitHub commit hash in compose.yaml when updating to new image tag:		
+- Updated update_rf_containers script to set the context to the GitHub commit hash in compose.yaml when updating to new image tag:
 
 ```yaml title="compose.yaml" linenums="1" hl_lines="3"
 control-panel:
     build:
-      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#f12f5fbfa90c6f2358a2843ec340de771a7e88bf:apps/control-panel
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#f12f5fbfa90c6f2358a2843ec340de771a7e88bf
+      dockerfile: apps/control-panel/Dockerfile
       args:
         - OTEL_OPTS=
     image: control-panel:f12f5fb
     container_name: control-panel
-```	
+```
 
 - Updated update_rf_containers script to update the VERSION variable to YYYY.MM.DD version format when RF images are built and deployed.
 
@@ -314,7 +329,7 @@ control-panel:
 
 - Fixed configure-rf script to allow = in variable.
 
-- Fixed configure-rf script to display variables that are not assigned. 
+- Fixed configure-rf script to display variables that are not assigned.
 
 - Updated some formatting on the update_containers script.
 
@@ -330,7 +345,7 @@ control-panel:
 
 ## 2025.1.4.1
 
-- Everything with regards to the compose.yaml files and configuration script has been updated. The two compose.yaml scripts for published and non-published ports have been removed to just the single compose.yaml with plugins-api port 8083 published. This is exactly how I have run RF for the 2024 season without any issues. 
+- Everything with regards to the compose.yaml files and configuration script has been updated. The two compose.yaml scripts for published and non-published ports have been removed to just the single compose.yaml with plugins-api port 8083 published. This is exactly how I have run RF for the 2024 season without any issues.
 
 - Updated the configure-rf script to run outside of the 'remotefalcon' directory. It will also auto create the 'remotefalcon' directory if it is not found in the current directory.
 

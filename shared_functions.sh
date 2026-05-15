@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.5.14.1
+# SHARED_FUNCTIONS_VERSION=2026.5.15.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -342,26 +342,44 @@ get_current_compose_tag() {
   fi
 }
 
-# Function to update a Remote Falcon service build context to the monorepo app path
+# Function to update a Remote Falcon service build context and Dockerfile
 update_rf_build_context() {
   local service_name="$1"
   local ref="$2"
-  local context="${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}:${REMOTE_FALCON_APPS_DIR}/${service_name}"
+  local context="${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}"
+  local dockerfile="${REMOTE_FALCON_APPS_DIR}/${service_name}/Dockerfile"
   local tmp_file="${COMPOSE_FILE}.tmp"
 
-  awk -v service="$service_name" -v context="$context" '
+  if [[ "$service_name" == "ui" ]]; then
+    context="${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}:${REMOTE_FALCON_APPS_DIR}/${service_name}"
+    dockerfile=""
+  fi
+
+  awk -v service="$service_name" -v context="$context" -v dockerfile="$dockerfile" '
     $0 ~ "^[[:space:]][[:space:]]" service ":" {
       in_service = 1
       print
       next
     }
+    skip_dockerfile && $0 ~ "^[[:space:]]*dockerfile:[[:space:]]*" {
+      skip_dockerfile = 0
+      next
+    }
+    skip_dockerfile {
+      skip_dockerfile = 0
+    }
     in_service && $0 ~ "^[[:space:]][[:space:]][A-Za-z0-9_-]+:" {
       in_service = 0
     }
     in_service && $0 ~ "^[[:space:]]*context:[[:space:]]*" {
-      sub(/context:.*/, "context: " context)
-      print
+      match($0, /^[[:space:]]*/)
+      indent = substr($0, RSTART, RLENGTH)
+      print indent "context: " context
+      if (dockerfile != "") {
+        print indent "dockerfile: " dockerfile
+      }
       in_service = 0
+      skip_dockerfile = 1
       next
     }
     { print }
@@ -411,7 +429,7 @@ check_tag_format() {
 
   case "$service_name" in
     plugins-api|control-panel|viewer|ui|external-api)
-      format_regex="\b[0-9a-f]{7}\b"
+      format_regex="^[0-9a-f]{7}$"
       format="abcd123"
       ;;
     cloudflared)
