@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.15.1
+# VERSION=2026.5.19.1
 
 #set -euo pipefail
 
@@ -94,19 +94,8 @@ if [ "${DEBUG_INPUT:-false}" = true ] ; then
   echo "--------------------------------------------" >&2
 fi
 
-CONFIGURE_RF_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/configure-rf.sh"
-
 # Set the URLs to download the compose.yaml, NGINX default.conf, and default .env files
-SHARED_FUNCTIONS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/shared_functions.sh"
-DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/compose.yaml"
-NGINX_DEFAULT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/default.conf"
-DEFAULT_ENV_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/remotefalcon/.env"
-UPDATE_CONTAINERS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/update_containers.sh"
-HEALTH_CHECK_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/health_check.sh"
-VERSITYGW_INIT_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/versitygw_init.sh"
-RUN_WORKFLOW_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/run_workflow.sh"
-SYNC_REPO_SECRETS_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/sync_repo_secrets.sh"
-SETUP_CLOUDFLARE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/setup_cloudflare.sh"
+BASE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main"
 SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo versitygw)
 ANY_SERVICE_RUNNING=false
 TEMPLATE_REPO="Ne0n09/remote-falcon-image-builder" # Template repo for image builder workflows
@@ -158,27 +147,26 @@ download_file() {
 echo -e "${BLUE}⚙️ Running ${RED}RF${NC} configuration script...${NC}"
 
 # Download and source shared functions
-download_file $SHARED_FUNCTIONS_URL "shared_functions.sh"
+download_file "$BASE_URL/shared_functions.sh" "shared_functions.sh"
 chmod +x "shared_functions.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ ! -f "$SCRIPT_DIR/shared_functions.sh" ]]; then
   echo -e "${RED}❌ ERROR: shared_functions.sh does not exist in $SCRIPT_DIR.${NC}"
   exit 1
 fi
+# shellcheck source=/dev/null
 source "$SCRIPT_DIR/shared_functions.sh"
 
 # Download extra helper scripts if they do not exist and make them executable
-download_file $UPDATE_CONTAINERS_URL "update_containers.sh"
-download_file $HEALTH_CHECK_URL "health_check.sh"
-download_file $VERSITYGW_INIT_URL "versitygw_init.sh"
-download_file $SETUP_CLOUDFLARE_URL "setup_cloudflare.sh"
-download_file $RUN_WORKFLOW_URL "run_workflow.sh"
-download_file $SYNC_REPO_SECRETS_URL "sync_repo_secrets.sh"
+download_file "$BASE_URL/update_containers.sh" "update_containers.sh"
+download_file "$BASE_URL/health_check.sh" "health_check.sh"
+download_file "$BASE_URL/versitygw_init.sh" "versitygw_init.sh"
+download_file "$BASE_URL/setup_cloudflare.sh" "setup_cloudflare.sh"
+download_file "$BASE_URL/run_workflow.sh" "run_workflow.sh"
+download_file "$BASE_URL/sync_repo_secrets.sh" "sync_repo_secrets.sh"
 chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "versitygw_init.sh" "setup_cloudflare.sh" "run_workflow.sh" "sync_repo_secrets.sh"
 
-## Check for script updates
-BASE_URL="https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main"
-
+## Check for script updates and prompt user to update if there are newer versions. If configure-rf.sh is updated, it will restart the script to load the new version and skip the rest of the updates since they were just checked.
 # Mapping of files to their version tag patterns
 declare -A FILES=(
   [shared_functions.sh]="SHARED_FUNCTIONS_VERSION="
@@ -441,10 +429,10 @@ check_image_builder_updates() {
     return
   fi
 
-  REPO=$(grep -E '^REPO=' $ENV_FILE | cut -d '=' -f2- | tr -d '\r')
-  GITHUB_PAT=$(grep -E '^GITHUB_PAT=' $ENV_FILE | cut -d '=' -f2- | tr -d '\r')
+  REPO=$(grep -E '^REPO=' "$ENV_FILE" | cut -d '=' -f2- | tr -d '\r')
+  GITHUB_PAT=$(grep -E '^GITHUB_PAT=' "$ENV_FILE" | cut -d '=' -f2- | tr -d '\r')
 
-  if [[ -z "$REPO" || "$repo" == "username/repo" || -z "$GITHUB_PAT" ]]; then
+  if [[ -z "$REPO" || "$REPO" == "username/repo" || -z "$GITHUB_PAT" ]]; then
     return
   fi
 
@@ -591,6 +579,7 @@ update_env() {
     ["DOMAIN"]="$DOMAIN"
 #    ["HOSTNAME_PARTS"]="$HOSTNAME_PARTS"
     ["AUTO_VALIDATE_EMAIL"]="$AUTO_VALIDATE_EMAIL"
+    ["DOCKERFILE"]="$DOCKERFILE"
     ["NGINX_CERT"]="./${DOMAIN}_origin_cert.pem"
     ["NGINX_KEY"]="./${DOMAIN}_origin_key.pem"
     ["GOOGLE_MAPS_KEY"]="$GOOGLE_MAPS_KEY"
@@ -610,6 +599,7 @@ update_env() {
   declare -A new_build_args=(
     ["VERSION"]="$VERSION"
     ["HOST_ENV"]="$HOST_ENV"
+    ["DOCKERFILE"]="$DOCKERFILE"
     ["DOMAIN"]="$DOMAIN"
     ["GOOGLE_MAPS_KEY"]="$GOOGLE_MAPS_KEY"
     ["PUBLIC_POSTHOG_KEY"]="$PUBLIC_POSTHOG_KEY"
@@ -664,6 +654,11 @@ update_env() {
         echo -e "${BLUE}🔸 $key${NC}=${YELLOW}${new_env_vars[$key]}${NC}"
       fi
     done
+    for key in "${!new_env_vars[@]}"; do
+      if [[ ! -v existing_env_vars[$key] ]]; then
+        echo -e "${BLUE}🔸 $key${NC}=${YELLOW}${new_env_vars[$key]}${NC}"
+      fi
+    done
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     if [ "$pending_arg_changes" = true ]; then
@@ -685,9 +680,8 @@ update_env() {
   fi
 
   # Validate the variables before writing to .env
+  vars_to_validate=(TUNNEL_TOKEN DOMAIN AUTO_VALIDATE_EMAIL HOSTNAME_PARTS SEQUENCE_LIMIT SWAP_CP VIEWER_PAGE_SUBDOMAIN DOCKERFILE)
   echo -e "${CYAN}🔍 Validating variables: ${vars_to_validate[*]}${NC}"
-
-  vars_to_validate=(TUNNEL_TOKEN DOMAIN AUTO_VALIDATE_EMAIL HOSTNAME_PARTS SEQUENCE_LIMIT SWAP_CP VIEWER_PAGE_SUBDOMAIN)
 
   # Run validation
   if ! validate_variables "${vars_to_validate[@]}"; then
@@ -837,6 +831,12 @@ validate_variables() {
           else
             break
           fi
+        fi
+        ;;
+      DOCKERFILE)
+        if [[ "$test_value" != "Dockerfile" && "$test_value" != "Dockerfile.dev" ]]; then
+          echo -e "${RED}❌ $var_name must be 'Dockerfile' or 'Dockerfile.dev' (current: '${test_value:-empty}').${NC}" >&2
+          valid=false
         fi
         ;;
       *)
@@ -1056,8 +1056,8 @@ fi
 # Change to the 'remotefalcon' directory and download compose.yaml and default.conf if they do not exist
 cd "$WORKING_DIR" || { echo -e "${RED}❌ Failed to change directory to '$WORKING_DIR'. Exiting.${NC}"; exit 1; }
 echo "✔  Working in directory: $(pwd)"
-download_file $DOCKER_COMPOSE_URL "compose.yaml"
-download_file $NGINX_DEFAULT_URL "default.conf"
+download_file "$BASE_URL/compose.yaml" "compose.yaml"
+download_file "$BASE_URL/default.conf" "default.conf"
 
 # Print existing .env file, if it exists, otherwise download the default .env file
 if [ -f .env ]; then
@@ -1066,7 +1066,7 @@ if [ -f .env ]; then
   update_files
   echo "🔍 Parsing current .env variables:"
 else
-  download_file $DEFAULT_ENV_URL ".env"
+  download_file "$BASE_URL/.env" ".env"
   # Display versions of existing files and prompt to update if out of date
   update_files
   echo "🔍 Parsing default .env variables:"
@@ -1074,6 +1074,7 @@ fi
 
 # Read the .env file and export the variables, save build args to OLD_ARGS and print env file contents
 parse_env "$ENV_FILE"
+DOCKERFILE="${DOCKERFILE:-Dockerfile}"
 print_env
 
 # Function for the GitHub configuration flow to configure GITHUB_PAT and REPO
@@ -1157,11 +1158,13 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   # If no repo is configured, display a warning message if less than 16GB of RAM is detected to encourage adding more RAM or confiure GitHub
   if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then
     if ! memory_check; then
-      echo -e "⚡ ${Yellow}If the images fail to build either add more system memory or configure GitHub for building images remotely.${NC}"
+      echo -e "⚡ ${YELLOW}If the images fail to build either add more system memory or configure GitHub for building images remotely.${NC}"
     fi
   fi
 
-  if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+  if is_arm_cpu; then
+    echo -e "${YELLOW}⚠️ ARM CPU detected. Skipping GitHub workflow setup because building ARM Remote Falcon images on GitHub-hosted runners is not feasible on free plans.${NC}"
+  elif [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
     echo -e "${CYAN}ℹ️ Non-interactive mode enabled.${NC}"
     configure_github
   else
@@ -1188,6 +1191,8 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       fi
     fi
   fi
+
+  select_dockerfile_for_host
 
   # Get the Cloudflared tunnel token and validate input is not default, empty, or not in valid format
 #  if [[ "$TUNNEL_TOKEN" == "cloudflare_token" || -z "$TUNNEL_TOKEN" ]]; then
@@ -1330,6 +1335,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   # Capture the current values of any BUILD args(from sourced .env) that weren't asked for above
   VERSION=${VERSION:-$VERSION}
   HOST_ENV=${HOST_ENV:-$HOST_ENV}
+  DOCKERFILE=${DOCKERFILE:-Dockerfile}
   PUBLIC_POSTHOG_HOST=${PUBLIC_POSTHOG_HOST:-$PUBLIC_POSTHOG_HOST}
   OTEL_OPTS=${OTEL_OPTS:-$OTEL_OPTS}
   OTEL_URI=${OTEL_URI:-$OTEL_URI}
@@ -1375,6 +1381,8 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
 
   # Run the container update scripts if .env variables were 'changed' and 'accepted'
   if update_env; then
+    # From shared_functions.sh, make sure compose.yaml uses the DOCKERFILE .env variable for RF builds
+    update_compose_dockerfile_paths
     # From shared_function.sh, make sure the compose.yaml is set for pulling images via ghcr.io/${REPO}/ in the image path or set for local build
     update_compose_image_path
 
@@ -1473,7 +1481,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     fi
   else # update_env returned false - Ask to run update check anyway
     # Run validation to make sure default values aren't set
-    vars_to_validate=(TUNNEL_TOKEN DOMAIN AUTO_VALIDATE_EMAIL HOSTNAME_PARTS SEQUENCE_LIMIT SWAP_CP VIEWER_PAGE_SUBDOMAIN)
+    vars_to_validate=(TUNNEL_TOKEN DOMAIN AUTO_VALIDATE_EMAIL HOSTNAME_PARTS SEQUENCE_LIMIT SWAP_CP VIEWER_PAGE_SUBDOMAIN DOCKERFILE)
     if validate_variables "${vars_to_validate[@]}"; then
       if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         run_updates
@@ -1485,7 +1493,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
 else # User chose not to update the .env file
   echo -e "${YELLOW}⚠️ No .env variables modified.${NC}"
   # Run validation to make sure default values aren't set
-  vars_to_validate=(TUNNEL_TOKEN DOMAIN AUTO_VALIDATE_EMAIL HOSTNAME_PARTS SEQUENCE_LIMIT SWAP_CP VIEWER_PAGE_SUBDOMAIN)
+  vars_to_validate=(TUNNEL_TOKEN DOMAIN AUTO_VALIDATE_EMAIL HOSTNAME_PARTS SEQUENCE_LIMIT SWAP_CP VIEWER_PAGE_SUBDOMAIN DOCKERFILE)
   if validate_variables "${vars_to_validate[@]}"; then
     if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
       run_updates

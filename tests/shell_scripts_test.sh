@@ -74,6 +74,7 @@ TUNNEL_TOKEN=old-token
 REPO=username/repo
 GITHUB_PAT=
 HOST_ENV=production
+DOCKERFILE=Dockerfile
 VERSION=2025.1.1
 CONTROL_PANEL_API=
 VIEWER_API=
@@ -406,11 +407,30 @@ test_shared_functions() {
     replace_compose_tag external-api 1234567890abcdef1234567890abcdef12345678
     grep -Eq 'external-api:1234567' "$COMPOSE_FILE" || exit 1
     grep -Fq 'github.com/Remote-Falcon/remote-falcon-platform.git#1234567890abcdef1234567890abcdef12345678' "$COMPOSE_FILE" || exit 1
-    grep -Fq 'dockerfile: apps/external-api/Dockerfile' "$COMPOSE_FILE" || exit 1
+    grep -Fq 'dockerfile: apps/external-api/${DOCKERFILE}' "$COMPOSE_FILE" || exit 1
 
     replace_compose_tag ui fedcba0987654321fedcba0987654321fedcba09
     grep -Eq 'ui:fedcba0' "$COMPOSE_FILE" || exit 1
     grep -Fq 'github.com/Remote-Falcon/remote-falcon-platform.git#fedcba0987654321fedcba0987654321fedcba09:apps/ui' "$COMPOSE_FILE" || exit 1
+    grep -Fq 'dockerfile: ${DOCKERFILE}' "$COMPOSE_FILE" || exit 1
+
+    uname() { printf 'aarch64\n'; }
+    is_arm_cpu || exit 1
+    uname() { printf 'x86_64\n'; }
+    ! is_arm_cpu || exit 1
+
+    memory_check() { return 1; }
+    REPO="username/repo"
+    GITHUB_PAT=""
+    DOCKERFILE="Dockerfile"
+    select_dockerfile_for_host
+    [[ "$DOCKERFILE" == "Dockerfile.dev" ]] || exit 1
+
+    REPO="owner/repo"
+    GITHUB_PAT="ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ"
+    DOCKERFILE="Dockerfile"
+    select_dockerfile_for_host
+    [[ "$DOCKERFILE" == "Dockerfile" ]] || exit 1
 
     check_tag_format external-api 123abcd || exit 1
     ! check_tag_format external-api latest || exit 1

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.5.15.1
+# SHARED_FUNCTIONS_VERSION=2026.5.19.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -90,7 +90,8 @@ print_env() {
 # Backup the existing .env/compose.yaml file in case roll-back is needed
 backup_file() {
   local file_path="$1"
-  local filename=$(basename "$file_path")
+  local filename
+  filename=$(basename "$file_path")
 
   timestamp=$(date +'%Y-%m-%d_%H-%M-%S')
   if [[ ! -d "$BACKUP_DIR" ]]; then
@@ -271,13 +272,39 @@ update_compose_image_path() {
   fi
 }
 
+# Function to check whether GitHub workflow builds are configured
+github_workflow_builds_configured() {
+  [[ -n "${REPO:-}" && "$REPO" != "username/repo" && "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ && -n "${GITHUB_PAT:-}" ]]
+}
+
+# Function to detect ARM CPUs where free GitHub hosted runners are not practical for RF image builds
+is_arm_cpu() {
+  local arch=""
+
+  if command -v uname >/dev/null 2>&1; then
+    arch="$(uname -m 2>/dev/null || true)"
+  fi
+
+  if [[ -z "$arch" ]] && command -v lscpu >/dev/null 2>&1; then
+    arch="$(lscpu 2>/dev/null | awk -F: '/Architecture/ {gsub(/[[:space:]]/, "", $2); print $2; exit}')"
+  fi
+
+  arch="${arch,,}"
+  [[ "$arch" =~ ^(arm|armv[0-9].*|aarch64|arm64)$ ]]
+}
+
 # Function to check system memory and if less than 16GB display a warning message about building locally
 memory_check() {
   # Required memory in kB (15 GB = 16 * 1024 * 1024) - Slightly less than 16GB as it will likely report 15.xGB
   required_kb=$((15 * 1024 * 1024))
 
   # Read MemTotal from /proc/meminfo
-  mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+  if [[ -r /proc/meminfo ]]; then
+    mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+  else
+    echo -e "${YELLOW}⚠️ Unable to detect system memory. Native image builds need 16GB+ RAM.${NC}"
+    return 1
+  fi
 
   # Convert to GB for display
   mem_gb=$((mem_kb / 1024 / 1024))
@@ -289,6 +316,63 @@ memory_check() {
     #echo -e "✅ ${GREEN}Memory check passed:${NC} ${mem_gb} GB detected."
     return 0
   fi
+}
+
+# Function to select the lower-memory Dockerfile when native local builds are likely to fail
+select_dockerfile_for_host() {
+  DOCKERFILE="${DOCKERFILE:-Dockerfile}"
+
+  if [[ "$DOCKERFILE" != "Dockerfile" && "$DOCKERFILE" != "Dockerfile.dev" ]]; then
+    echo -e "${YELLOW}⚠️ Invalid DOCKERFILE value '$DOCKERFILE'. Resetting to Dockerfile.${NC}"
+    DOCKERFILE="Dockerfile"
+  fi
+
+  if ! github_workflow_builds_configured && ! memory_check; then
+    DOCKERFILE="Dockerfile.dev"
+    echo -e "${YELLOW}⚠️ GitHub workflow builds are not configured and this system has less than 16GB RAM. Setting DOCKERFILE=Dockerfile.dev for lower-memory JVM image builds.${NC}"
+  fi
+}
+
+# Function to update RF service dockerfile paths for the selected Dockerfile env variable
+update_compose_dockerfile_paths() {
+  sed -i -E "s|(^[[:space:]]*dockerfile:[[:space:]]*)apps/(plugins-api|control-panel|viewer|external-api)/(Dockerfile|Dockerfile\.dev|\$\{DOCKERFILE\})|\1apps/\2/\${DOCKERFILE}|" "$COMPOSE_FILE"
+
+  awk '
+    $0 ~ "^[[:space:]][[:space:]]ui:" {
+      in_ui = 1
+      seen_dockerfile = 0
+      print
+      next
+    }
+    in_ui && $0 ~ "^[[:space:]][[:space:]][A-Za-z0-9_-]+:" {
+      if (!seen_dockerfile) {
+        print "      dockerfile: ${DOCKERFILE}"
+      }
+      in_ui = 0
+      seen_dockerfile = 0
+    }
+    in_ui && $0 ~ "^[[:space:]]*context:[[:space:]]*" {
+      print
+      if (!seen_dockerfile) {
+        print "      dockerfile: ${DOCKERFILE}"
+        seen_dockerfile = 1
+      }
+      next
+    }
+    in_ui && $0 ~ "^[[:space:]]*dockerfile:[[:space:]]*" {
+      if (!seen_dockerfile) {
+        print "      dockerfile: ${DOCKERFILE}"
+        seen_dockerfile = 1
+      }
+      next
+    }
+    { print }
+    END {
+      if (in_ui && !seen_dockerfile) {
+        print "      dockerfile: ${DOCKERFILE}"
+      }
+    }
+  ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 }
 
 # Function to match compose service name with container name
@@ -347,12 +431,12 @@ update_rf_build_context() {
   local service_name="$1"
   local ref="$2"
   local context="${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}"
-  local dockerfile="${REMOTE_FALCON_APPS_DIR}/${service_name}/Dockerfile"
+  local dockerfile="${REMOTE_FALCON_APPS_DIR}/${service_name}/\${DOCKERFILE}"
   local tmp_file="${COMPOSE_FILE}.tmp"
 
   if [[ "$service_name" == "ui" ]]; then
     context="${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}:${REMOTE_FALCON_APPS_DIR}/${service_name}"
-    dockerfile=""
+    dockerfile="\${DOCKERFILE}"
   fi
 
   awk -v service="$service_name" -v context="$context" -v dockerfile="$dockerfile" '
@@ -425,28 +509,28 @@ check_tag_format() {
   local service_name="$1"
   local tag="$2"
   local format_regex
-  local format
+  #local format
 
   case "$service_name" in
     plugins-api|control-panel|viewer|ui|external-api)
       format_regex="^[0-9a-f]{7}$"
-      format="abcd123"
+      #format="abcd123"
       ;;
     cloudflared)
       format_regex="^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$"
-      format="XXXX.XX.X"
+      #format="XXXX.XX.X"
       ;;
     nginx)
       format_regex="^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,2}$"
-      format="XX.XX.XX"
+      #format="XX.XX.XX"
       ;;
     mongo)
       format_regex="^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" 
-      format="XX.X.XX"
+      #format="XX.X.XX"
       ;;
     versitygw)
       format_regex="^v?[0-9]+\.[0-9]+\.[0-9]+$"
-      format="vX.X.X"
+      #format="vX.X.X"
       ;;
     *)
       echo -e "${RED}❌ Failed to check version format. Unsupported container: $service_name${NC}" >&2

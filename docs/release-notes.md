@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2026.5.19.1
+
+- compose.yaml now uses `${DOCKERFILE}` for Remote Falcon app builds, including `dockerfile: apps/<service>/${DOCKERFILE}` for backend services and `dockerfile: ${DOCKERFILE}` for ui.
+
+- configure-rf.sh now skips the GitHub workflow setup prompt on ARM CPUs because free GitHub-hosted runners are not feasible for building ARM images.
+
+- configure-rf.sh now selects `DOCKERFILE=Dockerfile.dev` when native local image builds are likely to fail due to low memory and GitHub workflow builds are not configured.
+
 ## 2026.5.15.1
 
 - Fixed local Remote Falcon builds from the monorepo by using the correct build context for each app type.

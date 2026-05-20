@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2026.5.15.1
+# COMPOSE_VERSION=2026.5.19.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -56,7 +56,7 @@ services:
   plugins-api:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
-      dockerfile: apps/plugins-api/Dockerfile
+      dockerfile: apps/plugins-api/${DOCKERFILE}
       args:
         - OTEL_OPTS=${OTEL_OPTS}
         - OTEL_URI=${OTEL_URI}
@@ -74,7 +74,7 @@ services:
   control-panel:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
-      dockerfile: apps/control-panel/Dockerfile
+      dockerfile: apps/control-panel/${DOCKERFILE}
       args:
         - OTEL_OPTS=${OTEL_OPTS}
     image: control-panel:latest
@@ -101,7 +101,7 @@ services:
   viewer:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
-      dockerfile: apps/viewer/Dockerfile
+      dockerfile: apps/viewer/${DOCKERFILE}
       args:
         - OTEL_OPTS=${OTEL_OPTS}
         - OTEL_URI=${OTEL_URI}
@@ -117,6 +117,7 @@ services:
   ui:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/ui
+      dockerfile: ${DOCKERFILE}
       args:
         - HOST_ENV=${HOST_ENV}
         - VERSION=${VERSION}
@@ -141,7 +142,7 @@ services:
   external-api:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
-      dockerfile: apps/external-api/Dockerfile
+      dockerfile: apps/external-api/${DOCKERFILE}
       args:
         - OTEL_OPTS=${OTEL_OPTS}
     image: external-api:latest
