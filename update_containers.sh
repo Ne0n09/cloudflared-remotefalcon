@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.14.1
+# VERSION=2026.5.20.1
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -140,6 +140,8 @@ perform_update() {
     backup_file "$COMPOSE_FILE"
     BACKED_UP=true
   fi
+
+  update_compose_dockerfile_paths
 
   case "$service_name" in
     plugins-api|control-panel|viewer|ui|external-api)

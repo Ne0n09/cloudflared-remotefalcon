@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.19.1
+# VERSION=2026.5.20.1
 
 #set -euo pipefail
 
@@ -135,7 +135,7 @@ download_file() {
 
   if [ ! -f "$filename" ]; then
     echo -e "${YELLOW}⚠️ $filename does not exist. Downloading $filename...${NC}"
-    if curl -O "$url"; then
+    if curl -fsSL "$url" -o "$filename"; then
       echo -e "✔ ${GREEN}Downloaded $filename successfully.${NC}"
     else
       echo -e "${RED}❌ Failed to download $filename from $url.${NC}"
@@ -892,7 +892,6 @@ run_updates() {
     fi
   fi
 
-  echo -e "${YELLOW}⚠️ Checking for container updates...${NC}"
   case "$update_mode" in
     auto-apply)
       bash "$SCRIPT_DIR/update_containers.sh" "all" "auto-apply"
@@ -1056,8 +1055,8 @@ fi
 # Change to the 'remotefalcon' directory and download compose.yaml and default.conf if they do not exist
 cd "$WORKING_DIR" || { echo -e "${RED}❌ Failed to change directory to '$WORKING_DIR'. Exiting.${NC}"; exit 1; }
 echo "✔  Working in directory: $(pwd)"
-download_file "$BASE_URL/compose.yaml" "compose.yaml"
-download_file "$BASE_URL/default.conf" "default.conf"
+download_file "$BASE_URL/remotefalcon/compose.yaml" "compose.yaml"
+download_file "$BASE_URL/remotefalcon/default.conf" "default.conf"
 
 # Print existing .env file, if it exists, otherwise download the default .env file
 if [ -f .env ]; then
@@ -1066,7 +1065,7 @@ if [ -f .env ]; then
   update_files
   echo "🔍 Parsing current .env variables:"
 else
-  download_file "$BASE_URL/.env" ".env"
+  download_file "$BASE_URL/remotefalcon/.env" ".env"
   # Display versions of existing files and prompt to update if out of date
   update_files
   echo "🔍 Parsing default .env variables:"
@@ -1075,6 +1074,7 @@ fi
 # Read the .env file and export the variables, save build args to OLD_ARGS and print env file contents
 parse_env "$ENV_FILE"
 DOCKERFILE="${DOCKERFILE:-Dockerfile}"
+ORIGIN_CERTS_CONFIGURED_BY_SETUP=false
 print_env
 
 # Function for the GitHub configuration flow to configure GITHUB_PAT and REPO
@@ -1141,6 +1141,97 @@ configure_github() {
   fi
 }
 
+configure_build_strategy() {
+  local low_memory=false
+
+  if ! memory_check; then
+    low_memory=true
+  fi
+
+  if is_arm_cpu; then
+    echo -e "${YELLOW}⚠️ ARM CPU detected. Skipping GitHub workflow setup because building ARM Remote Falcon images on GitHub-hosted runners is not feasible on free plans.${NC}"
+    if [[ "$low_memory" == "true" && ! github_workflow_builds_configured ]]; then
+      DOCKERFILE="Dockerfile.dev"
+      echo -e "${YELLOW}⚠️ Setting DOCKERFILE=Dockerfile.dev for lower-memory local image builds.${NC}"
+    fi
+    return
+  fi
+
+  if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+    echo -e "${CYAN}ℹ️ Non-interactive mode enabled.${NC}"
+    configure_github
+    select_dockerfile_for_host "$low_memory"
+    return
+  fi
+
+  if [[ "$low_memory" == "true" ]]; then
+    local default_strategy="1"
+
+    if github_workflow_builds_configured; then
+      default_strategy="2"
+      echo -e "${CYAN}ℹ️ Existing GitHub workflow build configuration detected: ${REPO}${NC}"
+    fi
+
+    echo -e "${YELLOW}⚠️ Choose how Remote Falcon images should be built:${NC}"
+    echo -e "  ${YELLOW}1${NC}) Build locally with ${CYAN}Dockerfile.dev${NC} to build JVM-based images"
+    echo -e "  ${YELLOW}2${NC}) Configure private GitHub repository to build native images and pull from GHCR"
+    echo -e "  ${YELLOW}3${NC}) Build native images locally with ${CYAN}Dockerfile${NC} anyway (may fail)"
+    echo -e "  JVM builds with ${CYAN}Dockerfile.dev${NC} will build on low memory systems but will have higher memory usage." 
+    echo -e "  GitHub workflow builds will use ${CYAN}Dockerfile${NC} to build native images on GitHub and pull them from GHCR, resulting in lower memory usage."
+    echo -e "  Local builds with ${CYAN}Dockerfile${NC} may fail on low-memory hosts due to the resource requirements of building native images locally.${NC}"
+
+    case "$(get_input "❓ Choose image build strategy: [1-3]" "$default_strategy")" in
+      2)
+        if ! github_workflow_builds_configured; then
+          configure_github
+        fi
+        if github_workflow_builds_configured; then
+          DOCKERFILE="Dockerfile"
+          echo -e "${CYAN}ℹ️ GitHub workflow builds will be used for Remote Falcon images.${NC}"
+        else
+          DOCKERFILE="Dockerfile.dev"
+          echo -e "${YELLOW}⚠️ GitHub workflow builds are not configured. Keeping local lower-memory builds with DOCKERFILE=Dockerfile.dev.${NC}"
+        fi
+        ;;
+      3)
+        REPO="username/repo"
+        GITHUB_PAT=""
+        DOCKERFILE="Dockerfile"
+        echo -e "${YELLOW}⚠️ Local builds will use Dockerfile. Builds may fail on this host due to low memory.${NC}"
+        ;;
+      *)
+        REPO="username/repo"
+        GITHUB_PAT=""
+        DOCKERFILE="Dockerfile.dev"
+        echo -e "${CYAN}ℹ️ Local builds will use DOCKERFILE=Dockerfile.dev.${NC}"
+        ;;
+    esac
+    return
+  fi
+
+  if [[ "$(get_input "❓ Update GitHub configuration for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
+    if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
+      echo -e "${YELLOW}⚠️ Existing GitHub configuration detected: $REPO${NC}"
+
+      case "$(get_input "❓ Choose an option: [1] Disable remote builds  [2] Modify config  [3] Keep as-is" "3")" in
+        1)
+          echo -e "${YELLOW}⚠️ Disabling remote builds.${NC}"
+          GITHUB_PAT=""
+          REPO="username/repo"
+          ;;
+        2)
+          configure_github
+          ;;
+        3)
+          echo -e "${CYAN}ℹ️ Keeping existing configuration.${NC}"
+          ;;
+      esac
+    else
+      configure_github
+    fi
+  fi
+}
+
 # Ask to configure .env values
 if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ ]]; then
   # Configuration walkthrough questions. Questions will pull existing or default values from the sourced .env file
@@ -1155,44 +1246,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   # Get domain name and validate input is not default, empty, or not in valid domain format
   DOMAIN=$(ask_and_validate DOMAIN "🌐 Enter your domain name (e.g., yourdomain.com):" "$DOMAIN")
 
-  # If no repo is configured, display a warning message if less than 16GB of RAM is detected to encourage adding more RAM or confiure GitHub
-  if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then
-    if ! memory_check; then
-      echo -e "⚡ ${YELLOW}If the images fail to build either add more system memory or configure GitHub for building images remotely.${NC}"
-    fi
-  fi
-
-  if is_arm_cpu; then
-    echo -e "${YELLOW}⚠️ ARM CPU detected. Skipping GitHub workflow setup because building ARM Remote Falcon images on GitHub-hosted runners is not feasible on free plans.${NC}"
-  elif [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
-    echo -e "${CYAN}ℹ️ Non-interactive mode enabled.${NC}"
-    configure_github
-  else
-    # Interactive mode (ask user)
-    if [[ "$(get_input "❓ Update GitHub configuration for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-      if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
-        echo -e "${YELLOW}⚠️ Existing GitHub configuration detected: $REPO${NC}"
-
-        case "$(get_input "❓ Choose an option: [1] Disable remote builds  [2] Modify config  [3] Keep as-is" "3")" in
-          1)
-            echo -e "${YELLOW}⚠️ Disabling remote builds.${NC}"
-            GITHUB_PAT=""
-            REPO="username/repo"
-            ;;
-          2)
-            configure_github
-            ;;
-          3)
-            echo -e "${CYAN}ℹ️ Keeping existing configuration.${NC}"
-            ;;
-        esac
-      else
-        configure_github
-      fi
-    fi
-  fi
-
-  select_dockerfile_for_host
+  configure_build_strategy
 
   # Get the Cloudflared tunnel token and validate input is not default, empty, or not in valid format
 #  if [[ "$TUNNEL_TOKEN" == "cloudflare_token" || -z "$TUNNEL_TOKEN" ]]; then
@@ -1202,7 +1256,11 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     CF_API_TOKEN=$(ask_and_validate CF_API_TOKEN "🔑 Enter your Cloudflare API Token to automatically configure Cloudflare or leave blank for manual configuration:" "$CF_API_TOKEN")
     if [[ -n "$CF_API_TOKEN" ]]; then
       if [ -f "$SCRIPT_DIR/setup_cloudflare.sh" ]; then
-        bash "$SCRIPT_DIR/setup_cloudflare.sh" --api-token "${CF_API_TOKEN}"
+        if bash "$SCRIPT_DIR/setup_cloudflare.sh" --api-token "${CF_API_TOKEN}"; then
+          if [[ -f "${DOMAIN}_origin_cert.pem" && -f "${DOMAIN}_origin_key.pem" ]]; then
+            ORIGIN_CERTS_CONFIGURED_BY_SETUP=true
+          fi
+        fi
 
         if [[ -f "tunnel_token.txt" ]]; then
           TUNNEL_TOKEN=$(<tunnel_token.txt)
@@ -1219,7 +1277,11 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     if [[ -n "$CF_API_TOKEN" ]]; then
       echo -e "${CYAN}ℹ️ CF_API_TOKEN is set, attempting automatic Cloudflare configuration...${NC}"
       if [ -f "$SCRIPT_DIR/setup_cloudflare.sh" ]; then
-        bash "$SCRIPT_DIR/setup_cloudflare.sh" -y --api-token "${CF_API_TOKEN}"
+        if bash "$SCRIPT_DIR/setup_cloudflare.sh" -y --api-token "${CF_API_TOKEN}"; then
+          if [[ -f "${DOMAIN}_origin_cert.pem" && -f "${DOMAIN}_origin_key.pem" ]]; then
+            ORIGIN_CERTS_CONFIGURED_BY_SETUP=true
+          fi
+        fi
 
         if [[ -f "tunnel_token.txt" ]]; then
           TUNNEL_TOKEN=$(<tunnel_token.txt)
@@ -1247,6 +1309,8 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
 
   if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
     echo -e "${YELLOW}⚠️ Skipping origin certificate/key configuration in non-interactive mode.${NC}"
+  elif [[ "$ORIGIN_CERTS_CONFIGURED_BY_SETUP" == "true" ]]; then
+    echo -e "${GREEN}✅ Origin certificate and key were configured by setup_cloudflare.sh. Skipping manual certificate prompt.${NC}"
   else
     # Ask if Cloudflare origin certificates should be updated if they exist. Otherwise prompt if cert/key files are missing
     # This will create the cert/key in the current directory and append the domain name to the beginning of the file name

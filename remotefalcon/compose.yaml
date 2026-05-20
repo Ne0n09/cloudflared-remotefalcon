@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2026.5.19.1
+# COMPOSE_VERSION=2026.5.20.1
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -86,7 +86,7 @@ services:
       - AUTO_VALIDATE_EMAIL=${AUTO_VALIDATE_EMAIL}
       - JWT_USER=${USER_JWT_KEY}
       - SPRING_DATA_MONGODB_URI=${MONGO_URI}
-      - GITHUB_PAT= # This is only needed for the 'Work Item Tracker' for people to post issues to GitHub for your RF instance
+      - GITHUB_PAT=
       - SENDGRID_KEY=${SENDGRID_KEY}
       - CLIENT_HEADER=${CLIENT_HEADER}
       - S3_ENDPOINT=${S3_ENDPOINT}
@@ -94,8 +94,6 @@ services:
       - S3_SECRETKEY=${S3_SECRET_KEY}
       - IMAGES_S3_BUCKET=${IMAGES_S3_BUCKET}
       - IMAGES_CDN_ENDPOINT=${IMAGES_CDN_ENDPOINT}
-      - WATTSON_ENDPOINT=
-      - WATTSON_KEY=
     depends_on:
       - mongo
   viewer:
@@ -117,7 +115,7 @@ services:
   ui:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/ui
-      dockerfile: ${DOCKERFILE}
+      # 'ui' will always use Dockerfile and never Dockerfile.dev
       args:
         - HOST_ENV=${HOST_ENV}
         - VERSION=${VERSION}

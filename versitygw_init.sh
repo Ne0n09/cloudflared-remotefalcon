@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.4.1
+# VERSION=2026.5.20.1
 
 # Configure new VersityGW container
 #set -euo pipefail
@@ -114,7 +114,7 @@ check_versitygw_health() {
     echo "⏳ Waiting for $CONTAINER_NAME to be ready (attempt $retry_count/$max_retries)..."
     sleep 2
   done
-  echo -e "${GREEN}✅ Conttainer $CONTAINER_NAME is ready.${NC}"
+  echo -e "${GREEN}✅ Container $CONTAINER_NAME is ready.${NC}"
 }
 
 echo -e "${BLUE}⚙️ Running Versity Gateway container initialization script to allow for self-hosted Image Hosting under the Control Panel...${NC}"

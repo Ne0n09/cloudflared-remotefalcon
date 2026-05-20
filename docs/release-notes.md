@@ -1,5 +1,15 @@
 # Release Notes
 
+## 2026.5.20.1
+
+- Fixed initial downloads for compose.yaml, .env, and default.conf so they are pulled from the remotefalcon directory and fail on HTTP errors instead of saving a 404 response as a local file.
+
+- Updated configure-rf.sh low-memory build handling to offer an explicit image build strategy choice: local Dockerfile.dev builds, GitHub workflow builds, or forced local Dockerfile builds.
+
+- configure-rf.sh now skips the manual origin certificate/key prompt when setup_cloudflare.sh already configured the certificate and key during automatic Cloudflare setup.
+
+- Various other fixes.
+
 ## 2026.5.19.1
 
 - compose.yaml now uses `${DOCKERFILE}` for Remote Falcon app builds, including `dockerfile: apps/<service>/${DOCKERFILE}` for backend services and `dockerfile: ${DOCKERFILE}` for ui.

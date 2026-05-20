@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.5.19.1
+# SHARED_FUNCTIONS_VERSION=2026.5.20.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -310,7 +310,7 @@ memory_check() {
   mem_gb=$((mem_kb / 1024 / 1024))
 
   if (( mem_kb < required_kb )); then
-    echo -e "⚠️ ${YELLOW}Warning: System has only ${mem_gb}GB of RAM. The images for 'plugins-api' and 'viewer' may fail to build with less than 16GB of RAM!"
+    echo -e "⚠️ ${YELLOW}Warning: System has only ${mem_gb}GB of RAM. The Remote Falcon images may fail to build with less than 16GB of RAM!"
     return 1
   else
     #echo -e "✅ ${GREEN}Memory check passed:${NC} ${mem_gb} GB detected."
@@ -320,6 +320,8 @@ memory_check() {
 
 # Function to select the lower-memory Dockerfile when native local builds are likely to fail
 select_dockerfile_for_host() {
+  local low_memory="${1:-}"
+
   DOCKERFILE="${DOCKERFILE:-Dockerfile}"
 
   if [[ "$DOCKERFILE" != "Dockerfile" && "$DOCKERFILE" != "Dockerfile.dev" ]]; then
@@ -327,52 +329,44 @@ select_dockerfile_for_host() {
     DOCKERFILE="Dockerfile"
   fi
 
-  if ! github_workflow_builds_configured && ! memory_check; then
+  if [[ "$low_memory" != "true" && "$low_memory" != "false" ]]; then
+    if memory_check; then
+      low_memory=false
+    else
+      low_memory=true
+    fi
+  fi
+
+  if ! github_workflow_builds_configured && [[ "$low_memory" == "true" ]]; then
     DOCKERFILE="Dockerfile.dev"
     echo -e "${YELLOW}⚠️ GitHub workflow builds are not configured and this system has less than 16GB RAM. Setting DOCKERFILE=Dockerfile.dev for lower-memory JVM image builds.${NC}"
   fi
 }
 
-# Function to update RF service dockerfile paths for the selected Dockerfile env variable
+# Function to update RF service dockerfile paths, except for ui which does not have a Dockerfile.dev variant and should always use Dockerfile regardless of memory constraints
 update_compose_dockerfile_paths() {
-  sed -i -E "s|(^[[:space:]]*dockerfile:[[:space:]]*)apps/(plugins-api|control-panel|viewer|external-api)/(Dockerfile|Dockerfile\.dev|\$\{DOCKERFILE\})|\1apps/\2/\${DOCKERFILE}|" "$COMPOSE_FILE"
+  sed -i -E \
+"s#(^[[:space:]]*dockerfile:[[:space:]]*)apps/(plugins-api|control-panel|viewer|external-api)/(Dockerfile|Dockerfile\.dev|\$\{DOCKERFILE\})#\1apps/\2/\${DOCKERFILE}#" "$COMPOSE_FILE"
 
+  # Remove dockerfile line from ui service if present
   awk '
-    $0 ~ "^[[:space:]][[:space:]]ui:" {
-      in_ui = 1
-      seen_dockerfile = 0
+    /^[[:space:]]{2}ui:/ {
+      in_ui=1
       print
       next
     }
-    in_ui && $0 ~ "^[[:space:]][[:space:]][A-Za-z0-9_-]+:" {
-      if (!seen_dockerfile) {
-        print "      dockerfile: ${DOCKERFILE}"
-      }
-      in_ui = 0
-      seen_dockerfile = 0
+
+    in_ui && /^[[:space:]]{2}[A-Za-z0-9_-]+:/ {
+      in_ui=0
     }
-    in_ui && $0 ~ "^[[:space:]]*context:[[:space:]]*" {
-      print
-      if (!seen_dockerfile) {
-        print "      dockerfile: ${DOCKERFILE}"
-        seen_dockerfile = 1
-      }
+
+    in_ui && /^[[:space:]]*dockerfile:[[:space:]]*/ {
       next
     }
-    in_ui && $0 ~ "^[[:space:]]*dockerfile:[[:space:]]*" {
-      if (!seen_dockerfile) {
-        print "      dockerfile: ${DOCKERFILE}"
-        seen_dockerfile = 1
-      }
-      next
-    }
+
     { print }
-    END {
-      if (in_ui && !seen_dockerfile) {
-        print "      dockerfile: ${DOCKERFILE}"
-      }
-    }
-  ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
+  ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" \
+    && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 }
 
 # Function to match compose service name with container name
@@ -426,46 +420,37 @@ get_current_compose_tag() {
   fi
 }
 
-# Function to update a Remote Falcon service build context and Dockerfile
+# Function to update a Remote Falcon service build context
 update_rf_build_context() {
   local service_name="$1"
   local ref="$2"
   local context="${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}"
-  local dockerfile="${REMOTE_FALCON_APPS_DIR}/${service_name}/\${DOCKERFILE}"
   local tmp_file="${COMPOSE_FILE}.tmp"
 
   if [[ "$service_name" == "ui" ]]; then
     context="${REMOTE_FALCON_PLATFORM_GIT_URL}#${ref}:${REMOTE_FALCON_APPS_DIR}/${service_name}"
-    dockerfile="\${DOCKERFILE}"
   fi
 
-  awk -v service="$service_name" -v context="$context" -v dockerfile="$dockerfile" '
+  awk -v service="$service_name" -v context="$context" '
     $0 ~ "^[[:space:]][[:space:]]" service ":" {
       in_service = 1
       print
       next
     }
-    skip_dockerfile && $0 ~ "^[[:space:]]*dockerfile:[[:space:]]*" {
-      skip_dockerfile = 0
-      next
-    }
-    skip_dockerfile {
-      skip_dockerfile = 0
-    }
+
     in_service && $0 ~ "^[[:space:]][[:space:]][A-Za-z0-9_-]+:" {
       in_service = 0
     }
+
     in_service && $0 ~ "^[[:space:]]*context:[[:space:]]*" {
       match($0, /^[[:space:]]*/)
       indent = substr($0, RSTART, RLENGTH)
+
       print indent "context: " context
-      if (dockerfile != "") {
-        print indent "dockerfile: " dockerfile
-      }
       in_service = 0
-      skip_dockerfile = 1
       next
     }
+
     { print }
   ' "$COMPOSE_FILE" > "$tmp_file" && mv "$tmp_file" "$COMPOSE_FILE"
 }
