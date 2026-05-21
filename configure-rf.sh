@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.20.1
+# VERSION=2026.5.20.2
 
 #set -euo pipefail
 
@@ -901,17 +901,6 @@ run_updates() {
       bash "$SCRIPT_DIR/update_containers.sh" "all"
       ;;
   esac
-
-  # Check if the versitygw_init.sh script exists and run it if it any of the VersityGW credentials are set to default values
-  if [[ $S3_ROOT_USER == "12345678" || $S3_ROOT_PASSWORD == "12345678" || $S3_ACCESS_KEY == "123456" || $S3_SECRET_KEY == "123456" ]]; then
-    echo -e "${YELLOW}⚠️ Versity Gateway variables are set to the default values. Running versitygw_init.sh to configure Versity Gateway for S3 storage...${NC}"
-    if [ -f "$SCRIPT_DIR/versitygw_init.sh" ]; then
-      bash "$SCRIPT_DIR/versitygw_init.sh"
-    else
-      echo -e "${YELLOW}⚠️ versitygw_init.sh script not found. Skipping Versity Gateway initialization.${NC}"
-    fi
-  fi
-  health_check health
 }
 
 repo_init() {
@@ -1150,7 +1139,7 @@ configure_build_strategy() {
 
   if is_arm_cpu; then
     echo -e "${YELLOW}⚠️ ARM CPU detected. Skipping GitHub workflow setup because building ARM Remote Falcon images on GitHub-hosted runners is not feasible on free plans.${NC}"
-    if [[ "$low_memory" == "true" && ! github_workflow_builds_configured ]]; then
+    if [[ "$low_memory" == "true" ]] && ! github_workflow_builds_configured; then
       DOCKERFILE="Dockerfile.dev"
       echo -e "${YELLOW}⚠️ Setting DOCKERFILE=Dockerfile.dev for lower-memory local image builds.${NC}"
     fi
@@ -1175,12 +1164,10 @@ configure_build_strategy() {
     echo -e "${YELLOW}⚠️ Choose how Remote Falcon images should be built:${NC}"
     echo -e "  ${YELLOW}1${NC}) Build locally with ${CYAN}Dockerfile.dev${NC} to build JVM-based images"
     echo -e "  ${YELLOW}2${NC}) Configure private GitHub repository to build native images and pull from GHCR"
-    echo -e "  ${YELLOW}3${NC}) Build native images locally with ${CYAN}Dockerfile${NC} anyway (may fail)"
-    echo -e "  JVM builds with ${CYAN}Dockerfile.dev${NC} will build on low memory systems but will have higher memory usage." 
-    echo -e "  GitHub workflow builds will use ${CYAN}Dockerfile${NC} to build native images on GitHub and pull them from GHCR, resulting in lower memory usage."
-    echo -e "  Local builds with ${CYAN}Dockerfile${NC} may fail on low-memory hosts due to the resource requirements of building native images locally.${NC}"
+    echo -e "  🔸 JVM builds with ${CYAN}Dockerfile.dev${NC} will build on low memory systems but will have higher memory usage." 
+    echo -e "  🔸 GitHub workflow builds will use ${CYAN}Dockerfile${NC} to build native images on GitHub and pull them from GHCR, resulting in lower memory usage."
 
-    case "$(get_input "❓ Choose image build strategy: [1-3]" "$default_strategy")" in
+    case "$(get_input "❓ Choose image build strategy: [1-2]" "$default_strategy")" in
       2)
         if ! github_workflow_builds_configured; then
           configure_github
@@ -1192,12 +1179,6 @@ configure_build_strategy() {
           DOCKERFILE="Dockerfile.dev"
           echo -e "${YELLOW}⚠️ GitHub workflow builds are not configured. Keeping local lower-memory builds with DOCKERFILE=Dockerfile.dev.${NC}"
         fi
-        ;;
-      3)
-        REPO="username/repo"
-        GITHUB_PAT=""
-        DOCKERFILE="Dockerfile"
-        echo -e "${YELLOW}⚠️ Local builds will use Dockerfile. Builds may fail on this host due to low memory.${NC}"
         ;;
       *)
         REPO="username/repo"
@@ -1481,6 +1462,8 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       # Prompt to check updates after applying new .env values to existing containers
       if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         run_updates
+        versitygw_init
+        health_check health
       elif [[ "$(get_input "❓ Run health check script? (y/n)" "y")" =~ ^[Yy]$ ]]; then
         health_check health
       fi
@@ -1496,6 +1479,8 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
             echo -e "${BLUE}✨ Remote Falcon 'latest' image tags detected in compose.yaml, assuming new install. Running ./run_workflow.sh to build new Remote Falcon images on GitHub....${NC}"
             if bash "$SCRIPT_DIR/run_workflow.sh"; then
               run_updates auto-apply
+              versitygw_init
+              health_check health
             else
               echo -e "${RED}❌ Workflow failed. Aborting.${NC}"
               exit 1
@@ -1516,11 +1501,11 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
             fi
           fi
         else # No containers running, REPO not configured so images will be built locally
-          echo -e "${YELLOW}⚠️ GitHub Repository not configured, Remote Falcon images will be built locally, ensure that you have 16GB+ RAM or the build may fail...${NC}"
-
           if tag_has_latest; then
             echo -e "${BLUE}✨ Remote Falcon 'latest' image tags detected in compose.yaml, assuming new install, running update_containers.sh...${NC}"
             run_updates auto-apply
+            versitygw_init
+            health_check health
           else # Assume existing install since no 'latest' tags found, force local build and restart
             echo -e "${BLUE}🔄 Building Remote Falcon images to apply any updated build ARGs at their current version...${NC}"
             sudo docker compose up -d --build --force-recreate
@@ -1531,11 +1516,15 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
           # Run run_updates auto-apply to tag containers
           echo -e "${GREEN}🚀 Bringing up existing containers to apply any .env changes...${NC}"
           run_updates auto-apply
+          versitygw_init
+          health_check health
         else # No containers running, no image rebuild required, and no 'latest' tags found so just bring the containers up
           # Run interactive updates since update_containers will verify if the image exists in the REPO and build indvidually if missing
           if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
             echo -e "${GREEN}🚀 Bringing up stopped containers with update_container.sh...${NC}"
             run_updates
+            versitygw_init
+            health_check health
           else # No containers running, no image rebuild required, so just bring the containers up
             echo -e "${GREEN}🚀 Bringing up existing containers to apply any .env changes...${NC}"
             sudo docker compose up -d
@@ -1549,6 +1538,8 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
     if validate_variables "${vars_to_validate[@]}"; then
       if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         run_updates
+        versitygw_init
+        health_check health
       elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         health_check health
       fi
@@ -1561,6 +1552,8 @@ else # User chose not to update the .env file
   if validate_variables "${vars_to_validate[@]}"; then
     if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
       run_updates
+      versitygw_init
+      health_check health
     elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
       health_check health
     fi

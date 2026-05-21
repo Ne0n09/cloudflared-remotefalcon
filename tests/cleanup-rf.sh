@@ -281,6 +281,7 @@ remove_container_images() {
   done
 
   sudo docker image prune -a -f
+  sudo docker builder prune -a -f
 }
 
 print_summary() {

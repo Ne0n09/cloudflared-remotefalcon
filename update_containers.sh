@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.20.1
+# VERSION=2026.5.20.2
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -19,7 +19,7 @@ if [[ ! -f "$SCRIPT_DIR/shared_functions.sh" ]]; then
   echo -e "${RED}❌ ERROR: shared_functions.sh does not exist in $SCRIPT_DIR.${NC}"
   exit 1
 fi
-
+# shellcheck source=/dev/null
 source "$SCRIPT_DIR/shared_functions.sh"
 
 # REPO and GITHUB_PAT is pulled from .env via parse_env in shared_functions.sh
@@ -116,7 +116,8 @@ get_latest_version() {
       jq -r '.[0].tag_name'
       ;;
     plugins-api|control-panel|viewer|ui|external-api)
-      local full_sha=$(curl -s "https://api.github.com/repos/${REMOTE_FALCON_REPO}/commits?sha=main&path=${REMOTE_FALCON_APPS_DIR}/${service_name}&per_page=1" | jq -r '.[0].sha')
+      local full_sha
+      full_sha=$(curl -s "https://api.github.com/repos/${REMOTE_FALCON_REPO}/commits?sha=main&path=${REMOTE_FALCON_APPS_DIR}/${service_name}&per_page=1" | jq -r '.[0].sha')
       echo "$full_sha"
       ;;
     *)
@@ -185,7 +186,7 @@ prompt_to_update() {
     *)
       case "$service_name" in
         plugins-api|control-panel|viewer|ui|external-api)
-        read -p "❓ Update $service_name to ${latest_version:0:7}? (y/n) [n]: " confirm
+        read -rp "❓ Update $service_name to ${latest_version:0:7}? (y/n) [n]: " confirm
         if [[ "$confirm" =~ ^[Yy]$ ]]; then
           perform_update "$service_name" "$latest_version" "$sed_command"
         else
@@ -193,7 +194,7 @@ prompt_to_update() {
         fi
         ;;
       *)
-        read -p "❓ Update $service_name to ${latest_version}? (y/n) [n]: " confirm
+        read -rp "❓ Update $service_name to ${latest_version}? (y/n) [n]: " confirm
         if [[ "$confirm" =~ ^[Yy]$ ]]; then
           perform_update "$service_name" "$latest_version" "$sed_command"
         else
@@ -296,7 +297,8 @@ check_for_update() {
   esac
 
   # Fetch the release notes for the service from $RELEASE_NOTES_URL and store them in release_notes
-  local release_notes=$(curl -s "$RELEASE_NOTES_URL" || true)
+  local release_notes
+  release_notes=$(curl -s "$RELEASE_NOTES_URL" || true)
   if [[ -z "$release_notes" ]]; then
     echo -e "${RED}❌ Failed to fetch release notes for $service_name from $RELEASE_NOTES_URL${NC}"
   else
@@ -322,12 +324,12 @@ check_for_update() {
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
           if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tag $service_name $LATEST_VERSION
+            replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
           echo -e "${BLUE}🔗 https://github.com/cloudflare/cloudflared/compare/${CURRENT_VERSION}...${LATEST_VERSION}${NC}"
-          prompt_to_update $service_name $LATEST_VERSION "s|cloudflare/$service_name:[^[:space:]]+|cloudflare/$service_name:$LATEST_VERSION|"
+          prompt_to_update "$service_name" "$LATEST_VERSION" "s|cloudflare/$service_name:[^[:space:]]+|cloudflare/$service_name:$LATEST_VERSION|"
         fi
         ;;
       "nginx")
@@ -340,12 +342,12 @@ check_for_update() {
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
           if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tag $service_name $LATEST_VERSION
+            replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
           echo -e "${BLUE}🔗 https://nginx.org/en/CHANGES${NC}"
-          prompt_to_update $service_name $LATEST_VERSION $sed_command
+          prompt_to_update "$service_name" "$LATEST_VERSION" "$sed_command"
         fi
         ;;
       "mongo")
@@ -367,7 +369,7 @@ check_for_update() {
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
           if [[ "$(get_current_compose_tag "$service_name")" != "^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tag $service_name $LATEST_SAME_MAJOR
+            replace_compose_tag "$service_name" "$LATEST_SAME_MAJOR"
           fi
         else
           echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
@@ -379,12 +381,12 @@ check_for_update() {
           if [[ "$CURRENT_VERSION" != "$LATEST_SAME_MAJOR" ]]; then
             echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_SAME_MAJOR):${NC}"
             echo -e "${BLUE}🔗 https://www.mongodb.com/docs/manual/release-notes/$CURRENT_MAJOR.0-changelog/${NC}"
-            prompt_to_update $service_name $LATEST_SAME_MAJOR "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_SAME_MAJOR|"
+            prompt_to_update "$service_name" "$LATEST_SAME_MAJOR" "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_SAME_MAJOR|"
           elif [[ -n "${LATEST_NEXT_MAJOR:-}" ]]; then
             # Offer update to the next major version
             echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_NEXT_MAJOR):${NC}"
             echo -e "${YELLOW}⚠️ See MongoDB release notes here to confirm upgrade paths:${NC}${BLUE}🔗 https://www.mongodb.com/docs/manual/release-notes/${NC}"
-            prompt_to_update $service_name $LATEST_NEXT_MAJOR "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_NEXT_MAJOR|"
+            prompt_to_update "$service_name" "$LATEST_NEXT_MAJOR" "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_NEXT_MAJOR|"
           fi
         fi
         ;;
@@ -398,12 +400,12 @@ check_for_update() {
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
           if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tag $service_name $LATEST_VERSION
+            replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_VERSION):${NC}"
           echo -e "${BLUE}🔗 https://github.com/versity/versitygw/compare/${CURRENT_VERSION}...${LATEST_VERSION}${NC}"
-          prompt_to_update "versitygw" $LATEST_VERSION $sed_command
+          prompt_to_update "versitygw" "$LATEST_VERSION" "$sed_command"
         fi
         ;;
       plugins-api|control-panel|viewer|ui|external-api)
@@ -427,7 +429,7 @@ check_for_update() {
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
           if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
             # Update the tag in compose.yaml if it is not in the valid format
-            replace_compose_tag $service_name $LATEST_VERSION
+            replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
         else
           echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $short_sha):${NC}"
@@ -478,13 +480,7 @@ check_for_update() {
             *)
               # Interactive mode - prompt to locally build if $REPO is not configured, else prompt to run the workflow to build on GitHub
               if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then
-                case "$service_name" in
-                  plugins-api|viewer)
-                    # From shared_function.sh display detected memory and warning if less than 16GB
-                    memory_check
-                    ;;
-                esac
-                read -p "❓ Would you like to build $service_name:$short_sha? (y/n) [n]: " confirm
+                read -rp "❓ Would you like to build $service_name:$short_sha? (y/n) [n]: " confirm
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
                   perform_update "$service_name" "$LATEST_VERSION" "$sed_command"
                 else
@@ -493,12 +489,12 @@ check_for_update() {
               else
                 # Interactive mode - prompt to run workflow and prompt to update compose.yaml if workflow completes successfully
                 if check_image_exists "$service_name" "$short_sha"; then # REPO configured and image exists
-                  read -p "❓ Update $service_name to ${latest_version:0:7}? (y/n) [n]: " confirm
+                  read -rp "❓ Update $service_name to ${latest_version:0:7}? (y/n) [n]: " confirm
                   if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     perform_update "$service_name" "$LATEST_VERSION" "$sed_command" # $LATEST_VERSION will get converted to short sha in perform_update
                   fi
                 else # REPO configured and image does not exist
-                  read -p "❓ Would you like to build and push $service_name:$short_sha to repository $REPO with run_workflow.sh? (y/n) [n]: " confirm
+                  read -rp "❓ Would you like to build and push $service_name:$short_sha to repository $REPO with run_workflow.sh? (y/n) [n]: " confirm
                   if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     if bash "$SCRIPT_DIR/run_workflow.sh" "$service_name=$LATEST_VERSION"; then
                       perform_update "$service_name" "$LATEST_VERSION" "$sed_command" # $LATEST_VERSION will get converted to short sha in perform_update
@@ -539,7 +535,7 @@ if [ "$SERVICE_NAME" == "all" ]; then
   echo -e "${GREEN}🚀 Done. Container update process complete.${NC}"
 else # If a specific container is provided, check for updates for that container and auto-apply or prompt for confirmation or dry-run
   # Validate the container name
-  if [[ ! " ${CONTAINERS[*]} " =~ " $SERVICE_NAME " ]]; then
+  if [[ ! " ${CONTAINERS[*]} " =~ $SERVICE_NAME ]]; then
     echo -e "${RED}❌ Error: Unknown container '$SERVICE_NAME'. Valid options are: all ${CONTAINERS[*]}${NC}"
   else
     check_for_update "$SERVICE_NAME"
@@ -547,5 +543,5 @@ else # If a specific container is provided, check for updates for that container
 fi
 
 # Run the health check if specified with 'health' after all updates are done
-health_check $HEALTH_CHECK
+health_check "$HEALTH_CHECK"
 exit 0

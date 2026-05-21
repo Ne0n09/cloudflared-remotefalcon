@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2026.5.20.1
+# COMPOSE_VERSION=2026.5.20.2
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -67,6 +67,7 @@ services:
     ports:
       - "8083:8083"
     environment:
+      - MONGO_URI=${MONGO_URI}
       - quarkus.http.port=8083
       - sequence-limit=${SEQUENCE_LIMIT}
     depends_on:
@@ -108,6 +109,7 @@ services:
     container_name: viewer
     restart: always
     environment:
+      - MONGO_URI=${MONGO_URI}
       - quarkus.http.port=8082
       - client.header=${CLIENT_HEADER}
     depends_on:

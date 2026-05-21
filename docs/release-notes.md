@@ -1,5 +1,13 @@
 # Release Notes
 
+## 2026.5.20.2
+
+- Fixed compose.yaml to move MONGO_URI to environment variables for plugins-api and viewer.
+
+- Updated shared_functions.sh Mongo DB function to check for remotefalcon DB an skip if it does not exist.
+
+- Fixed some syntax in update_containers.sh.
+
 ## 2026.5.20.1
 
 - Fixed initial downloads for compose.yaml, .env, and default.conf so they are pulled from the remotefalcon directory and fail on HTTP errors instead of saving a 404 response as a local file.

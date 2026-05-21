@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.5.20.1
+# SHARED_FUNCTIONS_VERSION=2026.5.20.2
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -105,49 +105,118 @@ backup_file() {
 
 # Function to backup the MongoDB database
 backup_mongo() {
-  # Define container name and backup directory
   local service_name="$1"
+  local container_name
+
+  container_name="$(get_container_name "$service_name")"
 
   # Load environment variables from .env file
-  if [ -f "$ENV_FILE" ]; then
+  if [[ -f "$ENV_FILE" ]]; then
     parse_env
   else
     echo -e "${RED}❌ Error: $ENV_FILE not found.${NC}"
     exit 1
   fi
 
-  # Check if required variables are set
-  if [ -z "$MONGO_PATH" ]; then
+  # Check required variables
+  if [[ -z "$MONGO_PATH" ]]; then
     echo -e "${RED}❌ Error: MONGO_PATH not set in the .env file.${NC}"
     exit 1
   fi
 
-  # Check MONGO_URI in the .env file is in the valid format
+  if [[ -z "$MONGO_URI" ]]; then
+    echo -e "${RED}❌ Error: MONGO_URI not set in the .env file.${NC}"
+    exit 1
+  fi
+
+  # Validate MONGO_URI format
   if [[ ! "$MONGO_URI" =~ ^mongodb:\/\/[^:@]+:[^:@]+@[^:\/]+:[0-9]+\/[^?]+(\?.*)?$ ]]; then
     echo -e "${RED}❌ Error: MONGO_URI is not in the valid format (mongodb://user:pass@host:27017/dbname?authSource=admin).${NC}"
     exit 1
   fi
 
-  # Get the DB name from the MONGO_URI
+  # Extract DB name from MONGO_URI
+  local db_name
   db_name="${MONGO_URI##*/}"
   db_name="${db_name%%\?*}"
 
-  # Generate a backup filename with date
+  # Wait for MongoDB authentication readiness
+  echo -e "${CYAN}⏳ Waiting for MongoDB to become ready...${NC}"
+
+  local retries=30
+  local count=0
+
+  until sudo docker exec "$container_name" mongosh \
+    --quiet \
+    -u "$MONGO_INITDB_ROOT_USERNAME" \
+    -p "$MONGO_INITDB_ROOT_PASSWORD" \
+    --authenticationDatabase admin \
+    --eval "db.adminCommand('ping')" >/dev/null 2>&1; do
+
+    ((count++))
+
+    if (( count >= retries )); then
+      echo -e "${RED}❌ MongoDB failed to become ready.${NC}"
+      exit 1
+    fi
+
+    sleep 2
+  done
+
+  echo -e "${GREEN}✔ MongoDB is ready.${NC}"
+
+  # Skip backup if database does not exist yet
+  if ! sudo docker exec "$container_name" mongosh \
+    --quiet \
+    -u "$MONGO_INITDB_ROOT_USERNAME" \
+    -p "$MONGO_INITDB_ROOT_PASSWORD" \
+    --authenticationDatabase admin \
+    --eval "db.getMongo().getDBNames().includes('$db_name')" |
+    grep -q true; then
+
+    echo -e "${YELLOW}⚠️ Database '$db_name' does not exist yet. Skipping backup.${NC}"
+    return 0
+  fi
+
+  # Create backup filename
+  local mongo_backup_file
   mongo_backup_file="$BACKUP_DIR/mongo_${CURRENT_VERSION}_${db_name}_backup_$(date +'%Y-%m-%d_%H-%M-%S').gz"
 
-  echo "Creating backup of the '$db_name' database from container '$service_name'..."
+  echo -e "${CYAN}Creating backup of the '$db_name' database from container '$service_name'...${NC}"
 
-  sudo docker exec "$(get_container_name "$service_name")" mongodump --archive=/tmp/backup.archive --gzip --db $db_name --username $MONGO_INITDB_ROOT_USERNAME --password $MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin
+  # Create MongoDB dump
+  if ! sudo docker exec "$container_name" mongodump \
+    --archive=/tmp/backup.archive \
+    --gzip \
+    --db "$db_name" \
+    --username "$MONGO_INITDB_ROOT_USERNAME" \
+    --password "$MONGO_INITDB_ROOT_PASSWORD" \
+    --authenticationDatabase admin; then
 
-  # Copy the backup file from the container to the local machine
-  sudo docker cp "$(get_container_name "$service_name")":/tmp/backup.archive $mongo_backup_file
+    echo -e "${RED}❌ mongodump failed.${NC}"
+    exit 1
+  fi
 
-  # Confirm completion and cleanup
-  if [ -f "$mongo_backup_file" ]; then
-    echo -e "${GREEN}✔ Mongo DB '$db_name' backed up to $mongo_backup_file${NC}"
-    sudo docker exec "$(get_container_name "$service_name")" rm /tmp/backup.archive  # Clean up temporary backup file inside the container
+  # Copy backup archive from container
+  if ! sudo docker cp \
+    "$container_name:/tmp/backup.archive" \
+    "$mongo_backup_file"; then
+
+    echo -e "${RED}❌ Failed to copy backup archive from container.${NC}"
+
+    sudo docker exec "$container_name" rm -f /tmp/backup.archive >/dev/null 2>&1
+
+    exit 1
+  fi
+
+  # Confirm completion
+  if [[ -f "$mongo_backup_file" ]]; then
+    echo -e "${GREEN}✔ Mongo DB '$db_name' backed up to:${NC} $mongo_backup_file"
+
+    # Cleanup temp archive inside container
+    sudo docker exec "$container_name" rm -f /tmp/backup.archive >/dev/null 2>&1
   else
-    echo -e "${RED}❌ Backup failed. Please check the container logs for more information.${NC  }"
+    echo -e "${RED}❌ Backup failed. Backup archive was not created.${NC}"
     exit 1
   fi
 }
@@ -578,6 +647,18 @@ check_bucket_policy() {
         select(.Principal.AWS==$key)
       )
     ' >/dev/null 2>&1
+}
+
+versitygw_init() {
+  # Check if the versitygw_init.sh script exists and run it if it any of the VersityGW credentials are set to default values
+  if [[ $S3_ROOT_USER == "12345678" || $S3_ROOT_PASSWORD == "12345678" || $S3_ACCESS_KEY == "123456" || $S3_SECRET_KEY == "123456" ]]; then
+    echo -e "${YELLOW}⚠️ Versity Gateway variables are set to the default values. Running versitygw_init.sh to configure Versity Gateway for S3 storage...${NC}"
+    if [ -f "$SCRIPT_DIR/versitygw_init.sh" ]; then
+      bash "$SCRIPT_DIR/versitygw_init.sh"
+    else
+      echo -e "${YELLOW}⚠️ versitygw_init.sh script not found. Skipping Versity Gateway initialization.${NC}"
+    fi
+  fi
 }
 
 # ========== END Shared Functions ==========
