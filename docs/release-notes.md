@@ -1,5 +1,17 @@
 # Release Notes
 
+## 2026.5.29.1
+
+- Feature: added unified CI workflow that supports scheduled matrix builds and workflow_dispatch with per-service inputs and per-service SHA override (build-all, build single, or build-all with explicit SHAs). File: build.yml.
+
+- Updated configure-rf.sh workflow update checks to include the new unified build.yml workflow when checking, copying, and committing image builder workflow updates.
+
+- Updated run_workflow.sh to trigger the unified build.yml workflow instead of switching between build-all.yml and build-container.yml.
+
+- Fixed run_workflow.sh so explicit service commit builds update compose.yaml image tags before pulling images, ensuring commands such as `./run_workflow.sh external-api=6a96bdf ui=f781ef4 control-panel=1537f5e plugins-api=40c5cdf viewer=d451653` pull the newly built tags.
+
+- Updated health_check.sh to display an informational message when the configured S3 image bucket exists but contains no objects, instead of leaving the object information section blank.
+
 ## 2026.5.20.2
 
 - Fixed compose.yaml to move MONGO_URI to environment variables for plugins-api and viewer.

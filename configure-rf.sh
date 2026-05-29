@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.20.2
+# VERSION=2026.5.29.1
 
 #set -euo pipefail
 
@@ -439,7 +439,7 @@ check_image_builder_updates() {
   TEMPLATE_URL_BASE="https://raw.githubusercontent.com/Ne0n09/remote-falcon-image-builder/main/.github/workflows"
   PRIVATE_URL_BASE="https://raw.githubusercontent.com/${REPO}/main/.github/workflows"
   WORKFLOW_DIR=".github/workflows"
-  WORKFLOW_FILES=("build-all.yml" "build-container.yml")
+  WORKFLOW_FILES=("build-all.yml" "build-container.yml" "build.yml")
   echo -e "${CYAN}📜 Checking for image builder workflow updates...${NC}"
   printf "%-25s %-15s %-15s %-7s\n" "Workflow" "Your Version" "Template Version" "Status"
   printf "${YELLOW}%-25s %-15s %-15s %-7s${NC}\n" "─────────────────────────" "───────────────" "───────────────" "───────"

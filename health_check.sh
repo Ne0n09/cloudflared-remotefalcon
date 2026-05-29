@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.3.2
+# VERSION=2026.5.29.1
 
 #set -euo pipefail
 #set -x
@@ -23,8 +23,8 @@ if [[ ! -f "$SCRIPT_DIR/shared_functions.sh" ]]; then
   exit 1
 fi
 
+# shellcheck source=/dev/null
 source "$SCRIPT_DIR/shared_functions.sh"
-
 
 # Define known error patterns and custom messages
 declare -A CONTAINER_PATTERNS
@@ -44,7 +44,7 @@ connect() failed (111: Connection refused) while connecting to upstream|NGINX ca
 
 CONTAINER_PATTERNS["mongo"]='
 Error response from daemon: No such container|Container is not running
-requires a CPU with AVX support|Check that your CPU supports AVX, if running in VM try changing VM CPU to 'host' type.
+requires a CPU with AVX support|Check that your CPU supports AVX, if running in VM try changing VM CPU to "host" type.
 '
 
 CONTAINER_PATTERNS["versitygw"]='
@@ -123,19 +123,19 @@ echo -e "${BLUE}⚙️ Running health check script...${NC}"
 all_services_running=true
 
 for service in "${SERVICES[@]}"; do
-  if ! is_container_running $service; then
+  if ! is_container_running "$service"; then
     all_services_running=false
   fi
 done
 #if [[ $all_services_running == false ]]; then
 echo "💤 Sleeping $SLEEP_TIME before running health checks..."
-sleep $SLEEP_TIME
+sleep "$SLEEP_TIME"
 #fi
 
 # Check if env file exists, parse it, then check if domain is not yourdomain.com
 # Then run various health checks
 if [[ -f $ENV_FILE ]]; then
-  parse_env $ENV_FILE
+  parse_env "$ENV_FILE"
 
   # Check if DOMAIN is set
   if [[ -z "$DOMAIN" || "$DOMAIN" == "your_domain.com" ]]; then
@@ -222,8 +222,8 @@ check_endpoint() {
   if [[ ! -f "$WORKING_DIR/$NGINX_CERT" || ! -f "$WORKING_DIR/$NGINX_KEY" ]]; then
     echo -e "${RED}❌ Error: Certificate or private key file not found:${NC}"
     HEALTHY=false
-    echo -e "  ${YELLOW}•${NC} Certificate: "$WORKING_DIR/$NGINX_CERT""
-    echo -e "  ${YELLOW}•${NC} Private key: "$WORKING_DIR/$NGINX_KEY""
+    echo -e "  ${YELLOW}•${NC} Certificate: $WORKING_DIR/$NGINX_CERT"
+    echo -e "  ${YELLOW}•${NC} Private key: $WORKING_DIR/$NGINX_KEY"
   else
     # Extract the public key from the certificate
     cert_pub_key=$(openssl x509 -in "$NGINX_CERT" -pubkey -noout 2>/dev/null || true)
@@ -239,8 +239,8 @@ check_endpoint() {
       echo -e "${RED}❌ The certificate and private key do NOT match:${NC}"
       HEALTHY=false
       ON_DISK_CERT_KEY_MATCH=false
-      echo -e "  ${YELLOW}•${NC} Certificate: "$WORKING_DIR/$NGINX_CERT""
-      echo -e "  ${YELLOW}•${NC} Private key: "$WORKING_DIR/$NGINX_KEY""
+      echo -e "  ${YELLOW}•${NC} Certificate: $WORKING_DIR/$NGINX_CERT"
+      echo -e "  ${YELLOW}•${NC} Private key: $WORKING_DIR/$NGINX_KEY"
     fi
   fi
 
@@ -318,7 +318,7 @@ check_endpoint() {
     # Print bucket and object information
     echo "🔍 Checking bucket '$IMAGES_S3_BUCKET' object information..."
     #sudo docker run --rm --network "container:$container_name" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url http://$container_name:7070 s3 ls s3://$IMAGES_S3_BUCKET --summarize --recursive --human-readable
-    sudo docker run --rm --network "container:$container_name" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url "http://127.0.0.1:7070" s3 ls "s3://$IMAGES_S3_BUCKET" --recursive \
+    object_summary=$(sudo docker run --rm --network "container:$container_name" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url "http://127.0.0.1:7070" s3 ls "s3://$IMAGES_S3_BUCKET" --recursive \
     | awk '
     {
       size=$3
@@ -332,14 +332,25 @@ check_endpoint() {
     }
     END {
       for (p in bytes) {
+        found=1
         printf "%8.1f MiB  %5d objects      %s/%s\n",
           bytes[p]/1024/1024,
           count[p],
           "'$IMAGES_S3_BUCKET'",
           p
       }
+
+      if (!found) {
+        print "__NO_OBJECTS__"
+      }
     }
-    '
+    ')
+
+    if [[ "$object_summary" == "__NO_OBJECTS__" ]]; then
+      echo -e "${YELLOW}ℹ️ No objects found in bucket '$IMAGES_S3_BUCKET'.${NC}"
+    else
+      echo "$object_summary"
+    fi
 
     # Verify control-panel has a valid S3_ACCESS_KEY
     if sudo docker logs control-panel 2>&1 | grep -q "InvalidAccessKeyId"; then
@@ -407,7 +418,7 @@ check_endpoint() {
     fi
   else
     echo -e "${RED}❌ Error: Some services are NOT running properly!${NC}"
-    echo -e "${YELLOW}⚠️ Check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose -f "$COMPOSE_FILE" down' and 'sudo docker compose -f "$COMPOSE_FILE" up -d'${NC}"
+    echo -e "${YELLOW}⚠️ Check logs with 'sudo docker logs <container_name>' or try 'sudo docker compose -f ""$COMPOSE_FILE"" down' and 'sudo docker compose -f ""$COMPOSE_FILE"" up -d'${NC}"
   fi
 else
     echo -e "${RED}❌ Error: $ENV_FILE file not found.${NC}"

@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# VERSION=2026.5.14.1
+# VERSION=2026.5.29.1
 
 # This script will run the GitHub Actions workflow in the REPO configured in the .env to build: plugins-api, control-panel, viewer, ui, and external-api.
-# It will call either the build-container.yml or build-all.yml workflow depending on the arguments passed.
+# It will call the unified build.yml workflow with inputs based on the arguments passed.
 # It will also sync the latest values from the .env file to the GitHub repo secrets for the build ARGs before triggering the workflow.
 # Usage:./run_workflow.sh [ container | container=sha | container=sha container=sha ...]
-# ./run_workflow.sh =  Runs the build-all.yml GitHub Actions workflow to build all containers to the latest available commit.
-# ./run_workflow.sh [container] = Runs the build-container.yml GitHub Actions workflow to build an individual container to the latest available commit on 'main'.
-# ./run_workflow.sh [container=sha] = Runs the build-container.yml GitHub Actions workflow to build an individual container to a specific commit SHA.
-# ./run_workflow.sh plugins-api=69c0c53 control-panel=671bbed viewer=060011d ui=245c529 external-api=f7e09fe = Runs the build-all.yml GitHub Actions workflow to build all containers to the specified commit SHAs.
+# ./run_workflow.sh =  Runs the build.yml GitHub Actions workflow to build all containers to the latest available commit.
+# ./run_workflow.sh [container] = Runs the build.yml GitHub Actions workflow to build an individual container to the latest available commit on 'main'.
+# ./run_workflow.sh [container=sha] = Runs the build.yml GitHub Actions workflow to build an individual container to a specific commit SHA.
+# ./run_workflow.sh plugins-api=69c0c53 control-panel=671bbed viewer=060011d ui=245c529 external-api=f7e09fe = Runs the build.yml GitHub Actions workflow to build all containers to the specified commit SHAs.
 
 # ========== Config ==========
 # Source shared functions
@@ -24,10 +24,11 @@ source "$SCRIPT_DIR/shared_functions.sh"
 # REPO and GITHUB_PAT is pulled from .env via parse_env in shared_functions.sh
 check_env_exists
 parse_env
-WORKFLOW_FILE="build-container.yml"         # Workflow filename in .github/workflows, defaults to 'build-container.yml. These should be in the REPO specified in .env
+WORKFLOW_FILE="build.yml"                   # Workflow filename in .github/workflows. This should be in the REPO specified in .env
 DEFAULT_REF="main"                            # Default branch if none specified
 CONTAINERS=("plugins-api" "control-panel" "viewer" "ui" "external-api")
 POLL_INTERVAL=10  # Seconds between status checks on GitHub Actions run
+COMPOSE_TAG_UPDATES=()
 
 
 # Validate GitHub CLI and GHCR docker login are successful in order to build and pull images, these are in shared_functions.sh
@@ -74,42 +75,75 @@ get_full_sha() {
                    "$api_url" | jq -r '.sha // empty')
 
   if [[ -z "$full_sha" ]]; then
-    echo -e "${YELLOW}⚠️ Could not resolve full SHA for $short_sha in $repo. Using $short_sha as-is.${NC}"
+    echo -e "${YELLOW}⚠️ Could not resolve full SHA for $short_sha in $REMOTE_FALCON_PLATFORM_REPO. Using $short_sha as-is.${NC}" >&2
     echo "$short_sha"
   else
     echo "$full_sha"
   fi
 }
 
+is_valid_container() {
+  local service_name="$1"
+  [[ " ${CONTAINERS[*]} " =~ " ${service_name} " ]]
+}
+
+queue_compose_tag_update() {
+  local service_name="$1"
+  local ref="$2"
+
+  if [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
+    COMPOSE_TAG_UPDATES+=("$service_name=$ref")
+  fi
+}
+
+apply_compose_tag_updates() {
+  local update
+  local service_name
+  local ref
+
+  if [[ ${#COMPOSE_TAG_UPDATES[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo -e "${BLUE}📝 Updating compose.yaml tags for explicitly requested commits...${NC}"
+  for update in "${COMPOSE_TAG_UPDATES[@]}"; do
+    service_name="${update%%=*}"
+    ref="${update#*=}"
+    replace_compose_tag "$service_name" "$ref"
+    echo -e "${GREEN}✔ ${service_name}:${ref:0:7}${NC}"
+  done
+}
+
 trigger_workflow() {
   local service="$1"
   
+  validate_workflow_file "$REPO" "$WORKFLOW_FILE" || return 1
 
   if [[ "$service" == "ALL_SERVICES" ]]; then
     shift
-    WORKFLOW_FILE="build-all.yml"
-    validate_workflow_file "$REPO" "$WORKFLOW_FILE" || return 1
-    local inputs=()
+    local inputs=(-F "service=all" -F "ref=$DEFAULT_REF")
+    local svc
+    local sha
     for arg in "$@"; do
       if [[ "$arg" == *"="* ]]; then
         svc="${arg%%=*}"
         sha="${arg#*=}"
       else
         svc="$arg"
-        sha="main"
+        sha="$DEFAULT_REF"
       fi
       [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] && sha=$(get_full_sha "$svc" "$sha")
       inputs+=(-F "$svc=$sha")
+      [[ "$arg" == *"="* ]] && queue_compose_tag_update "$svc" "$sha"
     done
     echo -e "${BLUE}📤 Triggering workflow for ALL services → $REPO${NC}"
-    gh workflow run $WORKFLOW_FILE -R "$REPO" "${inputs[@]}"
+    gh workflow run "$WORKFLOW_FILE" -R "$REPO" "${inputs[@]}"
   else
-    local ref="${2:-main}" 
-    WORKFLOW_FILE="build-container.yml"
-    validate_workflow_file "$REPO" "$WORKFLOW_FILE" || return 1
+    local ref="${2:-$DEFAULT_REF}" 
     [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]] && ref=$(get_full_sha "$service" "$ref")
+    queue_compose_tag_update "$service" "$ref"
     echo -e "${BLUE}📤 Triggering workflow for service: $service → $REPO (ref: $ref)${NC}"
-    gh workflow run $WORKFLOW_FILE -R "$REPO" -F "service=$service" -F "ref=$ref"
+    gh workflow run "$WORKFLOW_FILE" -R "$REPO" -F "service=$service" -F "ref=$ref"
   fi
 
   # Get the most recent run for this workflow
@@ -193,6 +227,8 @@ trigger_workflow() {
       echo -e "${GREEN}✅ Workflow finished successfully!${NC}"
       # From shared_function.sh, make sure the compose.yaml is set for pulling images via ghcr.io/${REPO}/ in the image path
       update_compose_image_path
+      # If specific commits were requested, retag compose.yaml before pulling so compose pulls those newly built images.
+      apply_compose_tag_updates
       # Ensure new images get pulled if rebuilt with the same version, otherwise update script won't detect arg changes on same versions
       echo -e "🐳 ${BLUE} Pulling newly built images from GitHub Container Registry(GHCR)...${NC}"
       sudo docker compose -f "$COMPOSE_FILE" pull
@@ -217,10 +253,16 @@ if ! bash "$SCRIPT_DIR/sync_repo_secrets.sh"; then
 fi
 
 if [[ $# -eq 0 ]]; then
-  trigger_workflow "ALL_SERVICES" "${CONTAINERS[@]}"
+  trigger_workflow "ALL_SERVICES"
 else
   for arg in "$@"; do
-    [[ "$arg" == *"="* || " ${CONTAINERS[*]} " =~ " ${arg} " ]] || {
+    if [[ "$arg" == *"="* ]]; then
+      service="${arg%%=*}"
+    else
+      service="$arg"
+    fi
+
+    is_valid_container "$service" || {
       echo -e "${RED}❌ Invalid argument: $arg${NC}"
       exit 1
     }
@@ -234,7 +276,7 @@ else
       sha="${1#*=}"
       trigger_workflow "$service" "$sha"
     else
-      trigger_workflow "$1" "main"
+      trigger_workflow "$1" "$DEFAULT_REF"
     fi
   fi
 fi

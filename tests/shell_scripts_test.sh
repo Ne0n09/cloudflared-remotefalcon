@@ -45,9 +45,14 @@ run_test() {
   shift
 
   mkdir -p "$TEST_TMP"
-  if "$@"; then
+  local output
+  local status
+  output="$("$@" 2>&1)"
+  status=$?
+  if [[ $status -eq 0 ]]; then
     pass "$name"
   else
+    [[ -n "$output" ]] && printf '%s\n' "$output"
     fail "$name"
   fi
 }
@@ -58,6 +63,7 @@ make_workspace() {
   mkdir -p "$ws/remotefalcon" "$ws/.github/workflows"
 
   cp "$ROOT_DIR/configure-rf.sh" "$ws/"
+  cp "$ROOT_DIR/health_check.sh" "$ws/"
   cp "$ROOT_DIR/run_workflow.sh" "$ws/"
   cp "$ROOT_DIR/setup_cloudflare.sh" "$ws/"
   cp "$ROOT_DIR/shared_functions.sh" "$ws/"
@@ -101,7 +107,13 @@ S3_SECRET_KEY=123456
 VERSITYGW_PATH=/home/versitygw-volume
 S3_ROOT_USER=12345678
 S3_ROOT_PASSWORD=12345678
+NGINX_CERT=example.com_origin_cert.pem
+NGINX_KEY=example.com_origin_key.pem
+CLIENT_HEADER=client-ip
 ENV
+
+  printf 'mock certificate\n' > "$ws/remotefalcon/example.com_origin_cert.pem"
+  printf 'mock private key\n' > "$ws/remotefalcon/example.com_origin_key.pem"
 
   printf '%s\n' "$ws"
 }
@@ -158,6 +170,9 @@ case "$1" in
     done
     printf 'mock csr\n' > "$out"
     ;;
+  x509|rsa)
+    printf 'mock public key\n'
+    ;;
   *)
     exit 0
     ;;
@@ -169,7 +184,29 @@ MOCK
 echo "curl $*" >> "${MOCK_LOG_DIR}/commands.log"
 args="$*"
 
-if [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits?sha=main&path=apps/external-api"* ]]; then
+if [[ "$args" == *"-w %{http_code}"* ]]; then
+  out=""
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-o" ]]; then
+      out="$2"
+      shift 2
+    else
+      shift
+    fi
+  done
+  [[ -n "$out" ]] && printf '{"status":"UP"}\n' > "$out"
+  printf '200'
+elif [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits/6a96bdf"* ]]; then
+  printf '{"sha":"6a96bdf111111111111111111111111111111111"}\n'
+elif [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits/f781ef4"* ]]; then
+  printf '{"sha":"f781ef4222222222222222222222222222222222"}\n'
+elif [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits/1537f5e"* ]]; then
+  printf '{"sha":"1537f5e333333333333333333333333333333333"}\n'
+elif [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits/40c5cdf"* ]]; then
+  printf '{"sha":"40c5cdf444444444444444444444444444444444"}\n'
+elif [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits/d451653"* ]]; then
+  printf '{"sha":"d451653555555555555555555555555555555555"}\n'
+elif [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits?sha=main&path=apps/external-api"* ]]; then
   printf '[{"sha":"deadbee1234567890abcdef1234567890abcdef1"}]\n'
 elif [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits/"* ]]; then
   printf '{"sha":"abcdef1234567890abcdef1234567890abcdef12"}\n'
@@ -198,6 +235,7 @@ raw=false
 exit_check=false
 compact=false
 filter=""
+input_file=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -217,13 +255,21 @@ while [[ $# -gt 0 ]]; do
       shift 3
       ;;
     *)
-      filter="$1"
+      if [[ -n "$filter" && -f "$1" ]]; then
+        input_file="$1"
+      else
+        filter="$1"
+      fi
       shift
       ;;
   esac
 done
 
-input="$(cat)"
+if [[ -n "$input_file" ]]; then
+  input="$(cat "$input_file")"
+else
+  input="$(cat)"
+fi
 
 case "$filter" in
   '.')
@@ -246,6 +292,9 @@ case "$filter" in
     ;;
   '.conclusion')
     echo "$input" | sed -n 's/.*"conclusion":"\([^"]*\)".*/\1/p'
+    ;;
+  '.status // "UNKNOWN"')
+    echo "$input" | sed -n 's/.*"status":"\([^"]*\)".*/\1/p'
     ;;
   '.success'|'.success == true')
     [[ "$input" == *'"success":true'* ]]
@@ -339,16 +388,34 @@ if [[ "$1" == "compose" && "$*" == *"ps --services"* ]]; then
   printf '%s\n' ${MOCK_RUNNING_SERVICES:-}
 elif [[ "$1" == "ps" ]]; then
   printf 'ghcr.io/example/external-api:abc1234\n'
+elif [[ "$1" == "logs" ]]; then
+  exit 0
+elif [[ "$1" == "exec" && "$2" == "nginx" && "$*" == *"nginx -t"* ]]; then
+  printf 'nginx: the configuration file /etc/nginx/nginx.conf syntax is ok\n'
+  printf 'nginx: configuration file /etc/nginx/nginx.conf test is successful\n'
 elif [[ "$1" == "exec" && "$*" == *"wget -qO- http://127.0.0.1:7070/health"* ]]; then
   printf 'OK\n'
 elif [[ "$1" == "exec" && "$*" == *"list-users"* ]]; then
   printf 'ID AccessKey Role\n-- -------- ---\n'
 elif [[ "$1" == "exec" && "$*" == *"list-buckets"* ]]; then
-  printf 'Bucket Owner\n------ -----\n'
+  if [[ "${MOCK_BUCKET_EXISTS:-}" == "true" ]]; then
+    printf 'Bucket Owner\n------ -----\nremote-falcon-images 123456\n'
+  else
+    printf 'Bucket Owner\n------ -----\n'
+  fi
+elif [[ "$1" == "exec" && "$2" == "mongo" && "$*" == *"mongosh"* ]]; then
+  printf 'No subdomains found\n'
 elif [[ "$1" == "run" && "$*" == *"get-bucket-policy"* ]]; then
-  exit 1
+  if [[ "${MOCK_BUCKET_POLICY_EXISTS:-}" == "true" ]]; then
+    printf '{"Statement":[{"Principal":"*","Action":"s3:GetObject"}]}\n'
+    exit 0
+  else
+    exit 1
+  fi
 elif [[ "$1" == "run" && "$*" == *"put-bucket-policy"* ]]; then
   exit 0
+elif [[ "$1" == "run" && "$*" == *"s3 ls"* ]]; then
+  printf '%s' "${MOCK_S3_LS_OUTPUT:-}"
 else
   exit 0
 fi
@@ -370,6 +437,7 @@ with_mocks() {
 test_bash_syntax() {
   local scripts=(
     configure-rf.sh
+    health_check.sh
     run_workflow.sh
     setup_cloudflare.sh
     shared_functions.sh
@@ -412,7 +480,7 @@ test_shared_functions() {
     replace_compose_tag ui fedcba0987654321fedcba0987654321fedcba09
     grep -Eq 'ui:fedcba0' "$COMPOSE_FILE" || exit 1
     grep -Fq 'github.com/Remote-Falcon/remote-falcon-platform.git#fedcba0987654321fedcba0987654321fedcba09:apps/ui' "$COMPOSE_FILE" || exit 1
-    grep -Fq 'dockerfile: ${DOCKERFILE}' "$COMPOSE_FILE" || exit 1
+    grep -Fq "# 'ui' will always use Dockerfile and never Dockerfile.dev" "$COMPOSE_FILE" || exit 1
 
     uname() { printf 'aarch64\n'; }
     is_arm_cpu || exit 1
@@ -434,6 +502,18 @@ test_shared_functions() {
 
     check_tag_format external-api 123abcd || exit 1
     ! check_tag_format external-api latest || exit 1
+  )
+}
+
+test_get_current_version() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+
+  (
+    cd "$ws" || exit 1
+    source ./shared_functions.sh
+    [[ "$(get_current_version external-api)" == "abc1234" ]]
   )
 }
 
@@ -467,9 +547,71 @@ test_run_workflow() {
     ./run_workflow.sh external-api=abcdef1
   ) || return 1
 
-  assert_file_contains "$ws/mock-log/commands.log" 'gh workflow run build-container.yml -R test-owner/test-repo -F service=external-api -F ref=abcdef1234567890abcdef1234567890abcdef12'
+  assert_file_contains "$ws/mock-log/commands.log" 'gh workflow run build.yml -R test-owner/test-repo -F service=external-api -F ref=abcdef1234567890abcdef1234567890abcdef12'
+  assert_file_contains "$ws/remotefalcon/compose.yaml" 'external-api:abcdef1'
   assert_file_contains "$ws/mock-log/commands.log" 'docker compose -f .*/remotefalcon/compose.yaml pull'
   assert_file_contains "$ws/mock-log/commands.log" 'docker compose -f .*/remotefalcon/compose.yaml up -d --force-recreate'
+}
+
+test_run_workflow_multi_service_pinned() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="versitygw cloudflared"
+  sed -i 's|^REPO=.*|REPO=test-owner/test-repo|' "$ws/remotefalcon/.env"
+  sed -i 's|^GITHUB_PAT=.*|GITHUB_PAT=ghp_test|' "$ws/remotefalcon/.env"
+
+  (
+    cd "$ws" || exit 1
+    ./run_workflow.sh external-api=6a96bdf ui=f781ef4 control-panel=1537f5e plugins-api=40c5cdf viewer=d451653
+  ) || return 1
+
+  assert_file_contains "$ws/mock-log/commands.log" 'gh workflow run build.yml -R test-owner/test-repo -F service=all -F ref=main'
+  assert_file_contains "$ws/mock-log/commands.log" '-F external-api=6a96bdf111111111111111111111111111111111'
+  assert_file_contains "$ws/mock-log/commands.log" '-F ui=f781ef4222222222222222222222222222222222'
+  assert_file_contains "$ws/mock-log/commands.log" '-F control-panel=1537f5e333333333333333333333333333333333'
+  assert_file_contains "$ws/mock-log/commands.log" '-F plugins-api=40c5cdf444444444444444444444444444444444'
+  assert_file_contains "$ws/mock-log/commands.log" '-F viewer=d451653555555555555555555555555555555555'
+
+  assert_file_contains "$ws/remotefalcon/compose.yaml" 'external-api:6a96bdf'
+  assert_file_contains "$ws/remotefalcon/compose.yaml" 'ui:f781ef4'
+  assert_file_contains "$ws/remotefalcon/compose.yaml" 'control-panel:1537f5e'
+  assert_file_contains "$ws/remotefalcon/compose.yaml" 'plugins-api:40c5cdf'
+  assert_file_contains "$ws/remotefalcon/compose.yaml" 'viewer:d451653'
+}
+
+test_run_workflow_no_args() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="versitygw cloudflared"
+  sed -i 's|^REPO=.*|REPO=test-owner/test-repo|' "$ws/remotefalcon/.env"
+  sed -i 's|^GITHUB_PAT=.*|GITHUB_PAT=ghp_test|' "$ws/remotefalcon/.env"
+
+  (
+    cd "$ws" || exit 1
+    ./run_workflow.sh
+  ) > "$ws/run-workflow.out" 2>&1 || return 1
+
+  assert_file_contains "$ws/mock-log/commands.log" 'gh workflow run build.yml -R test-owner/test-repo -F service=all -F ref=main'
+  assert_file_not_contains "$ws/run-workflow.out" 'Updating compose.yaml tags for explicitly requested commits'
+}
+
+test_run_workflow_invalid_argument() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="versitygw cloudflared"
+  sed -i 's|^REPO=.*|REPO=test-owner/test-repo|' "$ws/remotefalcon/.env"
+  sed -i 's|^GITHUB_PAT=.*|GITHUB_PAT=ghp_test|' "$ws/remotefalcon/.env"
+
+  (
+    cd "$ws" || exit 1
+    ./run_workflow.sh bad-service=abcdef1
+  ) > "$ws/run-workflow-invalid.out" 2>&1 && return 1
+
+  assert_file_contains "$ws/run-workflow-invalid.out" 'Invalid argument: bad-service=abcdef1'
+  assert_file_not_contains "$ws/mock-log/commands.log" 'gh workflow run'
 }
 
 test_update_containers_dry_run() {
@@ -529,6 +671,23 @@ test_versitygw_init() {
   assert_file_contains "$ws/mock-log/commands.log" 'put-bucket-policy'
 }
 
+test_health_check_empty_s3_bucket() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="external-api ui plugins-api viewer control-panel cloudflared nginx mongo versitygw"
+  export MOCK_BUCKET_EXISTS="true"
+  export MOCK_BUCKET_POLICY_EXISTS="true"
+  export MOCK_S3_LS_OUTPUT=""
+
+  (
+    cd "$ws" || exit 1
+    ./health_check.sh 0s
+  ) > "$ws/health.out" 2>&1 || return 1
+
+  assert_file_contains "$ws/health.out" "No objects found in bucket 'remote-falcon-images'"
+}
+
 test_configure_rf_help() {
   local ws
   ws="$(make_workspace)"
@@ -543,14 +702,24 @@ test_configure_rf_help() {
   assert_file_contains "$ws/configure-help.out" '--set KEY=VALUE'
 }
 
+test_configure_rf_workflow_list_includes_build_yml() {
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'WORKFLOW_FILES=.*build-all\.yml.*build-container\.yml.*build\.yml'
+}
+
 run_test "bash syntax for managed scripts" test_bash_syntax
 run_test "shared_functions.sh parses env and edits compose safely" test_shared_functions
+run_test "shared_functions.sh reads current RF image tag" test_get_current_version
 run_test "sync_repo_secrets.sh syncs transformed build secrets" test_sync_repo_secrets
 run_test "run_workflow.sh triggers a mocked single-service build" test_run_workflow
+run_test "run_workflow.sh triggers mocked multi-service pinned builds" test_run_workflow_multi_service_pinned
+run_test "run_workflow.sh triggers a mocked all-service build" test_run_workflow_no_args
+run_test "run_workflow.sh rejects invalid service arguments" test_run_workflow_invalid_argument
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
+run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
 run_test "configure-rf.sh exposes expected CLI help" test_configure_rf_help
+run_test "configure-rf.sh checks unified workflow updates" test_configure_rf_workflow_list_includes_build_yml
 
 echo
 echo "Passed: $PASS_COUNT"
