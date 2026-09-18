@@ -1,0 +1,173 @@
+# COMPOSE_VERSION=2026.5.20.2
+# If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
+# plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
+# Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
+# nginx confg will use the container_name in default.conf
+# Cloudflare tunnel public hostnames and catch-all rule will need to use the nginx container_name 'nginx'
+# Default for Remote Falcon images is to build locally via build context and args defined in .env
+# If REPO is defined in .env then the update_containers.sh script will update the image: line to include ghcr.io/${REPO}/ to pull images from GitHub Container Registry if they exist
+
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    restart: unless-stopped
+    volumes:
+      - ${NGINX_CONF}:/etc/nginx/templates/default.conf.template:ro
+      - ${NGINX_CERT}:/etc/ssl/cert.pem:ro
+      - ${NGINX_KEY}:/etc/ssl/key.pem:ro
+    environment:
+      - YOUR_DOMAIN=${DOMAIN}
+      - YOUR_IMAGES_S3_BUCKET=${IMAGES_S3_BUCKET}
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok' | grep -q 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    volumes:
+      - ${MONGO_PATH}:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+  versitygw:
+    image: versity/versitygw:latest
+    container_name: versitygw
+    restart: always
+    volumes:
+      - ${VERSITYGW_PATH}/s3:/data/s3
+      - ${VERSITYGW_PATH}/iam:/data/iam
+      - ${VERSITYGW_PATH}/versioning:/data/versioning
+    environment:
+      ROOT_ACCESS_KEY: ${S3_ROOT_USER}
+      ROOT_SECRET_KEY: ${S3_ROOT_PASSWORD}
+      VGW_PORT: ":7070"
+      VGW_ADMIN_PORT: ":7071"
+      VGW_IAM_DIR: /data/iam
+      VGW_VERSIONING_DIR: /data/versioning
+      VGW_BACKEND: posix
+      VGW_BACKEND_ARGS: /data/s3
+      VGW_HEALTH: "health"
+  plugins-api:
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
+      dockerfile: apps/plugins-api/${DOCKERFILE}
+      args:
+        - OTEL_OPTS=${OTEL_OPTS}
+        - OTEL_URI=${OTEL_URI}
+        - MONGO_URI=${MONGO_URI}
+    image: plugins-api:latest
+    container_name: plugins-api
+    restart: always
+    ports:
+      - "8083:8080"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - SEQUENCE_LIMIT=${SEQUENCE_LIMIT}
+      - QUARKUS_OTEL_SDK_DISABLED=true
+    depends_on:
+      mongo:
+        condition: service_healthy
+  control-panel:
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
+      dockerfile: apps/control-panel/${DOCKERFILE}
+      args:
+        - OTEL_OPTS=${OTEL_OPTS}
+    image: control-panel:latest
+    container_name: control-panel
+    restart: always
+    environment:
+      - SERVER_PORT=8080
+      - WEB_URL=https://${DOMAIN}
+      - AUTO_VALIDATE_EMAIL=${AUTO_VALIDATE_EMAIL}
+      - JWT_USER=${USER_JWT_KEY}
+      - SPRING_DATA_MONGODB_URI=${MONGO_URI}
+      - GITHUB_PAT=
+      - SENDGRID_KEY=${SENDGRID_KEY}
+      - CLIENT_HEADER=${CLIENT_HEADER}
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - S3_ACCESSKEY=${S3_ACCESS_KEY}
+      - S3_SECRETKEY=${S3_SECRET_KEY}
+      - IMAGES_S3_BUCKET=${IMAGES_S3_BUCKET}
+      - IMAGES_CDN_ENDPOINT=${IMAGES_CDN_ENDPOINT}
+      - MFA_SECRET_KEY=${MFA_SECRET_KEY:-}
+      - MFA_SECRET_KEY_RETIRED=${MFA_SECRET_KEY_RETIRED:-}
+    depends_on:
+      mongo:
+        condition: service_healthy
+  viewer:
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
+      dockerfile: apps/viewer/${DOCKERFILE}
+      args:
+        - OTEL_OPTS=${OTEL_OPTS}
+        - OTEL_URI=${OTEL_URI}
+        - MONGO_URI=${MONGO_URI}
+    image: viewer:latest
+    container_name: viewer
+    restart: always
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - CLIENT_HEADER=${CLIENT_HEADER}
+      - QUARKUS_OTEL_SDK_DISABLED=true
+    depends_on:
+      mongo:
+        condition: service_healthy
+  ui:
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main:apps/ui
+      # 'ui' will always use Dockerfile and never Dockerfile.dev
+      args:
+        - HOST_ENV=${HOST_ENV}
+        - VERSION=${VERSION}
+        - CONTROL_PANEL_API=https://${DOMAIN}/remote-falcon-control-panel
+        - VIEWER_API=https://${DOMAIN}/remote-falcon-viewer
+        - VIEWER_JWT_KEY=${VIEWER_JWT_KEY}
+        - PROTOMAPS_API_KEY=${PROTOMAPS_API_KEY:-}
+        - MAP_STYLE_LIGHT=${MAP_STYLE_LIGHT:-}
+        - MAP_STYLE_DARK=${MAP_STYLE_DARK:-}
+        - PUBLIC_POSTHOG_HOST=${PUBLIC_POSTHOG_HOST}
+        - PUBLIC_POSTHOG_KEY=${PUBLIC_POSTHOG_KEY}
+        - GA_TRACKING_ID=${GA_TRACKING_ID}
+        - MIXPANEL_KEY=${MIXPANEL_KEY}
+        - HOSTNAME_PARTS=${HOSTNAME_PARTS}
+        - SOCIAL_META=${SOCIAL_META}
+        - SWAP_CP=${SWAP_CP}
+        - VIEWER_PAGE_SUBDOMAIN=${VIEWER_PAGE_SUBDOMAIN}
+        - CONTROL_PANEL_SUBDOMAIN=${CONTROL_PANEL_SUBDOMAIN:-}
+        - CONTROL_HOST=${CONTROL_HOST:-}
+        - VIEWER_HOST=${VIEWER_HOST:-}
+    image: ui:latest
+    container_name: ui
+    restart: always
+    depends_on:
+      - control-panel
+      - viewer
+  external-api:
+    build:
+      context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
+      dockerfile: apps/external-api/${DOCKERFILE}
+      args:
+        - OTEL_OPTS=${OTEL_OPTS}
+    image: external-api:latest
+    container_name: external-api
+    restart: always
+    environment:
+      - SERVER_PORT=8080
+      - SPRING_DATA_MONGODB_URI=${MONGO_URI}
+      - VIEWER_API_URL=https://${DOMAIN}/remote-falcon-viewer
+    depends_on:
+      mongo:
+        condition: service_healthy

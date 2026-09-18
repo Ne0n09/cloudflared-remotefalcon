@@ -1,0 +1,244 @@
+# VERSION=2026.9.18.1
+name: Build Remote-Falcon Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Which service to build (or 'all')"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - plugins-api
+          - control-panel
+          - viewer
+          - ui
+          - external-api
+      ref:
+        description: "Branch, tag, or commit SHA to build from (default: main)"
+        required: false
+        default: "main"
+      plugins-api:
+        description: "Commit SHA or ref for plugins-api (optional)"
+        required: false
+        default: ""
+      control-panel:
+        description: "Commit SHA or ref for control-panel (optional)"
+        required: false
+        default: ""
+      viewer:
+        description: "Commit SHA or ref for viewer (optional)"
+        required: false
+        default: ""
+      ui:
+        description: "Commit SHA or ref for ui (optional)"
+        required: false
+        default: ""
+      external-api:
+        description: "Commit SHA or ref for external-api (optional)"
+        required: false
+        default: ""
+  schedule:
+    - cron: '0 4 * * *'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  compute:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.set.outputs.services }}
+    steps:
+      - name: Determine services to build
+        id: set
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_SERVICE: ${{ github.event.inputs.service }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            services='["plugins-api","control-panel","viewer","ui","external-api"]'
+          else
+            svc=${INPUT_SERVICE:-all}
+            if [ "$svc" = "all" ] || [ -z "$svc" ]; then
+              services='["plugins-api","control-panel","viewer","ui","external-api"]'
+            else
+              services="[\"$svc\"]"
+            fi
+          fi
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: compute
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.compute.outputs.services) }}
+    name: Build ${{ matrix.service }}
+    steps:
+      - name: Resolve ref
+        id: ref
+        env:
+          SERVICE: ${{ matrix.service }}
+          GLOBAL_REF: ${{ github.event.inputs.ref || 'main' }}
+          PLUGINS_API: ${{ github.event.inputs['plugins-api'] }}
+          CONTROL_PANEL: ${{ github.event.inputs['control-panel'] }}
+          VIEWER: ${{ github.event.inputs.viewer }}
+          UI: ${{ github.event.inputs.ui }}
+          EXTERNAL_API: ${{ github.event.inputs['external-api'] }}
+        run: |
+          # Choose per-service input if provided, otherwise fall back to global ref
+          REF="$GLOBAL_REF"
+          case "$SERVICE" in
+            plugins-api)
+              if [ -n "$PLUGINS_API" ]; then REF="$PLUGINS_API"; fi
+              ;;
+            control-panel)
+              if [ -n "$CONTROL_PANEL" ]; then REF="$CONTROL_PANEL"; fi
+              ;;
+            viewer)
+              if [ -n "$VIEWER" ]; then REF="$VIEWER"; fi
+              ;;
+            ui)
+              if [ -n "$UI" ]; then REF="$UI"; fi
+              ;;
+            external-api)
+              if [ -n "$EXTERNAL_API" ]; then REF="$EXTERNAL_API"; fi
+              ;;
+          esac
+
+          echo "ref=$REF" >> $GITHUB_OUTPUT
+
+      - name: Checkout Remote-Falcon repo
+        uses: actions/checkout@v6.0.2
+        with:
+          repository: Remote-Falcon/remote-falcon-platform
+          ref: ${{ steps.ref.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Get platform commit SHA and date
+        id: version
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          app_path="apps/$SERVICE"
+
+          if [ ! -d "$app_path" ]; then
+            echo "App path not found: $app_path" >&2
+            exit 1
+          fi
+
+          short_sha=$(git rev-parse --short=7 HEAD)
+          commit_date=$(git log -1 --format=%cd --date=format:'%Y.%m.%d')
+
+          if [ -z "$short_sha" ] || [ -z "$commit_date" ]; then
+            echo "No commit metadata found for $app_path" >&2
+            exit 1
+          fi
+
+          echo "short_sha=$short_sha" >> $GITHUB_OUTPUT
+          echo "commit_date=$commit_date" >> $GITHUB_OUTPUT
+
+      - name: Normalize Target Repo(lowercase)
+        id: normalize
+        run: echo "target_repo=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.0.0
+        with:
+          driver: docker-container
+          buildkitd-flags: --debug
+
+      - name: Resolve Build Config
+        id: cfg
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          case "$SERVICE" in
+            control-panel|external-api|viewer|plugins-api)
+              context="."
+              dockerfile="apps/$SERVICE/Dockerfile"
+              ;;
+            ui)
+              context="apps/$SERVICE"
+              dockerfile="Dockerfile"
+              ;;
+            *)
+              echo "Unknown service: $SERVICE" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "context=$context" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=$dockerfile" >> "$GITHUB_OUTPUT"
+
+      - name: Check if image already exists
+        if: github.event_name == 'schedule'
+        id: check
+        env:
+          IMAGE: ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}
+          TAG: ${{ steps.version.outputs.short_sha }}
+        run: |
+          echo "🔍 Checking for existing image: $IMAGE:$TAG"
+
+          if docker manifest inspect "$IMAGE:$TAG" > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Image $IMAGE:$TAG already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Image $IMAGE:$TAG does not exist"
+          fi
+
+      - name: Build and Push Image
+        if: github.event_name == 'workflow_dispatch' || steps.check.outputs.exists == 'false'
+        uses: docker/build-push-action@v7.1.0
+        env:
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: ${{ steps.cfg.outputs.context }}
+          file: ${{ steps.cfg.outputs.context }}/${{ steps.cfg.outputs.dockerfile }}
+          push: true
+          platforms: linux/amd64
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:${{ steps.version.outputs.short_sha }}
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:${{ steps.version.outputs.commit_date }}
+            ghcr.io/${{ steps.normalize.outputs.target_repo }}/${{ matrix.service }}:latest
+          build-args: |
+            HOST_ENV=${{ secrets.HOST_ENV }}
+            VERSION=${{ secrets.VERSION }}
+            CONTROL_PANEL_API=${{ secrets.CONTROL_PANEL_API }}
+            VIEWER_API=${{ secrets.VIEWER_API }}
+            VIEWER_JWT_KEY=${{ secrets.VIEWER_JWT_KEY }}
+            PROTOMAPS_API_KEY=${{ secrets.PROTOMAPS_API_KEY }}
+            MAP_STYLE_LIGHT=${{ secrets.MAP_STYLE_LIGHT }}
+            MAP_STYLE_DARK=${{ secrets.MAP_STYLE_DARK }}
+            PUBLIC_POSTHOG_KEY=${{ secrets.PUBLIC_POSTHOG_KEY }}
+            GA_TRACKING_ID=${{ secrets.GA_TRACKING_ID }}
+            MIXPANEL_KEY=${{ secrets.MIXPANEL_KEY }}
+            HOSTNAME_PARTS=${{ secrets.HOSTNAME_PARTS }}
+            SOCIAL_META=${{ secrets.SOCIAL_META }}
+            SWAP_CP=${{ secrets.SWAP_CP }}
+            VIEWER_PAGE_SUBDOMAIN=${{ secrets.VIEWER_PAGE_SUBDOMAIN }}
+            CONTROL_PANEL_SUBDOMAIN=${{ secrets.CONTROL_PANEL_SUBDOMAIN }}
+            CONTROL_HOST=${{ secrets.CONTROL_HOST }}
+            VIEWER_HOST=${{ secrets.VIEWER_HOST }}
+            OTEL_OPTS=${{ secrets.OTEL_OPTS }}
+            OTEL_URI=${{ secrets.OTEL_URI }}
+            MONGO_URI=${{ secrets.MONGO_URI }}
+            IMAGES_S3_BUCKET=${{ secrets.IMAGES_S3_BUCKET }}
+            IMAGES_CDN_ENDPOINT=${{ secrets.IMAGES_CDN_ENDPOINT }}
