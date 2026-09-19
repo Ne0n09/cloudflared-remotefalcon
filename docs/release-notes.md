@@ -1,5 +1,29 @@
 # Release Notes
 
+## 2026.9.19.2
+
+- Added `tests/fresh-deployment-test.sh` for repeatable Debian VM validation of release upgrades, fresh local image builds, and fresh GitHub image builder deployments. The harness reuses an existing private `.env`, assigns isolated data paths, requires explicit authorization before replacing fixed-name test containers, and records per-mode logs and results.
+
+- Versity Gateway initialization now runs idempotently after deployment even when copied credentials are already nondefault, which ensures a fresh data directory receives its user, bucket, and public read policy.
+
+- Health checks now fail when Versity Gateway is not ready or when its configured bucket, owner, or public policy is missing.
+
+- Reduced the downloadable release archive to installer and updater runtime files. Documentation remains in the repository and is published to the documentation site, while the approximately 19 MB documentation image directory is no longer duplicated in every installation archive.
+
+## 2026.9.19.1
+
+- Added checksummed public release installation and self updates that work without a GitHub account. Updates preserve the active `.env`, `compose.yaml`, and `default.conf`, stage new templates for review, and back up installed scripts.
+
+- Updated fresh local and remote installations for the current Remote Falcon platform monorepo and platform commit image tags.
+
+- Fixed runtime MongoDB configuration for Quarkus and Spring services so Docker Compose expands credentials correctly instead of passing nested variable expressions into containers.
+
+- Remote workflow deployments now start required dependencies and validate the newly built services before the complete stack health check.
+
+- Container updates validate the service being replaced, propagate failures to `configure-rf.sh`, and prevent unattended MongoDB major version upgrades.
+
+- Verified fresh local builds and all five GitHub image builder jobs on Debian, followed by complete live endpoint, certificate, NGINX, MongoDB, and Versity Gateway checks.
+
 ## 2026.5.29.1
 
 - Feature: added unified CI workflow that supports scheduled matrix builds and workflow_dispatch with per-service inputs and per-service SHA override (build-all, build single, or build-all with explicit SHAs). File: build.yml.

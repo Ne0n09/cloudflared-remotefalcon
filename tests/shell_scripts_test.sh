@@ -415,7 +415,7 @@ elif [[ "$1" == "exec" && "$2" == "mongo" && "$*" == *"mongosh"* ]]; then
   printf 'No subdomains found\n'
 elif [[ "$1" == "run" && "$*" == *"get-bucket-policy"* ]]; then
   if [[ "${MOCK_BUCKET_POLICY_EXISTS:-}" == "true" ]]; then
-    printf '{"Statement":[{"Principal":"*","Action":"s3:GetObject"}]}\n'
+    printf '%s\n' '{"Policy":"{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"PublicRead\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::remote-falcon-images/*\"]},{\"Sid\":\"AppAccessUserOnly\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"123456\"},\"Action\":[\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::remote-falcon-images\",\"arn:aws:s3:::remote-falcon-images/*\"]}]}"}'
     exit 0
   else
     exit 1
@@ -741,9 +741,27 @@ test_health_check_empty_s3_bucket() {
   (
     cd "$ws" || exit 1
     ./health_check.sh 0s
-  ) > "$ws/health.out" 2>&1 || return 1
+  ) > "$ws/health.out" 2>&1 || true
 
   assert_file_contains "$ws/health.out" "No objects found in bucket 'remote-falcon-images'"
+}
+
+test_health_check_requires_s3_bucket() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="external-api ui plugins-api viewer control-panel cloudflared nginx mongo versitygw"
+  export MOCK_BUCKET_EXISTS="false"
+  export MOCK_BUCKET_POLICY_EXISTS="false"
+
+  if (
+    cd "$ws" || exit 1
+    ./health_check.sh 0s
+  ) > "$ws/health-missing-bucket.out" 2>&1; then
+    return 1
+  fi
+
+  assert_file_contains "$ws/health-missing-bucket.out" "Bucket 'remote-falcon-images' not found"
 }
 
 test_configure_rf_help() {
@@ -773,6 +791,14 @@ test_fresh_install_checks_each_deployed_service() {
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Container update failed. Aborting configuration.'
 }
 
+test_fresh_storage_is_initialized_and_required() {
+  assert_file_contains "$ROOT_DIR/shared_functions.sh" 'The initializer is idempotent'
+  assert_file_contains "$ROOT_DIR/shared_functions.sh" 'bash "\$SCRIPT_DIR/versitygw_init.sh"'
+  assert_file_contains "$ROOT_DIR/health_check.sh" "Bucket.*not found.*versitygw_init.sh"
+  assert_file_contains "$ROOT_DIR/health_check.sh" 'HEALTHY=false'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" './versitygw_init.sh && ./health_check.sh 0s'
+}
+
 test_noninteractive_mongo_upgrade_stays_on_current_major() {
   assert_file_contains "$ROOT_DIR/update_containers.sh" 'MongoDB major upgrade.*will not be applied automatically'
   assert_file_contains "$ROOT_DIR/update_containers.sh" 'replace_compose_tag "\$service_name" "\$LATEST_SAME_MAJOR"'
@@ -783,6 +809,21 @@ test_current_platform_runtime_configuration() {
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'SPRING_DATA_MONGODB_URI=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}:\$\{MONGO_INITDB_ROOT_PASSWORD\}@mongo:27017/remote-falcon\?authSource=admin'
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'IMAGES_CDN_ENDPOINT=https://\$\{DOMAIN\}/\$\{IMAGES_S3_BUCKET\}'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Configuration completed with failed health checks.'
+}
+
+test_fresh_deployment_harness_safety() {
+  bash -n "$ROOT_DIR/tests/fresh-deployment-test.sh" || return 1
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'Rerun with --replace-running on a dedicated test host'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'Refusing unsafe cleanup path'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" './configure-rf.sh -y --docker-mode manual'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'update_scripts.sh --version "\$VERSION"'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'ghcr.io/\$\{repo\}/\$\{service\}'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'remove_local_app_images'
+}
+
+test_release_archive_excludes_documentation() {
+  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'VERSION LICENSE \*.sh image-builder remotefalcon tests'
+  assert_file_not_contains "$ROOT_DIR/.github/workflows/release.yml" 'VERSION \*.sh \.github docs'
 }
 
 test_fresh_remote_install_rebuilds_latest_tags() {
@@ -831,11 +872,15 @@ run_test "update_containers.sh supports mocked dry-run checks" test_update_conta
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
 run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
+run_test "health_check.sh fails when the S3 bucket is missing" test_health_check_requires_s3_bucket
 run_test "configure-rf.sh exposes expected CLI help" test_configure_rf_help
 run_test "configure-rf.sh has no archived updater" test_configure_rf_has_no_archived_updater
 run_test "fresh installs validate deployed services individually" test_fresh_install_checks_each_deployed_service
+run_test "fresh storage is initialized and required by health checks" test_fresh_storage_is_initialized_and_required
 run_test "noninteractive MongoDB updates stay on the current major" test_noninteractive_mongo_upgrade_stays_on_current_major
 run_test "compose supplies current platform runtime configuration" test_current_platform_runtime_configuration
+run_test "fresh deployment harness has guarded update and build modes" test_fresh_deployment_harness_safety
+run_test "release archive excludes documentation assets" test_release_archive_excludes_documentation
 run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
 run_test "release updater preserves live configuration" test_release_updater_preserves_live_config

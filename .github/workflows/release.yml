@@ -21,7 +21,7 @@ jobs:
         run: |
           tar --exclude='.git' --exclude='remotefalcon/.env' --exclude='remotefalcon-backups' \
             -czf cloudflared-remotefalcon.tar.gz \
-            VERSION *.sh .github docs image-builder remotefalcon tests README.md LICENSE mkdocs.yml
+            VERSION LICENSE *.sh image-builder remotefalcon tests
           sha256sum cloudflared-remotefalcon.tar.gz > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:

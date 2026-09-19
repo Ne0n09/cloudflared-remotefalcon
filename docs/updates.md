@@ -50,3 +50,16 @@ The updater downloads `cloudflared-remotefalcon.tar.gz` and `SHA256SUMS` from th
 An update preserves `remotefalcon/.env`, the active `compose.yaml`, and `default.conf`. New configuration templates are written as `compose.yaml.new` and `default.conf.new` for review. Run `./health_check.sh 0s` after applying any template changes.
 
 The image builder uses the unified `build.yml` workflow. `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.
+
+## Repeatable Debian deployment test
+
+On a dedicated test host, `tests/fresh-deployment-test.sh` can verify a release update and then perform fresh local and remote image build installations. It copies values from an existing private `.env`, assigns isolated MongoDB and Versity Gateway data directories, runs installation through `configure-rf.sh`, and performs the full health check.
+
+```sh
+./tests/fresh-deployment-test.sh \
+  --source-env /path/to/existing/remotefalcon/.env \
+  --mode both \
+  --replace-running
+```
+
+Use `--mode update`, `local`, or `remote` to run one path. Remote mode requires working `GITHUB_PAT` and `REPO` values in the source `.env`. The explicit `--replace-running` option is required when fixed-name Remote Falcon containers already exist. Test logs and result markers are written under `~/rf-fresh-deployment-tests/results` by default.

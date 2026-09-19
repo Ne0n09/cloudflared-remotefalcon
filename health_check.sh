@@ -284,6 +284,9 @@ check_endpoint() {
 
     if [[ "$output" == "OK" ]]; then
       echo -e "${GREEN}✅ $container_name is ready.${NC}"
+    else
+      echo -e "${RED}❌ $container_name did not return a healthy status.${NC}"
+      HEALTHY=false
     fi
 
     # Check if bucket exists
@@ -294,6 +297,7 @@ check_endpoint() {
         echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' exists and is owned by '$S3_ACCESS_KEY'.${NC}"
       else
         echo -e "${YELLOW}⚠️ Bucket '$IMAGES_S3_BUCKET' exists but is owned by '$bucket_owner'. Re-run ./versitygw_init.sh${NC}"
+        HEALTHY=false
       fi
 
       # Check bucket policy for public access
@@ -301,9 +305,11 @@ check_endpoint() {
         echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' policy is already set for public access.${NC}"
       else
         echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' policy is not set for public access. Re-run ./versitygw_init.sh${NC}"
+        HEALTHY=false
       fi
     else
       echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' not found in $container_name. Re-run ./versitygw_init.sh${NC}"
+      HEALTHY=false
     fi
 
     # Print bucket and object information

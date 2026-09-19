@@ -659,14 +659,14 @@ check_bucket_policy() {
 }
 
 versitygw_init() {
-  # Check if the versitygw_init.sh script exists and run it if it any of the VersityGW credentials are set to default values
-  if [[ $S3_ROOT_USER == "12345678" || $S3_ROOT_PASSWORD == "12345678" || $S3_ACCESS_KEY == "123456" || $S3_SECRET_KEY == "123456" ]]; then
-    echo -e "${YELLOW}⚠️ Versity Gateway variables are set to the default values. Running versitygw_init.sh to configure Versity Gateway for S3 storage...${NC}"
-    if [ -f "$SCRIPT_DIR/versitygw_init.sh" ]; then
-      bash "$SCRIPT_DIR/versitygw_init.sh"
-    else
-      echo -e "${YELLOW}⚠️ versitygw_init.sh script not found. Skipping Versity Gateway initialization.${NC}"
-    fi
+  # The credentials can already be customized while the selected data path is
+  # empty. The initializer is idempotent, so always ensure the user, bucket,
+  # and public policy exist after containers are deployed.
+  if [ -f "$SCRIPT_DIR/versitygw_init.sh" ]; then
+    bash "$SCRIPT_DIR/versitygw_init.sh"
+  else
+    echo -e "${RED}❌ versitygw_init.sh script not found.${NC}" >&2
+    return 1
   fi
 }
 
