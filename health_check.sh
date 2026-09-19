@@ -77,7 +77,9 @@ Error response from daemon: No such container|Container is not running
 check_container_logs() {
   local container="$1"
   local logs
-  logs=$(docker logs --tail 50 "$container" 2>&1)
+  # Ignore stale startup errors after a service has recovered. Override the
+  # window when investigating an older incident, for example HEALTH_LOG_SINCE=1h.
+  logs=$(docker logs --since "${HEALTH_LOG_SINCE:-10m}" --tail 200 "$container" 2>&1)
 
   echo -e "🔍 Checking logs for ${BLUE}$container${NC}..."
 

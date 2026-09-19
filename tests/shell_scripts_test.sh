@@ -666,6 +666,10 @@ test_health_check_missing_env_fails() {
   fi
 }
 
+test_health_check_uses_recent_logs() {
+  assert_file_contains "$ROOT_DIR/health_check.sh" 'docker logs --since "\$\{HEALTH_LOG_SINCE:-10m\}"'
+}
+
 test_update_containers_dry_run() {
   local ws output
   ws="$(make_workspace)"
@@ -790,6 +794,7 @@ run_test "run_workflow.sh rejects invalid service arguments" test_run_workflow_i
 run_test "run_workflow.sh restores a failed deployment" test_run_workflow_rolls_back_failed_deploy
 run_test "shared_functions.sh hides secrets in output" test_print_env_redacts_secrets
 run_test "health_check.sh fails without .env" test_health_check_missing_env_fails
+run_test "health_check.sh ignores stale log errors" test_health_check_uses_recent_logs
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
