@@ -46,7 +46,7 @@ for script in "${scripts[@]}"; do
   bash -n "$source_dir/$script"
 done
 
-if [[ "${RF_SKIP_UPDATE_TESTS:-false}" != true && -x "$source_dir/tests/shell_scripts_test.sh" ]]; then
+if [[ "${RF_SKIP_UPDATE_TESTS:-false}" != true && -f "$source_dir/tests/shell_scripts_test.sh" ]]; then
   (cd "$source_dir" && bash tests/shell_scripts_test.sh)
 fi
 
