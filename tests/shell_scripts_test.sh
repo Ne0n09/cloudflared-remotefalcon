@@ -887,6 +887,28 @@ test_release_archive_excludes_documentation() {
   assert_file_not_contains "$ROOT_DIR/install-manifest.txt" '(^|[[:space:]])docs(/|[[:space:]])'
 }
 
+test_github_release_uses_documented_notes() {
+  local output missing_version
+  output="$TEST_TMP/github-release-notes.md"
+  missing_version="$TEST_TMP/missing-version"
+
+  bash "$ROOT_DIR/tests/extract-release-notes.sh" \
+    "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
+  assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
+  assert_file_contains "$output" '^-[[:space:]]+GitHub releases now use the matching section'
+  assert_file_contains "$output" '^\[Full documentation\]'
+  assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
+
+  printf '1900.1.1\n' > "$missing_version"
+  if bash "$ROOT_DIR/tests/extract-release-notes.sh" \
+    "$missing_version" "$ROOT_DIR/docs/release-notes.md" "$TEST_TMP/missing-notes.md" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'body_path: github-release-notes\.md'
+  assert_file_not_contains "$ROOT_DIR/.github/workflows/release.yml" 'generate_release_notes: true'
+}
+
 test_install_manifest_is_authoritative() {
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable configure-rf\.sh$'
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^template remotefalcon/compose\.yaml$'
@@ -963,6 +985,7 @@ run_test "infrastructure images use tested version tags" test_infrastructure_ima
 run_test "CI uses pinned actions and static validators" test_ci_has_pinned_static_validation
 run_test "fresh deployment harness has guarded update and build modes" test_fresh_deployment_harness_safety
 run_test "release archive excludes documentation assets" test_release_archive_excludes_documentation
+run_test "GitHub releases use the documented version notes" test_github_release_uses_documented_notes
 run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
 run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack

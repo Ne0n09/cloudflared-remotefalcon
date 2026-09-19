@@ -17,6 +17,7 @@ jobs:
         run: |
           test "v$(cat VERSION)" = "${GITHUB_REF_NAME}"
           bash tests/shell_scripts_test.sh
+          bash tests/extract-release-notes.sh VERSION docs/release-notes.md github-release-notes.md
       - name: Build verified release archive
         run: |
           mapfile -t release_paths < <(awk '$1 != "retired" && $1 !~ /^#/ && NF == 2 { print $2 }' install-manifest.txt)
@@ -27,7 +28,7 @@ jobs:
           sha256sum cloudflared-remotefalcon.tar.gz > SHA256SUMS
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          generate_release_notes: true
+          body_path: github-release-notes.md
           files: |
             cloudflared-remotefalcon.tar.gz
             SHA256SUMS

@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.9.19.4
+
+- GitHub releases now use the matching section from the documentation release notes as their release description, so the Releases page shows the same detailed change summary as the documentation site.
+
+- Release publication now fails when the version does not have a matching, nonempty documentation release notes section.
+
 ## 2026.9.19.3
 
 - Removed the obsolete `minio_init.sh` now that object storage uses Versity Gateway. The MinIO migration path remains in `versitygw_init.sh` for installations that still have legacy data.
