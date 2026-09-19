@@ -250,6 +250,6 @@ Otherwise, uploading images should display a `image-name.png uploaded successful
 
 Substitute `https://yourdomain.com/remote-falcon-images` instead and you will get a usable link when you add the image path `/yourshowname/yourimagename.png`.
 
-!!! example "Example image path for an image hosted from MinIO"
+!!! example "Example image path for an image hosted from Versity Gateway"
 
     `https://yourdomain.com/remote-falcon-images/yourshowname/sl3gtwl.png`

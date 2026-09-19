@@ -41,7 +41,18 @@ if [[ "$MODE" == "check" ]]; then
   exit
 fi
 
-scripts=(configure-rf.sh generate_jwt.sh health_check.sh install.sh make_admin.sh minio_init.sh revert.sh run_workflow.sh setup_cloudflare.sh shared_functions.sh sync_repo_secrets.sh update_containers.sh update_scripts.sh versitygw_init.sh)
+manifest="$source_dir/install-manifest.txt"
+[[ -f "$manifest" ]] || { echo "Release is missing install-manifest.txt" >&2; exit 1; }
+if awk 'NF && $1 !~ /^#/ && (NF != 2 || $2 ~ /^\// || $2 ~ /(^|\/)\.\.($|\/)/ || $1 !~ /^(managed|executable|template|release-file|release-dir|retired)$/) { exit 1 }' "$manifest"; then
+  :
+else
+  echo "Release contains an invalid install manifest." >&2
+  exit 1
+fi
+mapfile -t scripts < <(awk '$1 == "executable" { print $2 }' "$manifest")
+mapfile -t managed_files < <(awk '$1 == "managed" || $1 == "executable" { print $2 }' "$manifest")
+mapfile -t template_files < <(awk '$1 == "template" { print $2 }' "$manifest")
+mapfile -t obsolete_scripts < <(awk '$1 == "retired" { print $2 }' "$manifest")
 for script in "${scripts[@]}"; do
   bash -n "$source_dir/$script"
 done
@@ -67,14 +78,27 @@ rollback() {
 }
 trap rollback ERR
 
-managed=(VERSION "${scripts[@]}" remotefalcon/.env.example image-builder/.github/workflows/build.yml)
+# Remove retired managed scripts during updates. Back them up with the other
+# managed files so a failed update can restore the previous installation.
+for relative in "${obsolete_scripts[@]}"; do
+  target_path="$target_dir/$relative"
+  if [[ -f "$target_path" ]]; then
+    mkdir -p "$backup_dir/$(dirname "$relative")"
+    cp -p "$target_path" "$backup_dir/$relative"
+    rm -f "$target_path"
+    installed+=("$target_path")
+  fi
+done
+
+managed=("${managed_files[@]}")
 if [[ "$MODE" == "install" ]]; then
-  managed+=(remotefalcon/compose.yaml remotefalcon/default.conf)
+  managed+=("${template_files[@]}")
 else
   # Updated templates are staged for review and never overwrite live configuration.
-  mkdir -p "$target_dir/remotefalcon"
-  cp "$source_dir/remotefalcon/compose.yaml" "$target_dir/remotefalcon/compose.yaml.new"
-  cp "$source_dir/remotefalcon/default.conf" "$target_dir/remotefalcon/default.conf.new"
+  for relative in "${template_files[@]}"; do
+    mkdir -p "$target_dir/$(dirname "$relative")"
+    cp "$source_dir/$relative" "$target_dir/$relative.new"
+  done
 fi
 
 for relative in "${managed[@]}"; do

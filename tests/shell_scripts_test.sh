@@ -388,7 +388,17 @@ MOCK
 #!/usr/bin/env bash
 echo "docker $*" >> "${MOCK_LOG_DIR}/commands.log"
 
-if [[ "$1" == "compose" && "$*" == *"ps --services"* ]]; then
+if [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1 $2" == "container inspect" ]]; then
+  exit 0
+elif [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1" == "inspect" && "$*" == *".Config.Env"* ]]; then
+  printf 'MINIO_ROOT_USER=legacy-user\nMINIO_ROOT_PASSWORD=legacy-password\n'
+elif [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1" == "inspect" && "$*" == *".State.Running"* ]]; then
+  printf 'false\n'
+elif [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1" == "inspect" && "$*" == *".NetworkSettings.Networks"* && "$*" == *"versitygw"* ]]; then
+  printf 'rf-network\n'
+elif [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1" == "inspect" && "$*" == *".NetworkSettings.Networks"* ]]; then
+  printf 'legacy-network\n'
+elif [[ "$1" == "compose" && "$*" == *"ps --services"* ]]; then
   printf '%s\n' ${MOCK_RUNNING_SERVICES:-}
 elif [[ "$1" == "inspect" && "$*" == *"{{.Image}}"* ]]; then
   printf '%s\n' "${MOCK_OLD_IMAGE_ID:-}"
@@ -729,6 +739,35 @@ test_versitygw_init() {
   assert_file_contains "$ws/mock-log/commands.log" 'put-bucket-policy'
 }
 
+test_minio_migration_preserves_source() {
+  local ws legacy_path migrated_path
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  legacy_path="$ws/legacy-minio"
+  mkdir -p "$legacy_path"
+  printf 'legacy object data\n' > "$legacy_path/object.bin"
+  printf 'MINIO_PATH=%s\n' "$legacy_path" >> "$ws/remotefalcon/.env"
+  export MOCK_RUNNING_SERVICES="versitygw"
+  export MOCK_LEGACY_MINIO=true
+
+  (
+    cd "$ws" || exit 1
+    ./versitygw_init.sh
+  ) || return 1
+
+  [[ ! -e "$legacy_path" ]] || return 1
+  migrated_path=$(find "$ws" -maxdepth 1 -type d -name 'legacy-minio.migrated-*' -print -quit)
+  [[ -n "$migrated_path" && -f "$migrated_path/object.bin" ]] || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'docker start remote-falcon-images.minio'
+  assert_file_contains "$ws/mock-log/commands.log" 'docker network connect rf-network remote-falcon-images.minio'
+  assert_file_contains "$ws/mock-log/commands.log" 'mc mirror --overwrite'
+  assert_file_contains "$ws/mock-log/commands.log" 'mc --no-color diff'
+  assert_file_contains "$ws/mock-log/commands.log" 'docker stop remote-falcon-images.minio'
+  assert_file_not_contains "$ROOT_DIR/versitygw_init.sh" 'rm -rf.*MINIO'
+  assert_file_not_contains "$ROOT_DIR/versitygw_init.sh" 'docker rm.*minio'
+  unset MOCK_LEGACY_MINIO
+}
+
 test_health_check_empty_s3_bucket() {
   local ws
   ws="$(make_workspace)"
@@ -811,6 +850,27 @@ test_current_platform_runtime_configuration() {
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Configuration completed with failed health checks.'
 }
 
+test_infrastructure_images_are_version_pinned() {
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: nginx:1\.31\.6'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: cloudflare/cloudflared:2026\.9\.1'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: mongo:7\.0\.43'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: versity/versitygw:v1\.8\.0'
+  assert_file_not_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: (nginx|cloudflare/cloudflared|mongo|versity/versitygw):latest'
+}
+
+test_ci_has_pinned_static_validation() {
+  assert_file_contains "$ROOT_DIR/.github/workflows/shell-tests.yml" 'shellcheck --severity=error'
+  assert_file_contains "$ROOT_DIR/.github/workflows/shell-tests.yml" 'actionlint@v1\.7\.12'
+  assert_file_contains "$ROOT_DIR/.github/workflows/shell-tests.yml" 'GOPATH.*actionlint'
+  assert_file_contains "$ROOT_DIR/.github/workflows/shell-tests.yml" 'docker compose.*config -q'
+  if grep -RE 'uses: [^ ]+@v[0-9]' "$ROOT_DIR/.github/workflows" "$ROOT_DIR/image-builder/.github/workflows"; then
+    return 1
+  fi
+  assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-material==[0-9]'
+  assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-glightbox==[0-9]'
+  assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-git-revision-date-localized-plugin==[0-9]'
+}
+
 test_fresh_deployment_harness_safety() {
   bash -n "$ROOT_DIR/tests/fresh-deployment-test.sh" || return 1
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'Rerun with --replace-running on a dedicated test host'
@@ -822,8 +882,19 @@ test_fresh_deployment_harness_safety() {
 }
 
 test_release_archive_excludes_documentation() {
-  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'VERSION LICENSE \*.sh image-builder remotefalcon tests'
-  assert_file_not_contains "$ROOT_DIR/.github/workflows/release.yml" 'VERSION \*.sh \.github docs'
+  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'install-manifest\.txt'
+  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'release_paths'
+  assert_file_not_contains "$ROOT_DIR/install-manifest.txt" '(^|[[:space:]])docs(/|[[:space:]])'
+}
+
+test_install_manifest_is_authoritative() {
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable configure-rf\.sh$'
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^template remotefalcon/compose\.yaml$'
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^release-dir tests$'
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired minio_init\.sh$'
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired revert\.sh$'
+  assert_file_contains "$ROOT_DIR/update_scripts.sh" 'mapfile -t scripts.*install-manifest'
+  assert_file_not_contains "$ROOT_DIR/update_scripts.sh" '^scripts=\('
 }
 
 test_fresh_remote_install_rebuilds_latest_tags() {
@@ -845,6 +916,8 @@ test_release_updater_preserves_live_config() {
   printf 'SECRET=value\n' > "$target/remotefalcon/.env"
   printf 'custom compose\n' > "$target/remotefalcon/compose.yaml"
   printf 'old\n' > "$target/VERSION"
+  printf '#!/bin/bash\n' > "$target/minio_init.sh"
+  printf '#!/bin/bash\n' > "$target/revert.sh"
 
   RF_SKIP_UPDATE_TESTS=true bash "$ROOT_DIR/update_scripts.sh" \
     --install-from "$ROOT_DIR" --target "$target" --mode update || return 1
@@ -854,6 +927,12 @@ test_release_updater_preserves_live_config() {
   assert_file_contains "$target/remotefalcon/compose.yaml" '^custom compose$'
   [[ -f "$target/remotefalcon/compose.yaml.new" ]] || return 1
   [[ -x "$target/configure-rf.sh" ]] || return 1
+  [[ -f "$target/install-manifest.txt" ]] || return 1
+  [[ -f "$target/LICENSE" ]] || return 1
+  [[ ! -e "$target/minio_init.sh" ]] || return 1
+  [[ ! -e "$target/revert.sh" ]] || return 1
+  find "$target/remotefalcon-backups" -type f -name minio_init.sh -print -quit | grep -q . || return 1
+  find "$target/remotefalcon-backups" -type f -name revert.sh -print -quit | grep -q . || return 1
 }
 
 run_test "bash syntax for managed scripts" test_bash_syntax
@@ -871,6 +950,7 @@ run_test "health_check.sh ignores stale log errors" test_health_check_uses_recen
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
+run_test "MinIO migration verifies objects and preserves source data" test_minio_migration_preserves_source
 run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
 run_test "health_check.sh fails when the S3 bucket is missing" test_health_check_requires_s3_bucket
 run_test "configure-rf.sh exposes expected CLI help" test_configure_rf_help
@@ -879,8 +959,11 @@ run_test "fresh installs validate deployed services individually" test_fresh_ins
 run_test "fresh storage is initialized and required by health checks" test_fresh_storage_is_initialized_and_required
 run_test "noninteractive MongoDB updates stay on the current major" test_noninteractive_mongo_upgrade_stays_on_current_major
 run_test "compose supplies current platform runtime configuration" test_current_platform_runtime_configuration
+run_test "infrastructure images use tested version tags" test_infrastructure_images_are_version_pinned
+run_test "CI uses pinned actions and static validators" test_ci_has_pinned_static_validation
 run_test "fresh deployment harness has guarded update and build modes" test_fresh_deployment_harness_safety
 run_test "release archive excludes documentation assets" test_release_archive_excludes_documentation
+run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
 run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
 run_test "release updater preserves live configuration" test_release_updater_preserves_live_config

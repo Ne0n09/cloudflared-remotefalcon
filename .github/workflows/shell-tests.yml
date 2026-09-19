@@ -12,6 +12,8 @@ on:
       - 'tests/**'
       - '.github/workflows/shell-tests.yml'
       - '.github/workflows/release.yml'
+      - 'image-builder/.github/workflows/build.yml'
+      - 'install-manifest.txt'
   pull_request:
     paths:
       - '*.sh'
@@ -20,11 +22,20 @@ on:
       - 'tests/**'
       - '.github/workflows/shell-tests.yml'
       - '.github/workflows/release.yml'
+      - 'image-builder/.github/workflows/build.yml'
+      - 'install-manifest.txt'
 
 jobs:
   shell-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Run shell script tests
         run: bash tests/shell_scripts_test.sh
+      - name: Install pinned workflow validator
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: Validate shell scripts, workflows, and Compose
+        run: |
+          shellcheck --severity=error ./*.sh tests/*.sh
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml image-builder/.github/workflows/*.yml
+          docker compose --env-file remotefalcon/.env.example -f remotefalcon/compose.yaml config -q

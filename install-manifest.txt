@@ -1,0 +1,24 @@
+# type path
+managed install-manifest.txt
+managed VERSION
+managed LICENSE
+executable configure-rf.sh
+executable generate_jwt.sh
+executable health_check.sh
+executable install.sh
+executable make_admin.sh
+executable run_workflow.sh
+executable setup_cloudflare.sh
+executable shared_functions.sh
+executable sync_repo_secrets.sh
+executable update_containers.sh
+executable update_scripts.sh
+executable versitygw_init.sh
+managed remotefalcon/.env.example
+template remotefalcon/compose.yaml
+template remotefalcon/default.conf
+managed image-builder/.github/workflows/build.yml
+release-file image-builder/README.md
+release-dir tests
+retired minio_init.sh
+retired revert.sh

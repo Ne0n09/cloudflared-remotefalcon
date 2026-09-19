@@ -9,7 +9,7 @@
 
 services:
   nginx:
-    image: nginx:latest
+    image: nginx:1.31.6
     container_name: nginx
     restart: unless-stopped
     volumes:
@@ -20,14 +20,14 @@ services:
       - YOUR_DOMAIN=${DOMAIN}
       - YOUR_IMAGES_S3_BUCKET=${IMAGES_S3_BUCKET}
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.9.1
     container_name: cloudflared
     restart: unless-stopped
     command: tunnel run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
   mongo:
-    image: mongo:7
+    image: mongo:7.0.43
     container_name: mongo
     restart: always
     healthcheck:
@@ -42,7 +42,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
   versitygw:
-    image: versity/versitygw:latest
+    image: versity/versitygw:v1.8.0
     container_name: versitygw
     restart: always
     volumes:

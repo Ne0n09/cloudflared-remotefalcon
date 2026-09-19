@@ -51,6 +51,8 @@ An update preserves `remotefalcon/.env`, the active `compose.yaml`, and `default
 
 The image builder uses the unified `build.yml` workflow. `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.
 
+Infrastructure images use tested version tags in `compose.yaml`. Run `update_containers.sh` to check and apply newer versions with backup, deployment validation, and rollback instead of changing those tags to `latest`.
+
 ## Repeatable Debian deployment test
 
 On a dedicated test host, `tests/fresh-deployment-test.sh` can verify a release update and then perform fresh local and remote image build installations. It copies values from an existing private `.env`, assigns isolated MongoDB and Versity Gateway data directories, runs installation through `configure-rf.sh`, and performs the full health check.

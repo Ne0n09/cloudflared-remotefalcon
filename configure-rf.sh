@@ -367,7 +367,7 @@ validate_variables() {
   local valid=true
 
   if [[ "$DEBUG_INPUT" == "true" ]]; then
-    echo -e "${CYAN}DEBUG: validate_variables called with args: $@${NC}" >&2
+    echo -e "${CYAN}DEBUG: validate_variables called with args: $*${NC}" >&2
   fi
 
   while (( "$#" )); do

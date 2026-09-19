@@ -1,5 +1,21 @@
 # Release Notes
 
+## 2026.9.19.3
+
+- Removed the obsolete `minio_init.sh` now that object storage uses Versity Gateway. The MinIO migration path remains in `versitygw_init.sh` for installations that still have legacy data.
+
+- Removed the legacy interactive `revert.sh`. Script updates already preserve live configuration, stage new templates for review, back up managed scripts, and automatically restore scripts after a failed update.
+
+- The release updater now removes both retired scripts from existing installations while retaining copies in the versioned script backup directory.
+
+- Made legacy MinIO migration automatic and safer for installations using `/home/minio-volume`. The migration can start the known stopped Remote Falcon MinIO container, verifies migrated object paths and sizes, stops the retired container, and preserves the source volume as a dated backup instead of deleting it.
+
+- Pinned NGINX, Cloudflared, MongoDB, and Versity Gateway to tested version tags so a container recreation cannot silently introduce a new infrastructure version. The guarded container updater remains the supported upgrade path.
+
+- Added ShellCheck, actionlint, and Docker Compose validation to CI. GitHub Actions now use immutable commit references and documentation dependencies use exact versions.
+
+- Added `install-manifest.txt` as the shared source of truth for release contents, installed executables, configuration templates, and retired files.
+
 ## 2026.9.19.2
 
 - Added `tests/fresh-deployment-test.sh` for repeatable Debian VM validation of release upgrades, fresh local image builds, and fresh GitHub image builder deployments. The harness reuses an existing private `.env`, assigns isolated data paths, requires explicit authorization before replacing fixed-name test containers, and records per-mode logs and results.

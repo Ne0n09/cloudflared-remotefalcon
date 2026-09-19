@@ -188,22 +188,6 @@ Click the name of the script to expand the section to display details about the 
 
     ![Make_admin demo](../images/make_admin.gif)
 
-??? example "revert.sh"
-
-    #### revert.sh
-
-    - This script will allow you to revert to a previous backup of the .env, compose.yaml, or MongoDB.
-
-    - The script looks for backups in the 'remotefalcon-backups' directory.
-
-    The script is included in this checkout.
-
-    ```sh title="Run revert.sh"
-    ./revert.sh
-    ```
-
-    ![Make_admin demo](../images/revert.gif)
-
 ??? example "versitygw_init.sh"
 
     #### versitygw_init.sh
@@ -217,6 +201,8 @@ Click the name of the script to expand the section to display details about the 
     - This lets you use the Image Hosting tab in the Control Panel which allows you to self host your viewer page images.
 
     - The script can be run again manually with no ill-effects to ensure Versity Gateway is configured properly.
+
+    - If the legacy `/home/minio-volume` directory and its `remote-falcon-images.minio` container are found, the script automatically mirrors the old image bucket into Versity Gateway. It verifies object paths and sizes, stops the retired MinIO container, and renames the old volume to a dated `.migrated-*` backup instead of deleting it.
 
     - The script is automatically downloaded by configure-rf.
 

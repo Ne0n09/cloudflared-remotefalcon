@@ -259,7 +259,7 @@ check_endpoint() {
       echo -e "${GREEN}✅ NGINX configuration test successful.${NC}"
     else
       echo "$nginx_test_output"
-      if echo "$nginx_test_output" | grep -q "key values mismatch" && $ON_DISK_CERT_KEY_MATCH == true; then
+      if echo "$nginx_test_output" | grep -q "key values mismatch" && [[ "$ON_DISK_CERT_KEY_MATCH" == true ]]; then
         echo -e "${YELLOW}⚠️ Detected certificate/key mismatch inside the NGINX container, but the on disk certificate and key match.${NC}"
         echo -e "${YELLOW}Restart nginx after correcting the mounted certificate and key.${NC}"
         HEALTHY=false
