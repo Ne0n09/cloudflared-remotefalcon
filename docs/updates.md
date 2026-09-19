@@ -38,8 +38,15 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 ## Updating scripts and configuration templates
 
-The original Ne0n09 source repositories are archived. Update the files in this checkout from your maintained repository, review the diff, and copy the tested versions to the VM. The configurator reads local files; it no longer downloads or replaces them from the archived repository.
+Public releases can be checked and installed without a GitHub account:
 
-Keep your configured `.env` private. The configurator creates restricted backups before changing it. Run `./health_check.sh 0s` after an update; it returns a nonzero status if required checks fail.
+```sh
+./update_scripts.sh --check
+./update_scripts.sh
+```
 
-The current image builder uses the unified `build.yml` workflow. `run_workflow.sh` deploys only the Remote Falcon app services built by that workflow and restores the previous Compose configuration and running images if its health check fails.
+The updater downloads `cloudflared-remotefalcon.tar.gz` and `SHA256SUMS` from the latest GitHub Release, verifies the archive, runs shell syntax checks and the test suite, and backs up installed scripts before replacing them.
+
+An update preserves `remotefalcon/.env`, the active `compose.yaml`, and `default.conf`. New configuration templates are written as `compose.yaml.new` and `default.conf.new` for review. Run `./health_check.sh 0s` after applying any template changes.
+
+The image builder uses the unified `build.yml` workflow. `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.

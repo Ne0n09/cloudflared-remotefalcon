@@ -7,15 +7,19 @@ on:
       - master
     paths:
       - '*.sh'
+      - 'VERSION'
       - 'remotefalcon/**'
       - 'tests/**'
       - '.github/workflows/shell-tests.yml'
+      - '.github/workflows/release.yml'
   pull_request:
     paths:
       - '*.sh'
+      - 'VERSION'
       - 'remotefalcon/**'
       - 'tests/**'
       - '.github/workflows/shell-tests.yml'
+      - '.github/workflows/release.yml'
 
 jobs:
   shell-tests:

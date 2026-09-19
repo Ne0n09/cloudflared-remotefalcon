@@ -4,9 +4,26 @@
 
 #set -euo pipefail
 
-# ./configure-rf.sh [-y|--non-interactive] [--set KEY=VALUE ...]
+# ./configure-rf.sh [-y|--non-interactive] [--docker-mode group|rootless|manual] [--set KEY=VALUE ...]
+
+# Preserve the original single-file installation command. A standalone copy of
+# configure-rf.sh bootstraps the latest checksummed public release, then starts
+# the installed configurator. No GitHub login is required.
+BOOTSTRAP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -f "$BOOTSTRAP_DIR/shared_functions.sh" ]]; then
+  command -v curl >/dev/null || { echo "curl is required to install Remote Falcon." >&2; exit 1; }
+  bootstrap_installer=$(mktemp)
+  trap 'rm -f "$bootstrap_installer"' EXIT
+  curl -fsSL --retry 3 -o "$bootstrap_installer" \
+    https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh
+  bash "$bootstrap_installer" --target "$BOOTSTRAP_DIR" --no-configure
+  trap - EXIT
+  rm -f "$bootstrap_installer"
+  exec "$BOOTSTRAP_DIR/configure-rf.sh" "$@"
+fi
 
 NON_INTERACTIVE=false
+DOCKER_MODE="${RF_DOCKER_MODE:-group}"
 DEBUG_INPUT=false # Used to debug input parsing when running in NON_INTERACTIVE mode
 
 declare -A OVERRIDES=()
@@ -16,6 +33,14 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -y|--non-interactive)
       NON_INTERACTIVE=true
+      shift
+      ;;
+    --docker-mode)
+      DOCKER_MODE="${2:-}"
+      shift 2
+      ;;
+    --docker-mode=*)
+      DOCKER_MODE="${1#--docker-mode=}"
       shift
       ;;
     --set)
@@ -44,6 +69,7 @@ while [[ $# -gt 0 ]]; do
       echo
       echo "Options:"
       echo "  -y|--non-interactive      Run non-interactively (no prompts)"
+      echo "  --docker-mode MODE        Docker access: group (default), rootless, or manual"
       echo "  --set KEY=VALUE           Set configuration override for config questions(can be used multiple times)"
       echo "  -h, --help                Show this help message"
       exit 0
@@ -68,7 +94,7 @@ if [ "${DEBUG_INPUT:-false}" = true ] ; then
   echo "--------------------------------------------" >&2
 fi
 
-# Files come from this checkout; the archived upstream is never downloaded.
+# Files come from a verified public release installed into this checkout.
 SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo versitygw)
 ANY_SERVICE_RUNNING=false
 TEMPLATE_REPO="Ne0n09/remote-falcon-image-builder" # Template repo for image builder workflows
@@ -78,8 +104,7 @@ TEMPLATE_REPO="Ne0n09/remote-falcon-image-builder" # Template repo for image bui
 # "CONTROL_PANEL_API" "VIEWER_API" not included because we only want to track if DOMAIN is changed
 #### This will need to be updated down in update_env() if any new build context args are added - sync_repo_secrets will also need to be updated
 
-# Use only the files shipped with this checkout. The original download source
-# is archived and would restore incompatible versions.
+# Required companion files are installed together by install.sh.
 download_file() {
   local filename=$1
 
@@ -89,7 +114,7 @@ download_file() {
       echo -e "✔ ${GREEN}Created .env from the local example.${NC}"
       return
     fi
-    echo -e "${RED}❌ Missing $filename. Restore it from this checkout; the archived download source is incompatible.${NC}" >&2
+    echo -e "${RED}❌ Missing $filename. Run ./install.sh to restore the verified release.${NC}" >&2
     exit 1
   fi
 }
@@ -517,7 +542,7 @@ repo_init() {
   gh repo edit "$username/$new_repo" --enable-projects=false &>/dev/null || true
 
   echo -e "${GREEN}✅ Repository '$username/$new_repo' created and $ENV_FILE updated!${NC}"
-  echo -e "${YELLOW}⚠️ Replace the archived template workflows with $SCRIPT_DIR/image-builder/.github/workflows/build.yml before building images.${NC}"
+  echo -e "${YELLOW}ℹ️ The repository was created from the public image-builder template.${NC}"
 }
 
 # Function to check extracted tags to check if they are tagged to 'latest'
@@ -532,21 +557,25 @@ tag_has_latest() {
   return 1  # false = no 'latest'
 }
 
-# Check if user is root or in the sudo group
-if [[ $EUID -eq 0 ]]; then
-  # User is root, do nothing
-  :
-elif id -nG "$USER" | grep -qw "sudo"; then
-  # User is in the sudo group, do nothing
-  :
-else
-  echo -e "${YELLOW}⚠️ User '$USER' is NOT root and NOT part of the sudo group.${NC}"
-  echo "You must add the user '$USER' to the sudo group or run the script as root."
-  echo
-  echo "To add a user to the sudo group, usually you can run the following commmands..."
-  echo "Switch to the root user: su root"
-  echo "Add the user to the sudo group: /sbin/usermod -aG sudo $USER"
-  echo "Switch back to the user: su $USER"
+case "$DOCKER_MODE" in
+  group|rootless|manual) ;;
+  *) echo -e "${RED}❌ Invalid --docker-mode '$DOCKER_MODE'. Use group, rootless, or manual.${NC}"; exit 2 ;;
+esac
+
+if [[ "$DOCKER_MODE" == "rootless" ]]; then
+  if ! docker info 2>/dev/null | grep -qi rootless; then
+    cat >&2 <<'ROOTLESS'
+Rootless Docker is not active for this user. Follow
+https://docs.docker.com/engine/security/rootless/, verify that `docker info`
+lists "rootless" under Security Options, then rerun this command.
+The configurator will not install a rootful daemon when rootless was selected.
+ROOTLESS
+    exit 2
+  fi
+fi
+
+if [[ $EUID -ne 0 ]] && ! command -v sudo >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+  echo -e "${RED}❌ Docker is unavailable and sudo is not installed. Install Docker as root, then rerun this script.${NC}"
   exit 1
 fi
 
@@ -587,6 +616,35 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 1
   fi
   echo
+fi
+
+# Configure non-root Docker access only when it is actually needed. Permanent
+# docker group membership is the practical default for a dedicated VM, but it
+# grants root-level control of the host. Rootless conversion is never automatic.
+if [[ $EUID -ne 0 ]] && ! docker info >/dev/null 2>&1; then
+  case "$DOCKER_MODE" in
+    group)
+      echo -e "${YELLOW}⚠️ Docker group membership grants root-level privileges on this host.${NC}"
+      sudo groupadd --force docker
+      sudo usermod -aG docker "$USER"
+      echo -e "${GREEN}✔ Added '$USER' to the docker group.${NC}"
+      echo "Log out of this SSH/login session and back in, then rerun ./configure-rf.sh."
+      exit 2
+      ;;
+    rootless)
+      cat >&2 <<'ROOTLESS'
+Rootless Docker must be configured explicitly before Remote Falcon setup.
+Follow https://docs.docker.com/engine/security/rootless/, verify that
+`docker info` shows Security Options: rootless, then rerun configure-rf.sh
+with --docker-mode rootless. Existing rootful Docker data is not migrated.
+ROOTLESS
+      exit 2
+      ;;
+    manual)
+      echo -e "${RED}❌ The current user cannot access Docker. Configure access and rerun.${NC}"
+      exit 2
+      ;;
+  esac
 fi
 
 # Check if GitHub CLI (gh) is installed

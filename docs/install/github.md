@@ -6,7 +6,7 @@ Configure GitHub to remotely build Remote Falcon Images via GitHub Actions workf
 
 - The [configure-rf](../about/scripts.md#configure-rfsh) script offers to configure GitHub and create a new private repository to run the [GitHub Actions](https://docs.github.com/en/actions/get-started/understand-github-actions) workflow to build the Remote Falcon Images and push them to [GitHub Container Registry(GHCR)](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). 
 
-- The configurator can create a private repository from the archived image-builder template. Before running builds, replace its workflow with the maintained [build.yml](../../image-builder/.github/workflows/build.yml) from this checkout.
+- The configurator can create a private repository from the public image-builder template. Script releases also include the current [build.yml](../../image-builder/.github/workflows/build.yml) for review or synchronization with an existing private builder repository.
 
 - The repository is private so your images that are built with your custom arguments remain private as well.
 

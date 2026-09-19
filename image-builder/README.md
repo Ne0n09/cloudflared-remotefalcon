@@ -1,6 +1,6 @@
 # Remote Falcon image builder
 
-This directory contains the updated GitHub Actions workflow for building the current [Remote Falcon platform monorepo](https://github.com/Remote-Falcon/remote-falcon-platform) into a private GitHub Container Registry. The original Ne0n09 template is archived.
+This directory mirrors the public image-builder workflow for building the current [Remote Falcon platform monorepo](https://github.com/Remote-Falcon/remote-falcon-platform) into a private GitHub Container Registry.
 
 Copy `.github/workflows/build.yml` into your private image-builder repository. From the cloudflared-remotefalcon deployment, run `./sync_repo_secrets.sh` to populate its build inputs, then run `./run_workflow.sh` or start the workflow from GitHub Actions. The workflow builds plugins-api, control-panel, viewer, ui, and external-api. Its daily schedule checks for new platform commits.
 

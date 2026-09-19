@@ -64,11 +64,13 @@ make_workspace() {
 
   cp "$ROOT_DIR/configure-rf.sh" "$ws/"
   cp "$ROOT_DIR/health_check.sh" "$ws/"
+  cp "$ROOT_DIR/install.sh" "$ws/"
   cp "$ROOT_DIR/run_workflow.sh" "$ws/"
   cp "$ROOT_DIR/setup_cloudflare.sh" "$ws/"
   cp "$ROOT_DIR/shared_functions.sh" "$ws/"
   cp "$ROOT_DIR/sync_repo_secrets.sh" "$ws/"
   cp "$ROOT_DIR/update_containers.sh" "$ws/"
+  cp "$ROOT_DIR/update_scripts.sh" "$ws/"
   cp "$ROOT_DIR/versitygw_init.sh" "$ws/"
   cp "$ROOT_DIR/remotefalcon/default.conf" "$ws/remotefalcon/"
   cp "$ROOT_DIR/remotefalcon/compose.yaml" "$ws/remotefalcon/"
@@ -442,11 +444,13 @@ test_bash_syntax() {
   local scripts=(
     configure-rf.sh
     health_check.sh
+    install.sh
     run_workflow.sh
     setup_cloudflare.sh
     shared_functions.sh
     sync_repo_secrets.sh
     update_containers.sh
+    update_scripts.sh
     versitygw_init.sh
   )
 
@@ -752,7 +756,27 @@ test_configure_rf_help() {
 
 test_configure_rf_has_no_archived_updater() {
   assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'git clone "https://\$\{GITHUB_PAT\}'
-  assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh'
+  assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/(shared_functions|update_containers)'
+}
+
+test_release_updater_preserves_live_config() {
+  local ws target
+  ws="$(make_workspace)"
+  target="$(mktemp -d "$TEST_TMP/update-target.XXXXXX")"
+  mkdir -p "$target/remotefalcon"
+  printf 'SECRET=value\n' > "$target/remotefalcon/.env"
+  printf 'custom compose\n' > "$target/remotefalcon/compose.yaml"
+  printf 'old\n' > "$target/VERSION"
+
+  RF_SKIP_UPDATE_TESTS=true bash "$ROOT_DIR/update_scripts.sh" \
+    --install-from "$ROOT_DIR" --target "$target" --mode update || return 1
+
+  [[ "$(cat "$target/VERSION")" == "$(cat "$ROOT_DIR/VERSION")" ]] || return 1
+  assert_file_contains "$target/remotefalcon/.env" '^SECRET=value$'
+  assert_file_contains "$target/remotefalcon/compose.yaml" '^custom compose$'
+  [[ -f "$target/remotefalcon/compose.yaml.new" ]] || return 1
+  [[ -x "$target/configure-rf.sh" ]] || return 1
 }
 
 run_test "bash syntax for managed scripts" test_bash_syntax
@@ -772,6 +796,7 @@ run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
 run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
 run_test "configure-rf.sh exposes expected CLI help" test_configure_rf_help
 run_test "configure-rf.sh has no archived updater" test_configure_rf_has_no_archived_updater
+run_test "release updater preserves live configuration" test_release_updater_preserves_live_config
 
 echo
 echo "Passed: $PASS_COUNT"

@@ -1,0 +1,31 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify version and tests
+        run: |
+          test "v$(cat VERSION)" = "${GITHUB_REF_NAME}"
+          bash tests/shell_scripts_test.sh
+      - name: Build verified release archive
+        run: |
+          tar --exclude='.git' --exclude='remotefalcon/.env' --exclude='remotefalcon-backups' \
+            -czf cloudflared-remotefalcon.tar.gz \
+            VERSION *.sh .github docs image-builder remotefalcon tests README.md LICENSE mkdocs.yml
+          sha256sum cloudflared-remotefalcon.tar.gz > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            cloudflared-remotefalcon.tar.gz
+            SHA256SUMS

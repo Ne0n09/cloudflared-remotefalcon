@@ -1,18 +1,16 @@
 # cloudflared-remotefalcon
 
-> Compatibility work in this workspace targets the current
-> [Remote Falcon platform monorepo](https://github.com/Remote-Falcon/remote-falcon-platform).
-> The original Ne0n09 repositories were archived on May 29, 2026. The
-> `image-builder/` directory contains an updated copy of the GitHub Actions
-> template; copy its workflow into your private builder repository before
-> using GitHub image builds. Existing deployments should back up MongoDB and
-> their `.env` before changing images, then run `./health_check.sh` after the
-> update. The stack was validated on Debian 13 with Docker Compose 5.5.1 on
-> September 18, 2026.
+> This repository tracks the current Remote Falcon platform monorepo. Public, checksummed releases support installation and script updates without a GitHub account. The stack was validated on Debian 13 with Docker Compose 5.5.1 on September 18, 2026.
 
-For a new checkout, keep the bundled files together and copy
-`remotefalcon/.env.example` to `remotefalcon/.env` before configuration. The
-installer no longer downloads missing files from the archived repository.
+## Install
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh
+chmod +x install.sh
+./install.sh
+```
+
+The prior standalone `configure-rf.sh` installation command remains compatible and bootstraps the same verified release.
 
 [cloudflared-remotefalcon](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main) helps you self host [Remote Falcon](https://remotefalcon.com/) through guided setup and configuration using [Cloudflare Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) and your own server capable of running [Docker](https://www.docker.com/) through the use of various helper [scripts](https://ne0n09.github.io/cloudflared-remotefalcon/about/scripts/).
 

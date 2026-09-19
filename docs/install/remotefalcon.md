@@ -1,12 +1,39 @@
 # Install Remote Falcon
 
-Use this complete, maintained checkout. The archived Ne0n09 repository contains older scripts, so a single downloaded `configure-rf.sh` is insufficient.
+The installer downloads the latest public GitHub Release, verifies its SHA-256 checksum, installs the complete script set, and starts configuration. A GitHub account is not required.
 
-1. Copy the checkout to your Debian host. Keep `configure-rf.sh`, the helper scripts, and the `remotefalcon/` templates together.
-2. Run `chmod +x ./*.sh` and then `./configure-rf.sh` from the checkout root.
-3. Enter the Cloudflare Tunnel token and origin certificate details when prompted. If you build images in GitHub, also enter a GitHub personal access token.
-4. Run `./health_check.sh 0s` after setup. It exits with a failure code when a required check fails.
+```sh
+curl -fsSLO https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh
+chmod +x install.sh
+./install.sh
+```
 
-The configurator creates `remotefalcon/.env` from the local example when needed. Keep this file private. For scripted setup, fill in `.env` before running `./configure-rf.sh -y`; avoid passing tokens as command line arguments.
+The original single-file command remains supported. A standalone `configure-rf.sh` now invokes the same release installer when its companion files are missing:
 
-You can rerun `./configure-rf.sh` to adjust settings or use `./update_containers.sh` for image updates. See [GitHub image builds](github.md) and [troubleshooting](../troubleshooting.md) for the next steps.
+```sh
+curl -O https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/configure-rf.sh
+chmod +x configure-rf.sh
+./configure-rf.sh
+```
+
+## Docker access
+
+On a dedicated VM, the configurator defaults to adding the current user to the `docker` group when Docker is installed but inaccessible. The script stops afterward so the user can log out and back in. Docker documents that membership in this group grants root-level privileges.
+
+Use `./configure-rf.sh --docker-mode manual` to manage socket access yourself. Rootless Docker is supported only when it has already been configured and `docker info` works for the current user:
+
+```sh
+./configure-rf.sh --docker-mode rootless
+```
+
+The configurator does not automatically convert an existing rootful installation because rootless Docker has separate storage, networking, systemd, and migration considerations. Follow the official rootless Docker instructions first.
+
+## Noninteractive configuration
+
+Keep tokens in the private `remotefalcon/.env` file or enter them at hidden interactive prompts. Avoid putting credentials in command-line arguments. After preparing `.env`, run:
+
+```sh
+./configure-rf.sh -y --set DOMAIN=example.com
+```
+
+Run `./health_check.sh 0s` after setup. It exits with a failure code if a required service or endpoint check fails.
