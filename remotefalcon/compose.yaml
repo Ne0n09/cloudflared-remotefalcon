@@ -73,7 +73,8 @@ services:
     ports:
       - "8083:8080"
     environment:
-      - MONGO_URI=${MONGO_URI}
+      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
+      - QUARKUS_MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
       - SEQUENCE_LIMIT=${SEQUENCE_LIMIT}
       - QUARKUS_OTEL_SDK_DISABLED=true
     depends_on:
@@ -93,7 +94,8 @@ services:
       - WEB_URL=https://${DOMAIN}
       - AUTO_VALIDATE_EMAIL=${AUTO_VALIDATE_EMAIL}
       - JWT_USER=${USER_JWT_KEY}
-      - SPRING_DATA_MONGODB_URI=${MONGO_URI}
+      - SPRING_DATA_MONGODB_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
+      - DOMAIN=${DOMAIN}
       - GITHUB_PAT=
       - SENDGRID_KEY=${SENDGRID_KEY}
       - CLIENT_HEADER=${CLIENT_HEADER}
@@ -101,7 +103,7 @@ services:
       - S3_ACCESSKEY=${S3_ACCESS_KEY}
       - S3_SECRETKEY=${S3_SECRET_KEY}
       - IMAGES_S3_BUCKET=${IMAGES_S3_BUCKET}
-      - IMAGES_CDN_ENDPOINT=${IMAGES_CDN_ENDPOINT}
+      - IMAGES_CDN_ENDPOINT=https://${DOMAIN}/${IMAGES_S3_BUCKET}
       - MFA_SECRET_KEY=${MFA_SECRET_KEY:-}
       - MFA_SECRET_KEY_RETIRED=${MFA_SECRET_KEY_RETIRED:-}
     depends_on:
@@ -119,7 +121,8 @@ services:
     container_name: viewer
     restart: always
     environment:
-      - MONGO_URI=${MONGO_URI}
+      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
+      - QUARKUS_MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
       - CLIENT_HEADER=${CLIENT_HEADER}
       - QUARKUS_OTEL_SDK_DISABLED=true
     depends_on:
@@ -166,7 +169,7 @@ services:
     restart: always
     environment:
       - SERVER_PORT=8080
-      - SPRING_DATA_MONGODB_URI=${MONGO_URI}
+      - SPRING_DATA_MONGODB_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
       - VIEWER_API_URL=https://${DOMAIN}/remote-falcon-viewer
     depends_on:
       mongo:

@@ -112,6 +112,33 @@ apply_compose_tag_updates() {
   done
 }
 
+wait_for_deployed_services() {
+  local services=("$@")
+  local attempts="${RF_DEPLOY_CHECK_ATTEMPTS:-60}"
+  local delay="${RF_DEPLOY_CHECK_DELAY:-2}"
+  local service health_status all_ready
+
+  while (( attempts-- > 0 )); do
+    all_ready=true
+    for service in "${services[@]}"; do
+      if ! docker compose -f "$COMPOSE_FILE" ps --services --filter status=running | grep -Fxq "$service"; then
+        all_ready=false
+        continue
+      fi
+      health_status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$service" 2>/dev/null || true)
+      [[ "$health_status" == "starting" || "$health_status" == "unhealthy" ]] && all_ready=false
+    done
+    if [[ "$all_ready" == "true" ]]; then
+      echo -e "${GREEN}✅ Newly built services passed their deployment checks.${NC}"
+      return 0
+    fi
+    sleep "$delay"
+  done
+
+  echo -e "${RED}❌ One or more newly built services did not become ready.${NC}" >&2
+  return 1
+}
+
 deploy_built_services() {
   local services=("$@") service image_id old_ref backup_tag
   local snapshot
@@ -145,8 +172,11 @@ deploy_built_services() {
     done
     return 1
   fi
-  if docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate "${services[@]}" &&
-     "$HEALTH_CHECK_SCRIPT" 0s; then
+  # Allow Compose to start declared dependencies such as MongoDB on a fresh
+  # install. The complete public health check runs after configure-rf starts
+  # and initializes the remaining infrastructure services.
+  if docker compose -f "$COMPOSE_FILE" up -d --force-recreate "${services[@]}" &&
+     wait_for_deployed_services "${services[@]}"; then
     rm -f "$snapshot"
     for backup_tag in "${rollback_tags[@]}"; do
       [[ -z "$backup_tag" ]] || docker image rm "$backup_tag" >/dev/null 2>&1 || true
@@ -162,7 +192,7 @@ deploy_built_services() {
       docker image tag "${rollback_tags[$i]}" "${previous_refs[$i]}" || true
     fi
   done
-  docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate "${services[@]}" || true
+  docker compose -f "$COMPOSE_FILE" up -d --force-recreate "${services[@]}" || true
   for backup_tag in "${rollback_tags[@]}"; do
     [[ -z "$backup_tag" ]] || docker image rm "$backup_tag" >/dev/null 2>&1 || true
   done

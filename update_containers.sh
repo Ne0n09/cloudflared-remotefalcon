@@ -143,6 +143,34 @@ get_latest_version() {
 
 # Function to perform the update to compose.yaml and restart the container
 # If the service is mongo, it will also backup the mongo data before updating
+wait_for_service_deployment() {
+  local service_name="$1"
+  local attempts="${RF_DEPLOY_CHECK_ATTEMPTS:-60}"
+  local delay="${RF_DEPLOY_CHECK_DELAY:-2}"
+  local health_status=""
+
+  while (( attempts-- > 0 )); do
+    if docker compose -f "$COMPOSE_FILE" ps --services --filter status=running | grep -Fxq "$service_name"; then
+      health_status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$service_name" 2>/dev/null || true)
+      case "$health_status" in
+        healthy|none|"")
+          echo -e "${GREEN}✅ $service_name passed its deployment check.${NC}"
+          return 0
+          ;;
+        unhealthy)
+          # A container can briefly report unhealthy while its process is still
+          # initializing. Keep polling so startup probes get their full grace
+          # period before rollback.
+          ;;
+      esac
+    fi
+    sleep "$delay"
+  done
+
+  echo -e "${RED}❌ $service_name did not become ready within the deployment timeout.${NC}" >&2
+  return 1
+}
+
 perform_update() {
   local service_name="$1"
   local latest_version="$2"
@@ -186,7 +214,7 @@ perform_update() {
   echo -e "${BLUE}🔄 Restarting $service_name with the $latest_version image...${NC}"
   if docker compose -f "$COMPOSE_FILE" config -q &&
      docker compose -f "$COMPOSE_FILE" up -d --no-deps "$service_name" &&
-     "$HEALTH_CHECK_SCRIPT" 0s; then
+     wait_for_service_deployment "$service_name"; then
     rm -f "$previous_compose"
     [[ -z "$rollback_tag" ]] || docker image rm "$rollback_tag" >/dev/null 2>&1 || true
     return 0
@@ -422,10 +450,17 @@ check_for_update() {
             echo -e "${BLUE}🔗 https://www.mongodb.com/docs/manual/release-notes/$CURRENT_MAJOR.0-changelog/${NC}"
             prompt_to_update "$service_name" "$LATEST_SAME_MAJOR" "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_SAME_MAJOR|"
           elif [[ -n "${LATEST_NEXT_MAJOR:-}" ]]; then
-            # Offer update to the next major version
-            echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_NEXT_MAJOR):${NC}"
-            echo -e "${YELLOW}⚠️ See MongoDB release notes here to confirm upgrade paths:${NC}${BLUE}🔗 https://www.mongodb.com/docs/manual/release-notes/${NC}"
-            prompt_to_update "$service_name" "$LATEST_NEXT_MAJOR" "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_NEXT_MAJOR|"
+            if [[ "$MODE" == "auto-apply" ]]; then
+              echo -e "${YELLOW}⚠️ A MongoDB major upgrade to $LATEST_NEXT_MAJOR is available but will not be applied automatically.${NC}"
+              echo -e "${YELLOW}⚠️ Follow MongoDB's documented major-version upgrade path before changing this tag.${NC}"
+              replace_compose_tag "$service_name" "$LATEST_SAME_MAJOR"
+            else
+              # Major upgrades can require intermediate versions and feature
+              # compatibility changes, so they always require explicit input.
+              echo -e "${CYAN}📜 $service_name Changelog ($CURRENT_VERSION → $LATEST_NEXT_MAJOR):${NC}"
+              echo -e "${YELLOW}⚠️ See MongoDB release notes here to confirm upgrade paths:${NC}${BLUE}🔗 https://www.mongodb.com/docs/manual/release-notes/${NC}"
+              prompt_to_update "$service_name" "$LATEST_NEXT_MAJOR" "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_NEXT_MAJOR|"
+            fi
           fi
         fi
         ;;

@@ -265,7 +265,9 @@ update_env() {
     done
   fi
 
-  if [ "$pending_changes" = false ]; then
+  # A template with `latest` application tags is a fresh install and still
+  # needs an image build even when the copied .env values are unchanged.
+  if [ "$pending_changes" = false ] && [ "$pending_arg_changes" = false ]; then
     echo -e "${YELLOW}⚠️ No changes detected — skipping .env update prompt.${NC}"
     return 1
   else
@@ -510,13 +512,26 @@ run_updates() {
 
   case "$update_mode" in
     auto-apply)
-      bash "$SCRIPT_DIR/update_containers.sh" "all" "auto-apply"
+      bash "$SCRIPT_DIR/update_containers.sh" "all" "auto-apply" || {
+        echo -e "${RED}❌ Container update failed. Aborting configuration.${NC}" >&2
+        exit 1
+      }
       ;;
     *)
       # Interactive mode, default
-      bash "$SCRIPT_DIR/update_containers.sh" "all"
+      bash "$SCRIPT_DIR/update_containers.sh" "all" || {
+        echo -e "${RED}❌ Container update failed. Aborting configuration.${NC}" >&2
+        exit 1
+      }
       ;;
   esac
+}
+
+CONFIGURE_FAILED=false
+run_configure_health_check() {
+  if ! health_check health; then
+    CONFIGURE_FAILED=true
+  fi
 }
 
 repo_init() {
@@ -1112,9 +1127,9 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         run_updates
         versitygw_init
-        health_check health
+        run_configure_health_check
       elif [[ "$(get_input "❓ Run health check script? (y/n)" "y")" =~ ^[Yy]$ ]]; then
-        health_check health
+        run_configure_health_check
       fi
     else # No containers running
       echo -e "No containers are running. Checking Remote Falcon image tags for 'latest' in compose.yaml..."
@@ -1129,7 +1144,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
             if bash "$SCRIPT_DIR/run_workflow.sh"; then
               run_updates auto-apply
               versitygw_init
-              health_check health
+              run_configure_health_check
             else
               echo -e "${RED}❌ Workflow failed. Aborting.${NC}"
               exit 1
@@ -1154,7 +1169,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
             echo -e "${BLUE}✨ Remote Falcon 'latest' image tags detected in compose.yaml, assuming new install, running update_containers.sh...${NC}"
             run_updates auto-apply
             versitygw_init
-            health_check health
+            run_configure_health_check
           else # Assume existing install since no 'latest' tags found, force local build and restart
             echo -e "${BLUE}🔄 Building Remote Falcon images to apply any updated build ARGs at their current version...${NC}"
             docker compose up -d --build --force-recreate
@@ -1166,14 +1181,14 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
           echo -e "${GREEN}🚀 Bringing up existing containers to apply any .env changes...${NC}"
           run_updates auto-apply
           versitygw_init
-          health_check health
+          run_configure_health_check
         else # No containers running, no image rebuild required, and no 'latest' tags found so just bring the containers up
           # Run interactive updates since update_containers will verify if the image exists in the REPO and build indvidually if missing
           if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
             echo -e "${GREEN}🚀 Bringing up stopped containers with update_container.sh...${NC}"
             run_updates
             versitygw_init
-            health_check health
+            run_configure_health_check
           else # No containers running, no image rebuild required, so just bring the containers up
             echo -e "${GREEN}🚀 Bringing up existing containers to apply any .env changes...${NC}"
             docker compose up -d
@@ -1188,9 +1203,9 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
       if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
         run_updates
         versitygw_init
-        health_check health
+        run_configure_health_check
       elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-        health_check health
+        run_configure_health_check
       fi
     fi
   fi
@@ -1202,11 +1217,16 @@ else # User chose not to update the .env file
     if [[ "$(get_input "❓ Check for container updates? (y/n)" "n")" =~ ^[Yy]$ ]]; then
       run_updates
       versitygw_init
-      health_check health
+      run_configure_health_check
     elif [[ "$(get_input "❓ Run health check script? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-      health_check health
+      run_configure_health_check
     fi
   fi
+fi
+
+if [[ "$CONFIGURE_FAILED" == "true" ]]; then
+  echo -e "${RED}❌ Configuration completed with failed health checks.${NC}" >&2
+  exit 1
 fi
 
 echo -e "${YELLOW}⚠️ If running FPP 9 ensure Apache CSP is updated or sequences will not sync!${NC}"

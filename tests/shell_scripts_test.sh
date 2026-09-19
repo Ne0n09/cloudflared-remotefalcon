@@ -3,6 +3,8 @@
 set -u
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export RF_DEPLOY_CHECK_ATTEMPTS=1
+export RF_DEPLOY_CHECK_DELAY=0
 TEST_TMP="${TMPDIR:-/tmp}/cloudflared-rf-tests.$$"
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -764,6 +766,36 @@ test_configure_rf_has_no_archived_updater() {
   assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/(shared_functions|update_containers)'
 }
 
+test_fresh_install_checks_each_deployed_service() {
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'wait_for_service_deployment "\$service_name"'
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'ps --services --filter status=running'
+  assert_file_not_contains "$ROOT_DIR/update_containers.sh" '"\$HEALTH_CHECK_SCRIPT" 0s'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Container update failed. Aborting configuration.'
+}
+
+test_noninteractive_mongo_upgrade_stays_on_current_major() {
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'MongoDB major upgrade.*will not be applied automatically'
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'replace_compose_tag "\$service_name" "\$LATEST_SAME_MAJOR"'
+}
+
+test_current_platform_runtime_configuration() {
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}:\$\{MONGO_INITDB_ROOT_PASSWORD\}@mongo:27017/remote-falcon\?authSource=admin'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'SPRING_DATA_MONGODB_URI=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}:\$\{MONGO_INITDB_ROOT_PASSWORD\}@mongo:27017/remote-falcon\?authSource=admin'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'IMAGES_CDN_ENDPOINT=https://\$\{DOMAIN\}/\$\{IMAGES_S3_BUCKET\}'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Configuration completed with failed health checks.'
+}
+
+test_fresh_remote_install_rebuilds_latest_tags() {
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '\[ "\$pending_changes" = false \] && \[ "\$pending_arg_changes" = false \]'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Remote Falcon.*latest.*assuming new install.*run_workflow.sh'
+}
+
+test_remote_deploy_checks_built_services_before_full_stack() {
+  assert_file_contains "$ROOT_DIR/run_workflow.sh" 'wait_for_deployed_services "\$\{services\[@\]\}"'
+  assert_file_not_contains "$ROOT_DIR/run_workflow.sh" '"\$HEALTH_CHECK_SCRIPT" 0s'
+  assert_file_contains "$ROOT_DIR/run_workflow.sh" 'up -d --force-recreate "\$\{services\[@\]\}"'
+}
+
 test_release_updater_preserves_live_config() {
   local ws target
   ws="$(make_workspace)"
@@ -801,6 +833,11 @@ run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
 run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
 run_test "configure-rf.sh exposes expected CLI help" test_configure_rf_help
 run_test "configure-rf.sh has no archived updater" test_configure_rf_has_no_archived_updater
+run_test "fresh installs validate deployed services individually" test_fresh_install_checks_each_deployed_service
+run_test "noninteractive MongoDB updates stay on the current major" test_noninteractive_mongo_upgrade_stays_on_current_major
+run_test "compose supplies current platform runtime configuration" test_current_platform_runtime_configuration
+run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
+run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
 run_test "release updater preserves live configuration" test_release_updater_preserves_live_config
 
 echo
