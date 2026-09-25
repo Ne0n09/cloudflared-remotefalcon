@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.24.3
+# VERSION=2026.9.25.1
 
 set -euo pipefail
 
@@ -61,7 +61,7 @@ for script in "${scripts[@]}"; do
 done
 
 if [[ "${RF_SKIP_UPDATE_TESTS:-false}" != true && -f "$source_dir/tests/shell_scripts_test.sh" ]]; then
-  (cd "$source_dir" && bash tests/shell_scripts_test.sh)
+  (cd "$source_dir" && RF_RELEASE_PAYLOAD_TESTS=true bash tests/shell_scripts_test.sh)
 fi
 
 merge_env_configuration() {

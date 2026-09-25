@@ -1,10 +1,18 @@
 # Release Notes
 
-## Unreleased
+## 2026.9.25.1
+
+- Added targeted health checks such as `./health_check.sh 0s plugins-api` while retaining all services as the default. Container upgrades now launch one targeted health-check process and let that process handle endpoint retries within the deployment deadline.
+
+- Added upgrade-time compatibility migrations for older Compose files. Plugins-api and viewer receive the Quarkus MongoDB connection setting, while control-panel receives `DOMAIN` and a fully expanded image CDN URL.
 
 - Restored automatic `.env`, `compose.yaml`, and `default.conf` updates for existing installations. Existing environment values, custom environment keys, and all service image references are retained while the current configuration structure is applied.
 
 - Added pre-apply Docker Compose validation and rollback coverage. Older CPU-compatible MongoDB pins remain unchanged, and previous configuration files are retained in the dated script-update backup.
+
+- Split release-payload regression checks from repository publication checks so the exact compact archive downloaded by existing installations can validate itself without requiring documentation or CI-only files.
+
+- Fixed Remote Falcon image update prompts so they display the correct short commit tag.
 
 ## 2026.9.19.4
 

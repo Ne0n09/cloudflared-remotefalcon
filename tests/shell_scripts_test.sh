@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.24.3
+# VERSION=2026.9.25.1
 
 set -u
 
@@ -974,7 +974,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+GitHub releases now use the matching section'
+  assert_file_contains "$output" '^-[[:space:]]+Added targeted health checks'
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
@@ -1119,10 +1119,14 @@ run_test "fresh storage is initialized and required by health checks" test_fresh
 run_test "noninteractive MongoDB updates stay on the current major" test_noninteractive_mongo_upgrade_stays_on_current_major
 run_test "compose supplies current platform runtime configuration" test_current_platform_runtime_configuration
 run_test "infrastructure images use tested version tags" test_infrastructure_images_are_version_pinned
-run_test "CI uses pinned actions and static validators" test_ci_has_pinned_static_validation
+if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
+  run_test "CI uses pinned actions and static validators" test_ci_has_pinned_static_validation
+fi
 run_test "fresh deployment harness has guarded update and build modes" test_fresh_deployment_harness_safety
-run_test "release archive excludes documentation assets" test_release_archive_excludes_documentation
-run_test "GitHub releases use the documented version notes" test_github_release_uses_documented_notes
+if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
+  run_test "release archive excludes documentation assets" test_release_archive_excludes_documentation
+  run_test "GitHub releases use the documented version notes" test_github_release_uses_documented_notes
+fi
 run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
 run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
