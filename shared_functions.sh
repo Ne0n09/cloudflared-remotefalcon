@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.5.20.2
+# SHARED_FUNCTIONS_VERSION=2026.9.24.2
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -79,6 +79,17 @@ parse_env() {
   done < "$env_file"
 }
 # ====== Print the Parsed Env Variables ======
+# parse_env preserves raw templates for editing. Let Compose resolve those
+# templates from the file rather than overriding them with exported raw values.
+rf_compose() {
+  local key
+  local -a command=(env)
+  for key in "${original_keys[@]}"; do
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && command+=(-u "$key")
+  done
+  "${command[@]}" docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+}
+
 display_env_value() {
   local key="$1" value="$2"
   case "$key" in
@@ -445,6 +456,69 @@ update_compose_dockerfile_paths() {
     { print }
   ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" \
     && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
+}
+
+ensure_quarkus_mongo_environment() {
+  local service="$1" temporary mongo_uri
+  case "$service" in plugins-api|viewer) ;; *) return 0 ;; esac
+  mongo_uri=$(sed -n 's/^MONGO_URI=//p' "$ENV_FILE") || return 1
+  if [[ "$mongo_uri" == \"*\" || "$mongo_uri" == \'*\' ]]; then
+    mongo_uri="${mongo_uri:1:${#mongo_uri}-2}"
+  fi
+  temporary=$(mktemp "${COMPOSE_FILE}.XXXXXX") || return 1
+  # Older installs only supplied MONGO_URI, which newer Quarkus images ignore.
+  # Preserve explicit overrides and add the runtime setting only to this service.
+  RF_MIGRATION_MONGO_URI="$mongo_uri" awk -v target="$service" '
+    /^  [A-Za-z0-9_-]+:/ { service=$1; sub(/:$/, "", service) }
+    NR==FNR {
+      if (service==target && /QUARKUS_MONGODB_CONNECTION_STRING[=:]/) present=1
+      next
+    }
+    { print }
+    service==target && !present && /^      - MONGO_URI=/ {
+      value=$0; sub(/^      - MONGO_URI=/, "", value)
+      # Inline the original template so Compose expands nested credentials once.
+      if (value=="${MONGO_URI}" && ENVIRON["RF_MIGRATION_MONGO_URI"]!="") value=ENVIRON["RF_MIGRATION_MONGO_URI"]
+      print "      - QUARKUS_MONGODB_CONNECTION_STRING=" value
+    }
+  ' "$COMPOSE_FILE" "$COMPOSE_FILE" > "$temporary" &&
+    cat "$temporary" > "$COMPOSE_FILE"
+  local result=$?
+  rm -f "$temporary"
+  return "$result"
+}
+
+ensure_control_panel_environment() {
+  local service="$1" temporary
+  [[ "$service" == control-panel ]] || return 0
+  temporary=$(mktemp "${COMPOSE_FILE}.XXXXXX") || return 1
+  awk '
+    /^  [A-Za-z0-9_-]+:/ { service=$1; sub(/:$/, "", service) }
+    NR==FNR {
+      if (service=="control-panel" && /^[[:space:]]+- DOMAIN=/) domain=1
+      if (service=="control-panel" && /^[[:space:]]+- IMAGES_CDN_ENDPOINT=/) cdn=1
+      next
+    }
+    service=="control-panel" && /^    environment:/ {
+      print
+      if (!domain) print "      - DOMAIN=${DOMAIN}"
+      if (!cdn) print "      - IMAGES_CDN_ENDPOINT=https://${DOMAIN}/${IMAGES_S3_BUCKET}"
+      next
+    }
+    service=="control-panel" && /^[[:space:]]+- IMAGES_CDN_ENDPOINT=[$][{]IMAGES_CDN_ENDPOINT[}]/ {
+      print "      - IMAGES_CDN_ENDPOINT=https://${DOMAIN}/${IMAGES_S3_BUCKET}"
+      next
+    }
+    { print }
+  ' "$COMPOSE_FILE" "$COMPOSE_FILE" > "$temporary" &&
+    cat "$temporary" > "$COMPOSE_FILE"
+  local result=$?
+  rm -f "$temporary"
+  return "$result"
+}
+
+ensure_service_runtime_environment() {
+  ensure_quarkus_mongo_environment "$1" && ensure_control_panel_environment "$1"
 }
 
 # Function to match compose service name with container name

@@ -22,6 +22,19 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 ## Updating Mongo, Versity Gateway, NGINX, and Cloudflared containers
 
+Health checks can target one container, while the default remains all containers:
+
+```sh
+./health_check.sh                 # all services, after the default 10-second delay
+./health_check.sh 0s plugins-api   # only plugins-api, without a delay
+```
+
+Image upgrades invoke the health script once for only the service being upgraded, including its public endpoint (where available), running state, and recent logs. That invocation allows up to 25 endpoint probes within a two-minute deadline, so a service can finish starting without repeatedly launching the health script. Failed checks restore the previous image and Compose file and check that restored service once. The legacy `health` argument to `update_containers.sh` remains accepted; it does not trigger an additional full-stack check. Fresh installations run their complete health check after storage and routing are initialized.
+
+For older plugins-api and viewer Compose configurations, the image updater adds the missing `QUARKUS_MONGODB_CONNECTION_STRING` runtime setting. This prevents newer Quarkus images from defaulting to MongoDB at `127.0.0.1` inside the application container. Existing explicit Quarkus connection settings are preserved.
+
+For older control-panel configurations, the updater adds the required `DOMAIN` runtime setting and replaces nested `IMAGES_CDN_ENDPOINT=${IMAGES_CDN_ENDPOINT}` indirection with a Compose-expanded URL. This prevents Spring from receiving unresolved `${DOMAIN}` placeholders during startup.
+
 Run the [update_containers](about/scripts.md#update_containerssh) script: 
 
 ```sh 

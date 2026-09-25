@@ -78,7 +78,7 @@ Click the name of the script to expand the section to display details about the 
 
         3. `[health]`
 
-            - Add `health` after the first two arguments to automatically run the health_check script.
+            - Each upgraded container is health checked automatically. The optional legacy `health` argument remains accepted without triggering a full-stack check.
 
     ```sh title="update_containers script syntax examples" 
     ./update_containers.sh [all|mongo|versitygw|nginx|cloudflared|plugins-api|control-panel|viewer|ui|external-api] [dry-run|auto-apply|interactive] [health]
@@ -117,6 +117,8 @@ Click the name of the script to expand the section to display details about the 
     ```sh title="Run health_check.sh" 
     ./health_check.sh
     ```
+
+    To check only one container immediately, run `./health_check.sh 0s plugins-api` (replace `plugins-api` with another service name). Omitting the service checks all containers.
 
     ![Health check demo](../images/health_check_9_7_25.gif)
 

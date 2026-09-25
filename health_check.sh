@@ -1,20 +1,39 @@
 #!/bin/bash
 
-# VERSION=2026.5.29.1
+# VERSION=2026.9.24.2
 
 #set -euo pipefail
 #set -x
 
 SERVICES=(external-api ui plugins-api viewer control-panel cloudflared nginx mongo versitygw)
 HEALTHY=true
-SLEEP_TIME="${1:-}" # Optional sleep time in seconds, defaults to 20s if not provided
-MAX_RETRIES=3 # Max retries for checking RF endpoints
-RETRY_DELAY=5  # Seconds to wait between retries
-
-
-if [[ -z "$SLEEP_TIME" ]]; then
-  SLEEP_TIME="10s"  # Default to 20s if not provided
+declare -A ENDPOINT_HEALTHY
+SLEEP_TIME="10s"
+TARGET_SERVICE="all"
+# Preserve the original positional delay, and accept a service in either order.
+for argument in "$@"; do
+  case "$argument" in
+    all|external-api|ui|plugins-api|viewer|control-panel|cloudflared|nginx|mongo|versitygw) TARGET_SERVICE="$argument" ;;
+    -h|--help) echo "Usage: $0 [sleep_seconds] [all|container] (default: 10s all)"; exit 0 ;;
+    *)
+      if [[ "$argument" =~ ^[0-9]+([.][0-9]+)?s?$ ]]; then
+        SLEEP_TIME="$argument"
+      else
+        echo "Invalid health check argument: $argument" >&2
+        exit 2
+      fi ;;
+  esac
+done
+selected_service() { [[ "$TARGET_SERVICE" == all || "$TARGET_SERVICE" == "$1" ]]; }
+if [[ "$TARGET_SERVICE" != all ]]; then SERVICES=("$TARGET_SERVICE"); fi
+MAX_RETRIES="${HEALTH_MAX_RETRIES:-3}"
+RETRY_DELAY="${HEALTH_RETRY_DELAY:-5}"
+ENDPOINT_TIMEOUT="${HEALTH_ENDPOINT_TIMEOUT:-120}"
+if [[ ! "$MAX_RETRIES" =~ ^[1-9][0-9]*$ || ! "$RETRY_DELAY" =~ ^[0-9]+$ || ! "$ENDPOINT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Invalid health retry settings: attempts/timeout must be positive integers; delay must be a nonnegative integer." >&2
+  exit 2
 fi
+
 
 # Source shared functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,12 +76,12 @@ Error response from daemon: No such container|Container is not running
 
 CONTAINER_PATTERNS["plugins-api"]='
 Error response from daemon: No such container|Container is not running
-state=CONNECTING, exception={com.mongodb.MongoSocketOpenException: Exception opening socket}, caused by {java.net.ConnectException: Connection refused|Verify that your MONGO_URI is correct and rebuild image.
+state=CONNECTING, exception={com.mongodb.MongoSocketOpenException: Exception opening socket}, caused by {java.net.ConnectException: Connection refused|Verify QUARKUS_MONGODB_CONNECTION_STRING in the container runtime environment and MongoDB connectivity.
 '
 
 CONTAINER_PATTERNS["viewer"]='
 Error response from daemon: No such container|Container is not running
-state=CONNECTING, exception={com.mongodb.MongoSocketOpenException: Exception opening socket}, caused by {java.net.ConnectException: Connection refused|Verify that your MONGO_URI is correct and rebuild image.
+state=CONNECTING, exception={com.mongodb.MongoSocketOpenException: Exception opening socket}, caused by {java.net.ConnectException: Connection refused|Verify QUARKUS_MONGODB_CONNECTION_STRING in the container runtime environment and MongoDB connectivity.
 '
 
 CONTAINER_PATTERNS["control-panel"]='
@@ -90,11 +109,15 @@ check_container_logs() {
     local message="${entry#*|}"
 
     if echo "$logs" | grep -qE "$pattern"; then
-      echo -e "❌ ${RED}Error detected:${NC} $message"
+      if [[ "${ENDPOINT_HEALTHY[$container]:-false}" == true ]]; then
+        echo -e "⚠️ Earlier log error; $container endpoint is currently UP: $message"
+      else
+        echo -e "❌ ${RED}Error detected:${NC} $message"
+      fi
       echo -e "   ↳ ${YELLOW}Log snippet:${NC}"
       echo "$logs" | grep -E "$pattern" | tail -5 | sed 's/^/      /'
       found=true
-      HEALTHY=false
+      [[ "${ENDPOINT_HEALTHY[$container]:-false}" == true ]] || HEALTHY=false
     fi
   done <<< "${CONTAINER_PATTERNS[$container]}"
 
@@ -106,7 +129,7 @@ check_container_logs() {
 # Run all containers
 check_all_containers() {
   for container in "${!CONTAINER_PATTERNS[@]}"; do
-    check_container_logs "$container"
+    selected_service "$container" && check_container_logs "$container"
   done
 }
 
@@ -117,23 +140,17 @@ is_container_running() {
 }
 
 echo -e "${BLUE}⚙️ Running health check script...${NC}"
-#echo "Sleeping $SLEEP_TIME before running health checks..."
-#sleep $SLEEP_TIME
-#docker ps -a
-#echo
-#echo "Verify that all containers show 'running OR Up'. If not, check logs with 'docker logs <container_name>' or try 'docker compose -f "$COMPOSE_FILE" up -d'"
-all_services_running=true
+echo "💤 Sleeping $SLEEP_TIME before running health checks..."
+sleep "$SLEEP_TIME"
 
 for service in "${SERVICES[@]}"; do
+  # Endpoint probes below also retry during application restarts.
+  case "$service" in external-api|ui|plugins-api|viewer|control-panel) continue ;; esac
   if ! is_container_running "$service"; then
-    all_services_running=false
+    echo "❌ $service is NOT running."
     HEALTHY=false
   fi
 done
-#if [[ $all_services_running == false ]]; then
-echo "💤 Sleeping $SLEEP_TIME before running health checks..."
-sleep "$SLEEP_TIME"
-#fi
 
 # Check if env file exists, parse it, then check if domain is not yourdomain.com
 # Then run various health checks
@@ -170,34 +187,38 @@ check_endpoint() {
   # Ensure cleanup before each check
   rm -f "$response_file" "$http_code_file"
 
-  curl -sS -o "$response_file" -w "%{http_code}" "$endpoint" > "$http_code_file" 2>"$error_log"
+  local remaining=$((endpoint_deadline - SECONDS))
+  (( remaining > 35 )) && remaining=35
+  (( remaining > 0 )) || remaining=1
+  curl --connect-timeout 5 --max-time "$remaining" -sS -o "$response_file" -w "%{http_code}" "$endpoint" > "$http_code_file" 2>"$error_log"
   http_code=$(cat "$http_code_file" 2>/dev/null || echo "000")
   health_status=$(jq -r '.status // "UNKNOWN"' "$response_file" 2>/dev/null)
 }
 
   # Iterate through each container and its endpoint if it is running
   for rf_container in "${!rf_containers[@]}"; do
+    selected_service "$rf_container" || continue
     endpoint="${rf_containers[$rf_container]}"
 
-    if ! is_container_running "$rf_container"; then
-      echo -e "${RED}❌ $rf_container is NOT running.${NC}"
-      HEALTHY=false
-      continue
-    else
+    endpoint_deadline=$((SECONDS + ENDPOINT_TIMEOUT))
       attempt=1
       while true; do
         check_endpoint
 
         # Check if the status is "UP" or handle errors
         if [[ "$http_code" == 200 ]]; then
-          if [[ "$health_status" == "UP" ]]; then
+          if [[ "$health_status" == "UP" ]] && is_container_running "$rf_container"; then
+            ENDPOINT_HEALTHY[$rf_container]=true
             echo -e "  ${YELLOW}•${NC} ${GREEN}✅ $rf_container endpoint ${BLUE}🔗 $endpoint${NC} ${GREEN}status is UP${NC}"
             break  # Success, exit retry loop
           fi
         fi
-          if [[ $attempt -lt $MAX_RETRIES ]]; then
-            echo -e "${YELLOW}⚠️ $rf_container endpoint status check attempt ($attempt/$MAX_RETRIES) failed. Retrying in $RETRY_DELAY seconds...${NC}"
-            sleep $RETRY_DELAY
+          remaining=$((endpoint_deadline - SECONDS))
+          if [[ $attempt -lt $MAX_RETRIES && $remaining -gt 0 ]]; then
+            retry_wait=$RETRY_DELAY
+            (( retry_wait > remaining )) && retry_wait=$remaining
+            echo -e "${YELLOW}⚠️ $rf_container endpoint status check attempt ($attempt/$MAX_RETRIES) failed. Retrying in $retry_wait seconds...${NC}"
+            sleep "$retry_wait"
             ((attempt++))
           else
             # Final failure after retries
@@ -216,10 +237,10 @@ check_endpoint() {
             break  # Give up after max retries
           fi
       done
-    fi
   done
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
+  if selected_service nginx; then
   # Check if the cert or the key do not exist and exit, else validate the cert and key with openssl
   echo -e "${CYAN}🔄 Checking certificate '$NGINX_CERT' and private key '$NGINX_KEY' file...${NC}"
   if [[ ! -f "$WORKING_DIR/$NGINX_CERT" || ! -f "$WORKING_DIR/$NGINX_KEY" ]]; then
@@ -274,6 +295,8 @@ check_endpoint() {
   fi
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  fi
+  if selected_service versitygw; then
   container_name="versitygw"
 
   # Check if the VersityGW container is running
@@ -350,7 +373,7 @@ check_endpoint() {
     fi
 
     # Verify control-panel has a valid S3_ACCESS_KEY
-    if docker logs control-panel 2>&1 | grep -q "InvalidAccessKeyId"; then
+    if [[ "$TARGET_SERVICE" == all ]] && docker logs control-panel 2>&1 | grep -q "InvalidAccessKeyId"; then
       echo -e "${RED}❌ control-panel is reporting InvalidAccessKeyId. You may want to re-run ./versitygw_init.sh to correct this.${NC}"
     fi
 
@@ -359,6 +382,8 @@ check_endpoint() {
   fi  
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  fi
+  if selected_service mongo; then
   container_name="mongo"
 
   # If mongo exists, display show subdomain details from mongo in the format of https://subdomain.yourdomain.com
@@ -397,10 +422,13 @@ check_endpoint() {
     HEALTHY=false
   fi
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  fi
   check_all_containers
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   if [[ $HEALTHY == true ]]; then
-    if [[ $SWAP_CP == true ]]; then
+    if [[ "$TARGET_SERVICE" != all ]]; then
+      echo "✅ $TARGET_SERVICE health checks passed."
+    elif [[ $SWAP_CP == true ]]; then
       echo -e "${CYAN}🔄 SWAP_CP is enabled! Checking if Viewer Page Subdomain exists in MongoDB...${NC}"
       if echo "$subdomains" | grep -Fxq "$VIEWER_PAGE_SUBDOMAIN"; then
         echo -e "${GREEN}✅ Viewer Page Subdomain ${YELLOW}$VIEWER_PAGE_SUBDOMAIN${GREEN} found in MongoDB.${NC}"

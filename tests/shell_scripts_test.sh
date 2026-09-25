@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 
+# VERSION=2026.9.24.2
+
 set -u
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export RF_DEPLOY_CHECK_ATTEMPTS=1
 export RF_DEPLOY_CHECK_DELAY=0
+export HEALTH_MAX_RETRIES=3
+export HEALTH_RETRY_DELAY=0
 TEST_TMP="${TMPDIR:-/tmp}/cloudflared-rf-tests.$$"
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -199,7 +203,7 @@ if [[ "$args" == *"-w %{http_code}"* ]]; then
     fi
   done
   [[ -n "$out" ]] && printf '{"status":"UP"}\n' > "$out"
-  printf '200'
+  printf '%s' "${MOCK_HTTP_CODE:-200}"
 elif [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits/6a96bdf"* ]]; then
   printf '{"sha":"6a96bdf111111111111111111111111111111111"}\n'
 elif [[ "$args" == *"/repos/Remote-Falcon/remote-falcon-platform/commits/f781ef4"* ]]; then
@@ -678,6 +682,79 @@ test_health_check_missing_env_fails() {
   fi
 }
 
+test_targeted_health_check() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="plugins-api"
+  (cd "$ws" && ./health_check.sh 0s plugins-api) > "$ws/target.out" 2>&1 || return 1
+  assert_file_contains "$ws/target.out" 'plugins-api health checks passed' || return 1
+  assert_file_not_contains "$ws/mock-log/commands.log" 'docker (logs.* (mongo|viewer|control-panel)|exec|run)' || return 1
+  if (cd "$ws" && ./health_check.sh 0s nonexistent) > /dev/null 2>&1; then return 1; fi
+  export MOCK_RUNNING_SERVICES=""
+  if (cd "$ws" && ./health_check.sh 0s plugins-api) > /dev/null 2>&1; then return 1; fi
+}
+
+test_quarkus_environment_migration() {
+  local ws
+  ws="$(make_workspace)"
+  sed -i '/QUARKUS_MONGODB_CONNECTION_STRING=/d' "$ws/remotefalcon/compose.yaml"
+  sed -i 's|^      - MONGO_URI=.*|      - MONGO_URI=${MONGO_URI}|' "$ws/remotefalcon/compose.yaml"
+  (
+    source "$ws/shared_functions.sh"
+    ensure_quarkus_mongo_environment plugins-api || exit 1
+    cp "$COMPOSE_FILE" "$ws/once.yaml"
+    ensure_quarkus_mongo_environment plugins-api || exit 1
+    cmp "$COMPOSE_FILE" "$ws/once.yaml" || exit 1
+    [[ $(grep -c 'QUARKUS_MONGODB_CONNECTION_STRING=' "$COMPOSE_FILE") == 1 ]] || exit 1
+    assert_file_contains "$COMPOSE_FILE" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}' || exit 1
+    sed -i 's|^MONGO_URI=.*|MONGO_URI=mongodb://custom-db:27018/custom|' "$ENV_FILE"
+    ensure_quarkus_mongo_environment viewer || exit 1
+    assert_file_contains "$COMPOSE_FILE" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://custom-db:27018/custom'
+  )
+}
+
+test_control_panel_environment_migration() {
+  local ws
+  ws="$(make_workspace)"
+  sed -i '/- DOMAIN=${DOMAIN}/d; s|- IMAGES_CDN_ENDPOINT=.*|- IMAGES_CDN_ENDPOINT=${IMAGES_CDN_ENDPOINT}|' "$ws/remotefalcon/compose.yaml"
+  (
+    source "$ws/shared_functions.sh"
+    ensure_service_runtime_environment control-panel || exit 1
+    cp "$COMPOSE_FILE" "$ws/once.yaml"
+    ensure_service_runtime_environment control-panel || exit 1
+    cmp "$COMPOSE_FILE" "$ws/once.yaml" || exit 1
+    [[ $(grep -c -- '- DOMAIN=${DOMAIN}' "$COMPOSE_FILE") == 1 ]] || exit 1
+    [[ $(grep -c -- '- IMAGES_CDN_ENDPOINT=https://${DOMAIN}/${IMAGES_S3_BUCKET}' "$COMPOSE_FILE") == 1 ]]
+  )
+}
+
+test_update_targeted_health_and_rollback() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="plugins-api"
+  export MOCK_OLD_IMAGE_ID="sha256:oldimage"
+  export MOCK_OLD_IMAGE_REF="plugins-api:oldtag"
+  sed '/^# ========== Main update logic ==========/,$d' "$ws/update_containers.sh" > "$ws/update-functions.sh"
+  (
+    source "$ws/update-functions.sh"
+    perform_update plugins-api abcdef1 ""
+  ) > "$ws/update-target.out" 2>&1 || return 1
+  assert_file_contains "$ws/update-target.out" 'plugins-api health checks passed' || return 1
+  [[ $(grep -c 'Running health check script' "$ws/update-target.out") == 1 ]] || return 1
+  assert_file_not_contains "$ws/mock-log/commands.log" 'docker logs.* (viewer|mongo|nginx)' || return 1
+  cp "$ws/remotefalcon/compose.yaml" "$ws/before-failure.yaml"
+  export MOCK_HTTP_CODE=503
+  if (
+    source "$ws/update-functions.sh"
+    perform_update plugins-api badbeef ""
+  ) > "$ws/update-failed.out" 2>&1; then return 1; fi
+  cmp "$ws/before-failure.yaml" "$ws/remotefalcon/compose.yaml" || return 1
+  assert_file_contains "$ws/update-failed.out" 'Restored plugins-api is still unhealthy' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'up -d --no-deps --force-recreate plugins-api'
+}
+
 test_health_check_uses_recent_logs() {
   assert_file_contains "$ROOT_DIR/health_check.sh" 'docker logs --since "\$\{HEALTH_LOG_SINCE:-10m\}"'
 }
@@ -969,6 +1046,10 @@ run_test "run_workflow.sh restores a failed deployment" test_run_workflow_rolls_
 run_test "shared_functions.sh hides secrets in output" test_print_env_redacts_secrets
 run_test "health_check.sh fails without .env" test_health_check_missing_env_fails
 run_test "health_check.sh ignores stale log errors" test_health_check_uses_recent_logs
+run_test "targeted health checks isolate the selected service" test_targeted_health_check
+run_test "Quarkus runtime migration is targeted and idempotent" test_quarkus_environment_migration
+run_test "control-panel runtime migration is targeted and idempotent" test_control_panel_environment_migration
+run_test "image upgrades check only their service and roll back on HTTP failure" test_update_targeted_health_and_rollback
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init

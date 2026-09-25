@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.20.2
+# VERSION=2026.9.24.2
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -148,14 +148,24 @@ wait_for_service_deployment() {
   local attempts="${RF_DEPLOY_CHECK_ATTEMPTS:-60}"
   local delay="${RF_DEPLOY_CHECK_DELAY:-2}"
   local health_status=""
+  local check_endpoints="${2-health}"
+  local deadline=$((SECONDS + ${RF_DEPLOY_CHECK_TIMEOUT:-120}))
 
-  while (( attempts-- > 0 )); do
-    if docker compose -f "$COMPOSE_FILE" ps --services --filter status=running | grep -Fxq "$service_name"; then
+  while (( attempts-- > 0 && SECONDS < deadline )); do
+    if rf_compose ps --services --filter status=running | grep -Fxq "$service_name"; then
       health_status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$service_name" 2>/dev/null || true)
       case "$health_status" in
         healthy|none|"")
-          echo -e "${GREEN}✅ $service_name passed its deployment check.${NC}"
-          return 0
+          # Running alone is insufficient for images without a Docker HEALTHCHECK.
+          # Fresh installs initialize storage and routing later in configure-rf.
+          # Invoke once; endpoint retry/backoff belongs to health_check.sh.
+          if [[ -z "$check_endpoints" ]] || HEALTH_MAX_RETRIES="${HEALTH_MAX_RETRIES:-25}" \
+              HEALTH_ENDPOINT_TIMEOUT="${HEALTH_ENDPOINT_TIMEOUT:-120}" \
+              "$HEALTH_CHECK_SCRIPT" 0s "$service_name"; then
+            echo -e "${GREEN}✅ $service_name passed its deployment check.${NC}"
+            return 0
+          fi
+          return 1
           ;;
         unhealthy)
           # A container can briefly report unhealthy while its process is still
@@ -195,6 +205,11 @@ perform_update() {
   fi
 
   update_compose_dockerfile_paths
+  if ! ensure_service_runtime_environment "$service_name"; then
+    cp "$previous_compose" "$COMPOSE_FILE"
+    rm -f "$previous_compose"
+    return 1
+  fi
 
   case "$service_name" in
     plugins-api|control-panel|viewer|ui|external-api)
@@ -212,9 +227,9 @@ perform_update() {
 
   echo -e "✔ Updated $service_name image tag to version $latest_version in $COMPOSE_FILE..."
   echo -e "${BLUE}🔄 Restarting $service_name with the $latest_version image...${NC}"
-  if docker compose -f "$COMPOSE_FILE" config -q &&
-     docker compose -f "$COMPOSE_FILE" up -d --no-deps "$service_name" &&
-     wait_for_service_deployment "$service_name"; then
+  if rf_compose config -q &&
+     rf_compose up -d --no-deps "$service_name" &&
+     wait_for_service_deployment "$service_name" "${previous_image:+health}"; then
     rm -f "$previous_compose"
     [[ -z "$rollback_tag" ]] || docker image rm "$rollback_tag" >/dev/null 2>&1 || true
     return 0
@@ -225,7 +240,10 @@ perform_update() {
   if [[ -n "$rollback_tag" ]]; then
     docker image tag "$rollback_tag" "$previous_ref" || true
   fi
-  docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate "$service_name" || true
+  rf_compose up -d --no-deps --force-recreate "$service_name" || true
+  if ! wait_for_service_deployment "$service_name"; then
+    echo "❌ Restored $service_name is still unhealthy; inspect its configuration and logs." >&2
+  fi
   [[ -z "$rollback_tag" ]] || docker image rm "$rollback_tag" >/dev/null 2>&1 || true
   exit 1
 }
@@ -299,7 +317,7 @@ check_for_update() {
     case "$service_name" in
       cloudflared|nginx|mongo|versitygw)
         echo -e "${BLUE}🔄 Attempting to start $service_name to check its version directly...${NC}"
-        docker compose -f "$COMPOSE_FILE" up -d "$service_name"
+        rf_compose up -d "$service_name"
         # Retry up to 10 times to get the current version from the running container if it was just started
         if [[ -z "$CURRENT_VERSION" ]]; then
           for i in {1..10}; do
@@ -493,7 +511,7 @@ check_for_update() {
         # Start the container if it is not running and the compose.yaml format is correct(not 'latest')
         if (( correct_format == 0 )) && ! is_container_running "$service_name"; then
           echo -e "${BLUE}🔄 $service_name tag ${YELLOW}$CURRENT_VERSION${BLUE} is in valid format. Attempting to start $service_name...${NC}"
-          docker compose -f "$COMPOSE_FILE" up -d "$service_name"
+          rf_compose up -d "$service_name"
         fi
 
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
@@ -563,7 +581,7 @@ check_for_update() {
               else
                 # Interactive mode - prompt to run workflow and prompt to update compose.yaml if workflow completes successfully
                 if check_image_exists "$service_name" "$short_sha"; then # REPO configured and image exists
-                  read -rp "❓ Update $service_name to ${latest_version:0:7}? (y/n) [n]: " confirm
+                  read -rp "❓ Update $service_name to ${short_sha}? (y/n) [n]: " confirm
                   if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     perform_update "$service_name" "$LATEST_VERSION" "$sed_command" # $LATEST_VERSION will get converted to short sha in perform_update
                   fi
@@ -616,6 +634,6 @@ else # If a specific container is provided, check for updates for that container
   fi
 fi
 
-# Run the health check if specified with 'health' after all updates are done
-health_check "$HEALTH_CHECK"
+# Each changed service was checked during deployment, including rollback.
+# Keep accepting the legacy third argument without checking unrelated services.
 exit 0
