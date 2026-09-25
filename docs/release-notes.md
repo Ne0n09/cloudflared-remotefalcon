@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+- Restored automatic `.env`, `compose.yaml`, and `default.conf` updates for existing installations. Existing environment values, custom environment keys, and all service image references are retained while the current configuration structure is applied.
+
+- Added pre-apply Docker Compose validation and rollback coverage. Older CPU-compatible MongoDB pins remain unchanged, and previous configuration files are retained in the dated script-update backup.
+
 ## 2026.9.19.4
 
 - GitHub releases now use the matching section from the documentation release notes as their release description, so the Releases page shows the same detailed change summary as the documentation site.

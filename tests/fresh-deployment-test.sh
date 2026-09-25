@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# VERSION=2026.9.24.3
+
 set -euo pipefail
 
 REPOSITORY="${RF_INSTALL_REPOSITORY:-Ne0n09/cloudflared-remotefalcon}"
@@ -175,21 +178,18 @@ cleanup_target() {
 }
 
 validate_update() {
-  local target="$WORK_ROOT/update" env_before compose_before
-  local env_after compose_after
+  local target="$WORK_ROOT/update" mongo_image_before mongo_image_after
   cleanup_target "$target" "$WORK_ROOT/data/update-mongo" "$WORK_ROOT/data/update-versitygw"
   install_release "$target" "$UPDATE_FROM"
   copy_private_configuration "$target"
-  env_before=$(sha256sum "$target/remotefalcon/.env" | awk '{print $1}')
-  compose_before=$(sha256sum "$target/remotefalcon/compose.yaml" | awk '{print $1}')
+  mongo_image_before=$(awk '/^  mongo:/{found=1; next} found && /image:/{print $2; exit}' "$target/remotefalcon/compose.yaml")
 
   (cd "$target" && ./update_scripts.sh --version "$VERSION") | tee "$RESULTS_DIR/update.log"
 
-  env_after=$(sha256sum "$target/remotefalcon/.env" | awk '{print $1}')
-  compose_after=$(sha256sum "$target/remotefalcon/compose.yaml" | awk '{print $1}')
-  [[ "$env_before" == "$env_after" ]] || { echo "Updater changed the active .env." >&2; return 1; }
-  [[ "$compose_before" == "$compose_after" ]] || { echo "Updater changed the active compose.yaml." >&2; return 1; }
-  [[ -f "$target/remotefalcon/compose.yaml.new" ]] || { echo "Updater did not stage compose.yaml.new." >&2; return 1; }
+  mongo_image_after=$(awk '/^  mongo:/{found=1; next} found && /image:/{print $2; exit}' "$target/remotefalcon/compose.yaml")
+  [[ "$mongo_image_before" == "$mongo_image_after" ]] || { echo "Updater changed the pinned MongoDB image." >&2; return 1; }
+  [[ ! -e "$target/remotefalcon/compose.yaml.new" ]] || { echo "Updater left an obsolete compose.yaml.new file." >&2; return 1; }
+  docker compose --env-file "$target/remotefalcon/.env" -f "$target/remotefalcon/compose.yaml" config -q
   echo "PASS update $(cat "$target/VERSION")" | tee "$RESULTS_DIR/update.result"
 }
 

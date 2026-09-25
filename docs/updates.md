@@ -58,9 +58,13 @@ Public releases can be checked and installed without a GitHub account:
 ./update_scripts.sh
 ```
 
-The updater downloads `cloudflared-remotefalcon.tar.gz` and `SHA256SUMS` from the latest GitHub Release, verifies the archive, runs shell syntax checks and the test suite, and backs up installed scripts before replacing them.
+The updater downloads `cloudflared-remotefalcon.tar.gz` and `SHA256SUMS` from the latest GitHub Release, verifies the archive, runs shell syntax checks and the test suite, and backs up installed scripts and configuration before replacing them.
 
-An update preserves `remotefalcon/.env`, the active `compose.yaml`, and `default.conf`. New configuration templates are written as `compose.yaml.new` and `default.conf.new` for review. Run `./health_check.sh 0s` after applying any template changes.
+An update automatically applies the current `.env`, `compose.yaml`, and `default.conf` templates. Existing `.env` values and site-specific extra keys are merged into the new example. The new Compose structure is applied while preserving every existing service image reference, including an older CPU-compatible MongoDB version and pinned Remote Falcon commits. Docker Compose validates the merged result before any active configuration is replaced. The prior files remain in the dated `remotefalcon-backups/scripts-*` directory, and any later update failure restores them automatically.
+
+The released `default.conf` replaces the active file so routing fixes apply automatically. Custom edits made directly to `compose.yaml` outside image references, or directly to `default.conf`, must be represented in the project templates or reapplied from the dated backup.
+
+The script update changes configuration files but does not recreate running containers. Run `configure-rf.sh` or perform a controlled Compose recreation after the update when the new configuration must take effect immediately.
 
 The image builder uses the unified `build.yml` workflow. `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.
 

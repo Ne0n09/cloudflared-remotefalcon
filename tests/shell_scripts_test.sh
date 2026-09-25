@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.24.2
+# VERSION=2026.9.24.3
 
 set -u
 
@@ -392,7 +392,9 @@ MOCK
 #!/usr/bin/env bash
 echo "docker $*" >> "${MOCK_LOG_DIR}/commands.log"
 
-if [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1 $2" == "container inspect" ]]; then
+if [[ "${MOCK_COMPOSE_CONFIG_FAIL:-}" == "true" && "$1" == "compose" && "$*" == *" config -q"* ]]; then
+  exit 1
+elif [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1 $2" == "container inspect" ]]; then
   exit 0
 elif [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1" == "inspect" && "$*" == *".Config.Env"* ]]; then
   printf 'MINIO_ROOT_USER=legacy-user\nMINIO_ROOT_PASSWORD=legacy-password\n'
@@ -1007,13 +1009,26 @@ test_remote_deploy_checks_built_services_before_full_stack() {
   assert_file_contains "$ROOT_DIR/run_workflow.sh" 'up -d --force-recreate "\$\{services\[@\]\}"'
 }
 
-test_release_updater_preserves_live_config() {
+test_release_updater_merges_live_config() {
   local ws target
   ws="$(make_workspace)"
+  with_mocks "$ws"
   target="$(mktemp -d "$TEST_TMP/update-target.XXXXXX")"
   mkdir -p "$target/remotefalcon"
-  printf 'SECRET=value\n' > "$target/remotefalcon/.env"
-  printf 'custom compose\n' > "$target/remotefalcon/compose.yaml"
+  cat > "$target/remotefalcon/.env" <<'ENV'
+DOMAIN=existing.example.com
+MONGO_INITDB_ROOT_USERNAME=existing-user
+MONGO_INITDB_ROOT_PASSWORD=existing-password
+CUSTOM_SETTING=preserved
+ENV
+  cat > "$target/remotefalcon/compose.yaml" <<'COMPOSE'
+services:
+  mongo:
+    image: mongo:4.4.29
+  plugins-api:
+    image: ghcr.io/example/plugins-api:abc1234
+COMPOSE
+  printf 'old nginx configuration\n' > "$target/remotefalcon/default.conf"
   printf 'old\n' > "$target/VERSION"
   printf '#!/bin/bash\n' > "$target/minio_init.sh"
   printf '#!/bin/bash\n' > "$target/revert.sh"
@@ -1022,9 +1037,17 @@ test_release_updater_preserves_live_config() {
     --install-from "$ROOT_DIR" --target "$target" --mode update || return 1
 
   [[ "$(cat "$target/VERSION")" == "$(cat "$ROOT_DIR/VERSION")" ]] || return 1
-  assert_file_contains "$target/remotefalcon/.env" '^SECRET=value$'
-  assert_file_contains "$target/remotefalcon/compose.yaml" '^custom compose$'
-  [[ -f "$target/remotefalcon/compose.yaml.new" ]] || return 1
+  assert_file_contains "$target/remotefalcon/.env" '^DOMAIN=existing\.example\.com$'
+  assert_file_contains "$target/remotefalcon/.env" '^MONGO_INITDB_ROOT_USERNAME=existing-user$'
+  assert_file_contains "$target/remotefalcon/.env" '^MONGO_INITDB_ROOT_PASSWORD=existing-password$'
+  assert_file_contains "$target/remotefalcon/.env" '^CUSTOM_SETTING=preserved$'
+  assert_file_contains "$target/remotefalcon/.env" '^RF_IMAGE_TAG_MODE=platform$'
+  assert_file_contains "$target/remotefalcon/compose.yaml" '^    image: mongo:4\.4\.29$'
+  assert_file_contains "$target/remotefalcon/compose.yaml" '^    image: ghcr\.io/example/plugins-api:abc1234$'
+  assert_file_contains "$target/remotefalcon/compose.yaml" 'QUARKUS_MONGODB_CONNECTION_STRING='
+  cmp "$target/remotefalcon/default.conf" "$ROOT_DIR/remotefalcon/default.conf" || return 1
+  [[ ! -e "$target/remotefalcon/compose.yaml.new" ]] || return 1
+  [[ ! -e "$target/remotefalcon/default.conf.new" ]] || return 1
   [[ -x "$target/configure-rf.sh" ]] || return 1
   [[ -f "$target/install-manifest.txt" ]] || return 1
   [[ -f "$target/LICENSE" ]] || return 1
@@ -1032,6 +1055,39 @@ test_release_updater_preserves_live_config() {
   [[ ! -e "$target/revert.sh" ]] || return 1
   find "$target/remotefalcon-backups" -type f -name minio_init.sh -print -quit | grep -q . || return 1
   find "$target/remotefalcon-backups" -type f -name revert.sh -print -quit | grep -q . || return 1
+  find "$target/remotefalcon-backups" -type f -path '*/remotefalcon/compose.yaml' -print -quit | grep -q . || return 1
+  find "$target/remotefalcon-backups" -type f -path '*/remotefalcon/default.conf' -print -quit | grep -q . || return 1
+  find "$target/remotefalcon-backups" -type f -path '*/remotefalcon/.env' -print -quit | grep -q . || return 1
+}
+
+test_release_updater_rejects_invalid_config() {
+  local ws target before_env before_compose before_nginx
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  target="$(mktemp -d "$TEST_TMP/update-invalid.XXXXXX")"
+  mkdir -p "$target/remotefalcon"
+  printf 'DOMAIN=existing.example.com\n' > "$target/remotefalcon/.env"
+  printf 'services:\n  mongo:\n    image: mongo:4.4.29\n' > "$target/remotefalcon/compose.yaml"
+  printf 'custom nginx configuration\n' > "$target/remotefalcon/default.conf"
+  printf 'old\n' > "$target/VERSION"
+  cp "$target/remotefalcon/.env" "$target/env.before"
+  cp "$target/remotefalcon/compose.yaml" "$target/compose.before"
+  cp "$target/remotefalcon/default.conf" "$target/nginx.before"
+  before_env="$target/env.before"
+  before_compose="$target/compose.before"
+  before_nginx="$target/nginx.before"
+  export MOCK_COMPOSE_CONFIG_FAIL=true
+
+  if RF_SKIP_UPDATE_TESTS=true bash "$ROOT_DIR/update_scripts.sh" \
+    --install-from "$ROOT_DIR" --target "$target" --mode update > "$target/update.out" 2>&1; then
+    unset MOCK_COMPOSE_CONFIG_FAIL
+    return 1
+  fi
+  unset MOCK_COMPOSE_CONFIG_FAIL
+  cmp "$before_env" "$target/remotefalcon/.env" || return 1
+  cmp "$before_compose" "$target/remotefalcon/compose.yaml" || return 1
+  cmp "$before_nginx" "$target/remotefalcon/default.conf" || return 1
+  assert_file_contains "$target/update.out" 'Merged Compose configuration failed validation; active configuration was not replaced'
 }
 
 run_test "bash syntax for managed scripts" test_bash_syntax
@@ -1070,7 +1126,8 @@ run_test "GitHub releases use the documented version notes" test_github_release_
 run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
 run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
-run_test "release updater preserves live configuration" test_release_updater_preserves_live_config
+run_test "release updater merges live values into current configuration" test_release_updater_merges_live_config
+run_test "release updater leaves live configuration unchanged after validation failure" test_release_updater_rejects_invalid_config
 
 echo
 echo "Passed: $PASS_COUNT"

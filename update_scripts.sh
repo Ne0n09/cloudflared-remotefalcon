@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# VERSION=2026.9.24.3
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,9 +64,96 @@ if [[ "${RF_SKIP_UPDATE_TESTS:-false}" != true && -f "$source_dir/tests/shell_sc
   (cd "$source_dir" && bash tests/shell_scripts_test.sh)
 fi
 
+merge_env_configuration() {
+  local existing="$1" template="$2" output="$3"
+  if [[ ! -f "$existing" ]]; then
+    cp "$template" "$output"
+    chmod 600 "$output"
+    return
+  fi
+
+  awk '
+    NR==FNR {
+      if (match($0, /^[A-Za-z_][A-Za-z0-9_]*=/)) {
+        key=substr($0, 1, index($0, "=")-1)
+        values[key]=substr($0, index($0, "=")+1)
+        if (!(key in ordered)) { order[++count]=key; ordered[key]=1 }
+      }
+      next
+    }
+    match($0, /^[A-Za-z_][A-Za-z0-9_]*=/) {
+      key=substr($0, 1, index($0, "=")-1)
+      included[key]=1
+      if (key in values) print key "=" values[key]
+      else print
+      next
+    }
+    { print }
+    END {
+      heading=0
+      for (i=1; i<=count; i++) {
+        key=order[i]
+        if (!(key in included)) {
+          if (!heading) { print ""; print "# Preserved settings from the previous .env"; heading=1 }
+          print key "=" values[key]
+        }
+      }
+    }
+  ' "$existing" "$template" > "$output"
+  chmod 600 "$output"
+}
+
+merge_compose_configuration() {
+  local existing="$1" template="$2" output="$3"
+  if [[ ! -f "$existing" ]]; then
+    cp "$template" "$output"
+    return
+  fi
+
+  # Use the new Compose structure while retaining every existing service image
+  # reference, including CPU-compatible MongoDB pins and RF commit tags.
+  awk '
+    function service_name(line, value) {
+      value=line
+      sub(/^  /, "", value)
+      sub(/:.*/, "", value)
+      return value
+    }
+    NR==FNR {
+      if ($0 ~ /^  [A-Za-z0-9_-]+:/) service=service_name($0)
+      if (service != "" && $0 ~ /^    image:[[:space:]]*/) {
+        value=$0
+        sub(/^    image:[[:space:]]*/, "", value)
+        images[service]=value
+      }
+      next
+    }
+    $0 ~ /^  [A-Za-z0-9_-]+:/ { service=service_name($0) }
+    service in images && $0 ~ /^    image:[[:space:]]*/ {
+      print "    image: " images[service]
+      next
+    }
+    { print }
+  ' "$existing" "$template" > "$output"
+}
+
+validate_compose_configuration() {
+  local compose_file="$1" env_file="$2" line key
+  local -a clean_environment=(env)
+  command -v docker >/dev/null || { echo "Docker is required to validate the updated Compose configuration." >&2; return 1; }
+  docker compose version >/dev/null 2>&1 || { echo "Docker Compose is required to validate the updated configuration." >&2; return 1; }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]] || continue
+    key="${BASH_REMATCH[1]}"
+    clean_environment+=(-u "$key")
+  done < "$env_file"
+  "${clean_environment[@]}" docker compose --env-file "$env_file" -f "$compose_file" config -q
+}
+
 backup_dir="$target_dir/remotefalcon-backups/scripts-$current_version-$(date +%Y%m%d-%H%M%S)"
 mkdir -m 700 -p "$backup_dir"
 installed=()
+prepared_dir=""
 rollback() {
   echo "Update failed; restoring the previous scripts." >&2
   for path in "${installed[@]}"; do
@@ -75,6 +165,7 @@ rollback() {
       rm -f "$path"
     fi
   done
+  [[ -z "$prepared_dir" ]] || rm -rf "$prepared_dir"
 }
 trap rollback ERR
 
@@ -94,11 +185,38 @@ managed=("${managed_files[@]}")
 if [[ "$MODE" == "install" ]]; then
   managed+=("${template_files[@]}")
 else
-  # Updated templates are staged for review and never overwrite live configuration.
-  for relative in "${template_files[@]}"; do
-    mkdir -p "$target_dir/$(dirname "$relative")"
-    cp "$source_dir/$relative" "$target_dir/$relative.new"
+  prepared_dir=$(mktemp -d)
+  mkdir -p "$prepared_dir/remotefalcon"
+  merge_env_configuration \
+    "$target_dir/remotefalcon/.env" \
+    "$source_dir/remotefalcon/.env.example" \
+    "$prepared_dir/remotefalcon/.env"
+  merge_compose_configuration \
+    "$target_dir/remotefalcon/compose.yaml" \
+    "$source_dir/remotefalcon/compose.yaml" \
+    "$prepared_dir/remotefalcon/compose.yaml"
+  cp "$source_dir/remotefalcon/default.conf" "$prepared_dir/remotefalcon/default.conf"
+  if ! validate_compose_configuration \
+    "$prepared_dir/remotefalcon/compose.yaml" \
+    "$prepared_dir/remotefalcon/.env"; then
+    echo "Merged Compose configuration failed validation; active configuration was not replaced." >&2
+    false
+  fi
+
+  for relative in remotefalcon/.env "${template_files[@]}"; do
+    source_path="$prepared_dir/$relative"
+    target_path="$target_dir/$relative"
+    if [[ -f "$target_path" ]]; then
+      mkdir -p "$backup_dir/$(dirname "$relative")"
+      cp -p "$target_path" "$backup_dir/$relative"
+    fi
+    mkdir -p "$(dirname "$target_path")"
+    cp -p "$source_path" "$target_path"
+    installed+=("$target_path")
   done
+  chmod 600 "$target_dir/remotefalcon/.env"
+  rm -rf "$prepared_dir"
+  prepared_dir=""
 fi
 
 for relative in "${managed[@]}"; do
@@ -116,4 +234,4 @@ done
 chmod +x "${scripts[@]/#/$target_dir/}"
 trap - ERR
 echo "Installed cloudflared-remotefalcon $new_version."
-[[ "$MODE" == "install" ]] || echo "Review remotefalcon/compose.yaml.new and default.conf.new before applying template changes."
+[[ "$MODE" == "install" ]] || echo "Updated .env, compose.yaml, and default.conf; previous files are in $backup_dir."
