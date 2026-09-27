@@ -86,13 +86,21 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     :   The update_rf_containers script updates this when it is run and one of the RF containers gets updated. This changes the version displayed in the lower left of the Control Panel in the YYYY.MM.DD format.
 
-    `GOOGLE_MAPS_KEY`
+    `PROTOMAPS_API_KEY`
 
-    :   This is used for the Remote Falcon Shows Maps on the Control Panel.
+    :   Optional Protomaps key used by the Remote Falcon shows map.
+
+    `MAP_STYLE_LIGHT` / `MAP_STYLE_DARK`
+
+    :   Optional map style URLs compiled into the UI image.
 
     `PUBLIC_POSTHOG_KEY`
 
     :   This is used for analytics. You can create a free account at [PostHog](https://posthog.com/)
+
+    `POSTHOG_CLI_API_KEY`
+
+    :   Optional PostHog personal API key used only while building UI source maps. It is stored as a GitHub Actions secret when remote image building is configured.
 
     `PUBLIC_POSTHOG_HOST`
 

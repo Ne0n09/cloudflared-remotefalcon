@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.29.1
+# VERSION=2026.9.27.2
 
 # This script will run the GitHub Actions workflow in the REPO configured in the .env to build: plugins-api, control-panel, viewer, ui, and external-api.
 # It will call the unified build.yml workflow with inputs based on the arguments passed.
@@ -25,6 +25,7 @@ source "$SCRIPT_DIR/shared_functions.sh"
 check_env_exists
 parse_env
 WORKFLOW_FILE="build.yml"                   # Workflow filename in .github/workflows. This should be in the REPO specified in .env
+LOCAL_WORKFLOW_FILE="$SCRIPT_DIR/image-builder/.github/workflows/$WORKFLOW_FILE"
 DEFAULT_REF="main"                            # Default branch if none specified
 CONTAINERS=("plugins-api" "control-panel" "viewer" "ui" "external-api")
 POLL_INTERVAL=10  # Seconds between status checks on GitHub Actions run
@@ -49,6 +50,41 @@ validate_workflow_file() {
     return 1
   fi
   return 0
+}
+
+# Existing image-builder repositories created from the template do not receive
+# later template changes automatically. Install or update the canonical unified
+# workflow before attempting a build.
+sync_image_builder_workflow() {
+  local api_path="repos/$REPO/contents/.github/workflows/$WORKFLOW_FILE"
+  local remote_file current_sha content
+  [[ -f "$LOCAL_WORKFLOW_FILE" ]] || {
+    echo -e "${RED}❌ Missing canonical image-builder workflow: $LOCAL_WORKFLOW_FILE${NC}" >&2
+    return 1
+  }
+  command -v base64 >/dev/null 2>&1 || {
+    echo -e "${RED}❌ base64 is required to update the image-builder workflow.${NC}" >&2
+    return 1
+  }
+
+  remote_file=$(mktemp) || return 1
+  if gh api -H "Accept: application/vnd.github.raw+json" "$api_path" > "$remote_file" 2>/dev/null; then
+    if cmp -s "$LOCAL_WORKFLOW_FILE" "$remote_file"; then
+      rm -f "$remote_file"
+      echo -e "${GREEN}✅ Image-builder workflow is current in $REPO.${NC}"
+      return 0
+    fi
+    current_sha=$(gh api "$api_path" --jq '.sha') || { rm -f "$remote_file"; return 1; }
+  else
+    current_sha=""
+  fi
+  rm -f "$remote_file"
+
+  content=$(base64 -w 0 < "$LOCAL_WORKFLOW_FILE") || return 1
+  local -a api_args=(--method PUT "$api_path" -f "message=Update Remote Falcon image-builder workflow" -f "content=$content")
+  [[ -z "$current_sha" ]] || api_args+=(-f "sha=$current_sha")
+  gh api "${api_args[@]}" >/dev/null || return 1
+  echo -e "${GREEN}✅ Installed the current $WORKFLOW_FILE workflow in $REPO.${NC}"
 }
 
 # From shared_functions.sh. Updates the VERSION in the .env file so you can see the current version on the RF control panel
@@ -326,6 +362,11 @@ trigger_workflow() {
 }
 # ========== Main Logic ==========
 update_rf_version # Updates the VERSION in the .env file prior to updating the repo secrets
+
+if ! sync_image_builder_workflow; then
+  echo -e "${RED}❌ Image-builder workflow update failed, aborting.${NC}"
+  exit 1
+fi
 
 # Syncs the latest values from .env to the GitHub repo secrets
 if ! bash "$SCRIPT_DIR/sync_repo_secrets.sh"; then

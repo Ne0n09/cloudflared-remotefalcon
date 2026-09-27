@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.5.20.1
+# VERSION=2026.9.27.2
 
 # Configure new VersityGW container
 #set -euo pipefail
@@ -117,6 +117,31 @@ check_versitygw_health() {
   echo -e "${GREEN}✅ Container $CONTAINER_NAME is ready.${NC}"
 }
 
+get_bucket_owner() {
+  docker exec "$CONTAINER_NAME" versitygw admin \
+    -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" \
+    -er http://127.0.0.1:7071 list-buckets |
+    awk -v bucket="$IMAGES_S3_BUCKET" 'NR>2 && $1==bucket {print $2}'
+}
+
+verify_bucket() {
+  local attempts=5 bucket_owner=""
+  while (( attempts-- > 0 )); do
+    bucket_owner=$(get_bucket_owner)
+    if [[ "$bucket_owner" == "$S3_ACCESS_KEY" ]]; then
+      echo -e "${GREEN}✅ Verified bucket '$IMAGES_S3_BUCKET' is owned by '$S3_ACCESS_KEY'.${NC}"
+      return 0
+    fi
+    sleep 1
+  done
+  if [[ -z "$bucket_owner" ]]; then
+    echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' was not created.${NC}" >&2
+  else
+    echo -e "${RED}❌ Bucket '$IMAGES_S3_BUCKET' is owned by '$bucket_owner', not '$S3_ACCESS_KEY'.${NC}" >&2
+  fi
+  return 1
+}
+
 echo -e "${BLUE}⚙️ Running Versity Gateway container initialization script to allow for self-hosted Image Hosting under the Control Panel...${NC}"
 
 # If the container is not running start it
@@ -196,22 +221,32 @@ if docker exec "$CONTAINER_NAME" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT
   echo -e "${GREEN}✅ S3 user '$S3_ACCESS_KEY' already exists.${NC}"
 else
   echo "Creating user '$S3_ACCESS_KEY'..."
-  docker exec $CONTAINER_NAME versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 create-user -a "$S3_ACCESS_KEY" -s "$S3_SECRET_KEY" -r user
+  if ! docker exec "$CONTAINER_NAME" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 create-user -a "$S3_ACCESS_KEY" -s "$S3_SECRET_KEY" -r user; then
+    echo -e "${RED}❌ Failed to create S3 user '$S3_ACCESS_KEY'.${NC}" >&2
+    exit 1
+  fi
 fi
 
 # Check if the 'remote-falcon-images' bucket already exists else create it
-bucket_owner=$(docker exec "$CONTAINER_NAME" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 list-buckets | awk -v bucket="$IMAGES_S3_BUCKET" 'NR>2 && $1==bucket {print $2}')
+bucket_owner=$(get_bucket_owner)
 if [[ -n "$bucket_owner" ]]; then
   if [[ "$bucket_owner" == "$S3_ACCESS_KEY" ]]; then
     echo -e "${GREEN}✅ Bucket '$IMAGES_S3_BUCKET' already exists and is owned by '$S3_ACCESS_KEY'.${NC}"
   else
     echo -e "${YELLOW}⚠️ Bucket '$IMAGES_S3_BUCKET' exists but is owned by '$bucket_owner'. Updating owner to'$S3_ACCESS_KEY'.${NC}"
-    docker exec "$CONTAINER_NAME" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 change-bucket-owner -b "$IMAGES_S3_BUCKET" -o "$S3_ACCESS_KEY"
+    if ! docker exec "$CONTAINER_NAME" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 change-bucket-owner -b "$IMAGES_S3_BUCKET" -o "$S3_ACCESS_KEY"; then
+      echo -e "${RED}❌ Failed to update bucket owner for '$IMAGES_S3_BUCKET'.${NC}" >&2
+      exit 1
+    fi
   fi
 else
   echo "🪣 Creating bucket '$IMAGES_S3_BUCKET'..."
-  docker exec $CONTAINER_NAME versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 create-bucket --owner "$S3_ACCESS_KEY" --bucket "$IMAGES_S3_BUCKET"
+  if ! docker exec "$CONTAINER_NAME" versitygw admin -a "$S3_ROOT_USER" -s "$S3_ROOT_PASSWORD" -er http://127.0.0.1:7071 create-bucket --owner "$S3_ACCESS_KEY" --bucket "$IMAGES_S3_BUCKET"; then
+    echo -e "${RED}❌ Failed to create bucket '$IMAGES_S3_BUCKET'.${NC}" >&2
+    exit 1
+  fi
 fi
+verify_bucket || exit 1
 
 # Set a bucket policy to allow public access check_bucket_policy is sourced from shared_functions.sh
 if check_bucket_policy "$CONTAINER_NAME"; then
@@ -223,6 +258,10 @@ else
     echo -e "${RED}❌ Failed to apply bucket policy for '$IMAGES_S3_BUCKET'.${NC}"
     exit 1
   fi
+fi
+if ! check_bucket_policy "$CONTAINER_NAME"; then
+  echo -e "${RED}❌ Bucket policy verification failed for '$IMAGES_S3_BUCKET'.${NC}" >&2
+  exit 1
 fi
 
 # Migrate the known legacy Remote Falcon MinIO volume when its old container is

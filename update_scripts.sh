@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.25.1
+# VERSION=2026.9.27.2
 
 set -euo pipefail
 
@@ -37,6 +37,11 @@ target_dir="$(mkdir -p "$TARGET_DIR" && cd "$TARGET_DIR" && pwd)"
 new_version=$(tr -d '\r\n' < "$source_dir/VERSION")
 current_version="none"
 [[ -f "$target_dir/VERSION" ]] && current_version=$(tr -d '\r\n' < "$target_dir/VERSION")
+platform_rebuild_required=false
+if [[ "$MODE" == "update" && -f "$target_dir/remotefalcon/.env" ]] &&
+   ! grep -Eq '^RF_IMAGE_TAG_MODE=platform([[:space:]]*)$' "$target_dir/remotefalcon/.env"; then
+  platform_rebuild_required=true
+fi
 
 if [[ "$MODE" == "check" ]]; then
   printf 'Installed: %s\nAvailable: %s\n' "$current_version" "$new_version"
@@ -233,5 +238,8 @@ for relative in "${managed[@]}"; do
 done
 chmod +x "${scripts[@]/#/$target_dir/}"
 trap - ERR
+if [[ "$platform_rebuild_required" == true ]]; then
+  touch "$target_dir/.rf-platform-rebuild-required"
+fi
 echo "Installed cloudflared-remotefalcon $new_version."
 [[ "$MODE" == "install" ]] || echo "Updated .env, compose.yaml, and default.conf; previous files are in $backup_dir."

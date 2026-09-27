@@ -89,6 +89,10 @@ chmod +x /tmp/cloudflared-remotefalcon-install.sh
 
 The installer verifies the release archive, creates a dated configuration backup, preserves existing `.env` values and image references, and validates the merged Compose configuration before applying it. It then upgrades containers in a safe order, checks each changed service, migrates legacy MinIO objects to Versity Gateway, removes retired containers, and runs the complete health check.
 
+When upgrading from the older per-application image repositories, the installer updates the existing GitHub image-builder repository to the unified `build.yml` workflow and synchronizes the current build settings from `.env`. All five application images are then rebuilt in one matrix workflow. Containers are deployed together only after every image builds successfully. Installations that build locally perform the five builds as one batch before replacing any running application containers.
+
+Versity Gateway initialization is a required upgrade step. The installer creates and verifies the configured image bucket, its owner, and its public-read policy before attempting a legacy MinIO migration or running the final health check. A bucket initialization failure stops the upgrade with the source MinIO data unchanged.
+
 If the current user cannot access Docker, the installer asks whether to add that user to the `docker` group before changing any installation files. Accepting requires the user's `sudo` password. The installer then continues the upgrade immediately as the same user; the user does not need to log out and rerun it. Docker group membership grants root-level privileges on the host, so decline the prompt if that access is not appropriate.
 
 If a service fails its deployment check, its previous image and Compose configuration are restored. A failed MinIO migration leaves the source data unchanged; after a successful verified migration, the old data directory is retained with a dated `.migrated-*` name.

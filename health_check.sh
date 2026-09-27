@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.24.2
+# VERSION=2026.9.27.2
 
 #set -euo pipefail
 #set -x
@@ -335,8 +335,9 @@ check_endpoint() {
       HEALTHY=false
     fi
 
-    # Print bucket and object information
-    echo "🔍 Checking bucket '$IMAGES_S3_BUCKET' object information..."
+    # Print bucket and object information only after the bucket was confirmed.
+    if [[ -n "$bucket_owner" ]]; then
+      echo "🔍 Checking bucket '$IMAGES_S3_BUCKET' object information..."
     #docker run --rm --network "container:$container_name" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url http://$container_name:7070 s3 ls s3://$IMAGES_S3_BUCKET --summarize --recursive --human-readable
     object_summary=$(docker run --rm --network "container:$container_name" -e AWS_ACCESS_KEY_ID="$S3_ROOT_USER" -e AWS_SECRET_ACCESS_KEY="$S3_ROOT_PASSWORD" amazon/aws-cli --endpoint-url "http://127.0.0.1:7070" s3 ls "s3://$IMAGES_S3_BUCKET" --recursive \
     | awk '
@@ -366,10 +367,11 @@ check_endpoint() {
     }
     ')
 
-    if [[ "$object_summary" == "__NO_OBJECTS__" ]]; then
-      echo -e "${YELLOW}ℹ️ No objects found in bucket '$IMAGES_S3_BUCKET'.${NC}"
-    else
-      echo "$object_summary"
+      if [[ "$object_summary" == "__NO_OBJECTS__" ]]; then
+        echo -e "${YELLOW}ℹ️ No objects found in bucket '$IMAGES_S3_BUCKET'.${NC}"
+      else
+        echo "$object_summary"
+      fi
     fi
 
     # Verify control-panel has a valid S3_ACCESS_KEY

@@ -12,3 +12,5 @@ is installed. Existing builders without this workflow should leave the setting
 unset to keep their per-service tags.
 
 For local builds, use `DOCKERFILE=Dockerfile.dev`; these JVM builds need less memory. The GitHub workflow continues to use the upstream production Dockerfiles. Keep the `PROTOMAPS_API_KEY`, optional map styles, and host routing values in your deployment `.env` so the UI image receives them at build time.
+
+`run_workflow.sh` updates `.github/workflows/build.yml` in an existing builder repository and synchronizes current build secrets before dispatching a build. This also upgrades repositories originally created with the legacy `build-all.yml` and `build-container.yml` workflows.

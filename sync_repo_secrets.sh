@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.4.26.1
+# VERSION=2026.9.27.2
 
 # This script will sync your build ARG secrets from the .env to the REPO defined in the .env file.
 # These secrets are used during the build workflows.
@@ -40,6 +40,7 @@ SYNC_KEYS=(
   "MAP_STYLE_LIGHT"
   "MAP_STYLE_DARK"
   "PUBLIC_POSTHOG_KEY"
+  "POSTHOG_CLI_API_KEY"
   "PUBLIC_POSTHOG_HOST"
   "GA_TRACKING_ID"
   "MIXPANEL_KEY"

@@ -152,6 +152,8 @@ Click the name of the script to expand the section to display details about the 
     
     - It will call the sync_repo_secrets script to ensure build arguments are synced prior to building new images.
 
+    - It installs or updates the canonical `build.yml` in an existing image-builder repository before starting a build, so repositories created from an older template receive the current workflow automatically.
+
     - If building all images, expect the workflow to run for about 15 minutes.
 
     ```sh title="run_workflow script syntax examples" 

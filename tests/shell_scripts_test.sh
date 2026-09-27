@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.1
+# VERSION=2026.9.27.2
 
 set -u
 
@@ -66,7 +66,7 @@ run_test() {
 make_workspace() {
   local ws
   ws="$(mktemp -d "$TEST_TMP/ws.XXXXXX")"
-  mkdir -p "$ws/remotefalcon" "$ws/.github/workflows"
+  mkdir -p "$ws/remotefalcon" "$ws/.github/workflows" "$ws/image-builder/.github/workflows"
 
   cp "$ROOT_DIR/configure-rf.sh" "$ws/"
   cp "$ROOT_DIR/health_check.sh" "$ws/"
@@ -81,6 +81,7 @@ make_workspace() {
   cp "$ROOT_DIR/versitygw_init.sh" "$ws/"
   cp "$ROOT_DIR/remotefalcon/default.conf" "$ws/remotefalcon/"
   cp "$ROOT_DIR/remotefalcon/compose.yaml" "$ws/remotefalcon/"
+  cp "$ROOT_DIR/image-builder/.github/workflows/build.yml" "$ws/image-builder/.github/workflows/"
   chmod +x "$ws"/*.sh
 
   cat > "$ws/remotefalcon/.env" <<'ENV'
@@ -96,6 +97,7 @@ VIEWER_API=
 VIEWER_JWT_KEY=jwt-key
 GOOGLE_MAPS_KEY=maps-key
 PUBLIC_POSTHOG_KEY=posthog-key
+POSTHOG_CLI_API_KEY=posthog-cli-key
 PUBLIC_POSTHOG_HOST=https://posthog.example.com
 GA_TRACKING_ID=GA-TEST
 MIXPANEL_KEY=mixpanel
@@ -426,21 +428,41 @@ elif [[ "$1" == "exec" && "$*" == *"wget -qO- http://127.0.0.1:7070/health"* ]];
 elif [[ "$1" == "exec" && "$*" == *"list-users"* ]]; then
   printf 'ID AccessKey Role\n-- -------- ---\n'
 elif [[ "$1" == "exec" && "$*" == *"list-buckets"* ]]; then
-  if [[ "${MOCK_BUCKET_EXISTS:-}" == "true" ]]; then
+  if [[ -f "${MOCK_LOG_DIR}/bucket-owner" ]]; then
+    printf 'Bucket Owner\n------ -----\nremote-falcon-images %s\n' "$(cat "${MOCK_LOG_DIR}/bucket-owner")"
+  elif [[ "${MOCK_BUCKET_EXISTS:-}" == "true" ]]; then
     printf 'Bucket Owner\n------ -----\nremote-falcon-images 123456\n'
   else
     printf 'Bucket Owner\n------ -----\n'
   fi
+elif [[ "$1" == "exec" && "$*" == *"create-bucket"* ]]; then
+  [[ "${MOCK_BUCKET_CREATE_FAIL:-false}" == "true" ]] && exit 1
+  owner=""
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--owner" ]]; then owner="$2"; break; fi
+    shift
+  done
+  printf '%s\n' "$owner" > "${MOCK_LOG_DIR}/bucket-owner"
+  exit 0
+elif [[ "$1" == "exec" && "$*" == *"change-bucket-owner"* ]]; then
+  owner=""
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "-o" ]]; then owner="$2"; break; fi
+    shift
+  done
+  printf '%s\n' "$owner" > "${MOCK_LOG_DIR}/bucket-owner"
+  exit 0
 elif [[ "$1" == "exec" && "$2" == "mongo" && "$*" == *"mongosh"* ]]; then
   printf 'No subdomains found\n'
 elif [[ "$1" == "run" && "$*" == *"get-bucket-policy"* ]]; then
-  if [[ "${MOCK_BUCKET_POLICY_EXISTS:-}" == "true" ]]; then
-    printf '%s\n' '{"Policy":"{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"PublicRead\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::remote-falcon-images/*\"]},{\"Sid\":\"AppAccessUserOnly\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"123456\"},\"Action\":[\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::remote-falcon-images\",\"arn:aws:s3:::remote-falcon-images/*\"]}]}"}'
+  if [[ "${MOCK_BUCKET_POLICY_EXISTS:-}" == "true" || -f "${MOCK_LOG_DIR}/bucket-policy" ]]; then
+    printf '%s\n' '{"success":true,"Policy":"{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"PublicRead\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::remote-falcon-images/*\"]},{\"Sid\":\"AppAccessUserOnly\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"123456\"},\"Action\":[\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::remote-falcon-images\",\"arn:aws:s3:::remote-falcon-images/*\"]}]}"}'
     exit 0
   else
     exit 1
   fi
 elif [[ "$1" == "run" && "$*" == *"put-bucket-policy"* ]]; then
+  touch "${MOCK_LOG_DIR}/bucket-policy"
   exit 0
 elif [[ "$1" == "run" && "$*" == *"s3 ls"* ]]; then
   printf '%s' "${MOCK_S3_LS_OUTPUT:-}"
@@ -563,6 +585,7 @@ test_sync_repo_secrets() {
   assert_file_contains "$ws/mock-log/gh-secrets.log" '^secret CONTROL_PANEL_API=https://example.com/remote-falcon-control-panel'
   assert_file_contains "$ws/mock-log/gh-secrets.log" '^secret VIEWER_API=https://example.com/remote-falcon-viewer'
   assert_file_contains "$ws/mock-log/gh-secrets.log" '^secret MONGO_URI=mongodb://rfuser:rfpass@mongo:27017/remote-falcon\?authSource=admin'
+  assert_file_contains "$ws/mock-log/gh-secrets.log" '^secret POSTHOG_CLI_API_KEY=posthog-cli-key'
 }
 
 test_run_workflow() {
@@ -579,6 +602,7 @@ test_run_workflow() {
   ) || return 1
 
   assert_file_contains "$ws/mock-log/commands.log" 'gh workflow run build.yml -R test-owner/test-repo -F service=external-api -F ref=abcdef1234567890abcdef1234567890abcdef12'
+  assert_file_contains "$ws/mock-log/commands.log" 'gh api --method PUT repos/test-owner/test-repo/contents/\.github/workflows/build.yml'
   assert_file_contains "$ws/remotefalcon/compose.yaml" 'external-api:abcdef1'
   assert_file_contains "$ws/mock-log/commands.log" 'docker compose -f .*/remotefalcon/compose.yaml pull external-api'
   assert_file_contains "$ws/mock-log/commands.log" 'docker compose -f .*/remotefalcon/compose.yaml up -d --no-deps --force-recreate external-api'
@@ -821,6 +845,22 @@ test_versitygw_init() {
   assert_file_contains "$ws/mock-log/commands.log" 'create-user'
   assert_file_contains "$ws/mock-log/commands.log" 'create-bucket'
   assert_file_contains "$ws/mock-log/commands.log" 'put-bucket-policy'
+  assert_file_contains "$ws/mock-log/commands.log" 'list-buckets'
+}
+
+test_versitygw_init_fails_when_bucket_creation_fails() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="versitygw"
+  export MOCK_BUCKET_CREATE_FAIL=true
+
+  if (cd "$ws" && ./versitygw_init.sh) > "$ws/versity-failure.out" 2>&1; then
+    unset MOCK_BUCKET_CREATE_FAIL
+    return 1
+  fi
+  unset MOCK_BUCKET_CREATE_FAIL
+  assert_file_contains "$ws/versity-failure.out" "Failed to create bucket 'remote-falcon-images'"
 }
 
 test_minio_migration_preserves_source() {
@@ -885,6 +925,7 @@ test_health_check_requires_s3_bucket() {
   fi
 
   assert_file_contains "$ws/health-missing-bucket.out" "Bucket 'remote-falcon-images' not found"
+  assert_file_not_contains "$ws/health-missing-bucket.out" "Checking bucket 'remote-falcon-images' object information"
 }
 
 test_configure_rf_help() {
@@ -1057,6 +1098,44 @@ EXPECTED
   assert_file_contains "$ROOT_DIR/update_scripts.sh" '--no-configure'
 }
 
+test_legacy_upgrade_rebuilds_platform_images_as_one_workflow() {
+  local ws
+  ws="$(mktemp -d "$TEST_TMP/legacy-platform-rebuild.XXXXXX")"
+  cp "$ROOT_DIR/upgrade_installation.sh" "$ws/"
+  touch "$ws/.rf-platform-rebuild-required"
+
+  cat > "$ws/shared_functions.sh" <<'MOCK'
+#!/usr/bin/env bash
+CYAN=
+GREEN=
+RED=
+NC=
+REPO=test-owner/test-repo
+GITHUB_PAT=ghp_test
+check_compose_exists() { :; }
+check_env_exists() { :; }
+parse_env() { :; }
+rf_compose() {
+  if [[ "$*" == "ps --services --filter status=running" ]]; then printf 'nginx\n'; fi
+}
+MOCK
+  cat > "$ws/run_workflow.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$MOCK_BATCH_WORKFLOW_LOG"
+MOCK
+  for script in update_containers.sh versitygw_init.sh health_check.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$ws/$script"
+  done
+  chmod +x "$ws"/*.sh
+  export MOCK_BATCH_WORKFLOW_LOG="$ws/batch-workflow.log"
+
+  RF_PLATFORM_SHA_OVERRIDE=1234567890abcdef1234567890abcdef12345678 \
+    "$ws/upgrade_installation.sh" >/dev/null || return 1
+
+  assert_file_contains "$ws/batch-workflow.log" '^plugins-api=1234567890abcdef1234567890abcdef12345678 control-panel=1234567890abcdef1234567890abcdef12345678 viewer=1234567890abcdef1234567890abcdef12345678 ui=1234567890abcdef1234567890abcdef12345678 external-api=1234567890abcdef1234567890abcdef12345678$'
+  [[ ! -e "$ws/.rf-platform-rebuild-required" ]] || return 1
+}
+
 test_upgrade_handles_missing_docker_group_access() {
   local ws bin installer current_user
   command -v script >/dev/null 2>&1 || {
@@ -1159,6 +1238,7 @@ COMPOSE
   assert_file_contains "$target/remotefalcon/.env" '^MONGO_INITDB_ROOT_PASSWORD=existing-password$'
   assert_file_contains "$target/remotefalcon/.env" '^CUSTOM_SETTING=preserved$'
   assert_file_contains "$target/remotefalcon/.env" '^RF_IMAGE_TAG_MODE=platform$'
+  [[ -f "$target/.rf-platform-rebuild-required" ]] || return 1
   assert_file_contains "$target/remotefalcon/compose.yaml" '^    image: mongo:4\.4\.29$'
   assert_file_contains "$target/remotefalcon/compose.yaml" '^    image: ghcr\.io/example/plugins-api:abc1234$'
   assert_file_contains "$target/remotefalcon/compose.yaml" 'QUARKUS_MONGODB_CONNECTION_STRING='
@@ -1227,6 +1307,7 @@ run_test "image upgrades check only their service and roll back on HTTP failure"
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
+run_test "versitygw_init.sh fails when bucket creation fails" test_versitygw_init_fails_when_bucket_creation_fails
 run_test "MinIO migration verifies objects and preserves source data" test_minio_migration_preserves_source
 run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
 run_test "health_check.sh fails when the S3 bucket is missing" test_health_check_requires_s3_bucket
@@ -1247,6 +1328,7 @@ if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
 fi
 run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
 run_test "legacy upgrades run the safe transition in order" test_legacy_upgrade_is_orchestrated
+run_test "legacy upgrades rebuild all platform images in one workflow" test_legacy_upgrade_rebuilds_platform_images_as_one_workflow
 run_test "legacy upgrades handle missing Docker group access" test_upgrade_handles_missing_docker_group_access
 run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack

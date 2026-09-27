@@ -1,4 +1,4 @@
-# VERSION=2026.9.18.1
+# VERSION=2026.9.27.2
 name: Build Remote-Falcon Images
 
 on:
@@ -230,6 +230,7 @@ jobs:
             MAP_STYLE_LIGHT=${{ secrets.MAP_STYLE_LIGHT }}
             MAP_STYLE_DARK=${{ secrets.MAP_STYLE_DARK }}
             PUBLIC_POSTHOG_KEY=${{ secrets.PUBLIC_POSTHOG_KEY }}
+            POSTHOG_CLI_API_KEY=${{ secrets.POSTHOG_CLI_API_KEY }}
             GA_TRACKING_ID=${{ secrets.GA_TRACKING_ID }}
             MIXPANEL_KEY=${{ secrets.MIXPANEL_KEY }}
             HOSTNAME_PARTS=${{ secrets.HOSTNAME_PARTS }}

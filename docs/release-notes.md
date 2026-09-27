@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.9.27.2
+
+- Legacy upgrades now install or update the unified `build.yml` workflow in an existing GitHub image-builder repository, synchronize the complete current build-secret set, and force all five Remote Falcon application images through one coordinated matrix build. The running application stack is changed only after every image builds successfully.
+
+- Strengthened Versity Gateway initialization during upgrades. Bucket and owner creation failures now stop the upgrade, the created bucket and public policy are verified before migration continues, and the final health check no longer attempts to list objects from a missing bucket.
+
 ## 2026.9.27.1
 
 - Older installations now detect missing Docker access before the upgrade changes any files. Interactive upgrades offer to add the current user to the Docker group, warn that this grants root-level host privileges, and continue immediately as the same user after administrator authentication without requiring a logout or creating root-owned installation files.
