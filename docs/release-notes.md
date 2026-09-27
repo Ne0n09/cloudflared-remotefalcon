@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2026.9.27.3
+
+- Prevented terminal-control warnings while monitoring image-builder workflows from non-interactive upgrade sessions such as SSH. Build progress remains visible without requiring a configured `TERM` value.
+
 ## 2026.9.27.2
 
 - Legacy upgrades now install or update the unified `build.yml` workflow in an existing GitHub image-builder repository, synchronize the complete current build-secret set, and force all five Remote Falcon application images through one coordinated matrix build. The running application stack is changed only after every image builds successfully.

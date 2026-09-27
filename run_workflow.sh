@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.2
+# VERSION=2026.9.27.3
 
 # This script will run the GitHub Actions workflow in the REPO configured in the .env to build: plugins-api, control-panel, viewer, ui, and external-api.
 # It will call the unified build.yml workflow with inputs based on the arguments passed.
@@ -322,7 +322,7 @@ trigger_workflow() {
     new_line_count=$(( $(echo -e "$job_output" | wc -l) + 1 ))
 
     # Clear previously printed lines
-    if [ "$line_count" -gt 0 ]; then
+    if [ "$line_count" -gt 0 ] && [[ -t 1 ]] && [[ -n "${TERM:-}" ]] && command -v tput >/dev/null 2>&1; then
       for ((i=0;i<line_count;i++)); do
         tput cuu1   # move up
         tput el     # clear line
