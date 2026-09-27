@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2026.9.27.4
+
+- Legacy MinIO migration no longer requires the retired `remote-falcon-images.minio` container to exist. When `/home/minio-volume` remains, the initializer starts a temporary `coollabsio/minio:latest` server with the preserved credentials and volume, mirrors and verifies every object, removes the temporary container, and retains the original data at a dated `.migrated-*` path. A failed migration leaves the source path in place.
+
 ## 2026.9.27.3
 
 - Prevented terminal-control warnings while monitoring image-builder workflows from non-interactive upgrade sessions such as SSH. Build progress remains visible without requiring a configured `TERM` value.

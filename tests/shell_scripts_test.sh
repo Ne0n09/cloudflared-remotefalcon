@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.2
+# VERSION=2026.9.27.4
 
 set -u
 
@@ -400,6 +400,24 @@ echo "docker $*" >> "${MOCK_LOG_DIR}/commands.log"
 
 if [[ "${MOCK_COMPOSE_CONFIG_FAIL:-}" == "true" && "$1" == "compose" && "$*" == *" config -q"* ]]; then
   exit 1
+elif [[ "${MOCK_LEGACY_MINIO_MISSING:-}" == "true" && "$1 $2" == "container inspect" ]]; then
+  exit 1
+elif [[ "${MOCK_MINIO_RUN_FAIL:-}" == "true" && "$1" == "run" && "$*" == *"coollabsio/minio:latest"* ]]; then
+  exit 1
+elif [[ "$1" == "run" && "$*" == *"--entrypoint /bin/mv"* ]]; then
+  parent=""
+  for ((i=1; i<=$#; i++)); do
+    if [[ "${!i}" == "-v" ]]; then
+      next=$((i + 1))
+      mount_value="${!next}"
+      parent="${mount_value%%:*}"
+      break
+    fi
+  done
+  source_path="${@: -2:1}"
+  destination_path="${@: -1}"
+  /bin/mv "$parent/${source_path##*/}" "$parent/${destination_path##*/}"
+  exit 0
 elif [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1 $2" == "container inspect" ]]; then
   exit 0
 elif [[ "${MOCK_LEGACY_MINIO:-}" == "true" && "$1" == "inspect" && "$*" == *".Config.Env"* ]]; then
@@ -469,6 +487,14 @@ elif [[ "$1" == "run" && "$*" == *"s3 ls"* ]]; then
 else
   exit 0
 fi
+MOCK
+
+  cat > "$bin/mv" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "${MOCK_MV_FAIL:-}" == "true" ]]; then
+  exit 1
+fi
+exec /bin/mv "$@"
 MOCK
 
   chmod +x "$bin"/*
@@ -892,6 +918,69 @@ test_minio_migration_preserves_source() {
   unset MOCK_LEGACY_MINIO
 }
 
+test_minio_migration_recreates_missing_container() {
+  local ws legacy_path migrated_path
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  legacy_path="$ws/legacy-minio"
+  mkdir -p "$legacy_path"
+  printf 'legacy object data\n' > "$legacy_path/object.bin"
+  cat >> "$ws/remotefalcon/.env" <<EOF
+MINIO_PATH=$legacy_path
+MINIO_ROOT_USER=legacy-user
+MINIO_ROOT_PASSWORD=legacy-password
+EOF
+  export MOCK_RUNNING_SERVICES="versitygw"
+  export MOCK_LEGACY_MINIO=true
+  export MOCK_LEGACY_MINIO_MISSING=true
+  export MOCK_MV_FAIL=true
+
+  (
+    cd "$ws" || exit 1
+    ./versitygw_init.sh
+  ) || return 1
+
+  [[ ! -e "$legacy_path" ]] || return 1
+  migrated_path=$(find "$ws" -maxdepth 1 -type d -name 'legacy-minio.migrated-*' -print -quit)
+  [[ -n "$migrated_path" && -f "$migrated_path/object.bin" ]] || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'docker run --rm -d --name remote-falcon-images.minio-migration-'
+  assert_file_contains "$ws/mock-log/commands.log" '--network rf-network'
+  assert_file_contains "$ws/mock-log/commands.log" '-v .*legacy-minio:/data coollabsio/minio:latest server /data'
+  assert_file_contains "$ws/mock-log/commands.log" 'mc mirror --overwrite'
+  assert_file_contains "$ws/mock-log/commands.log" 'mc --no-color diff'
+  assert_file_contains "$ws/mock-log/commands.log" 'docker stop remote-falcon-images.minio-migration-'
+  assert_file_contains "$ws/mock-log/commands.log" 'docker run --rm --entrypoint /bin/mv'
+  unset MOCK_LEGACY_MINIO MOCK_LEGACY_MINIO_MISSING MOCK_MV_FAIL
+}
+
+test_minio_migration_preserves_volume_when_temporary_server_fails() {
+  local ws legacy_path
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  legacy_path="$ws/legacy-minio"
+  mkdir -p "$legacy_path"
+  printf 'legacy object data\n' > "$legacy_path/object.bin"
+  cat >> "$ws/remotefalcon/.env" <<EOF
+MINIO_PATH=$legacy_path
+MINIO_ROOT_USER=legacy-user
+MINIO_ROOT_PASSWORD=legacy-password
+EOF
+  export MOCK_RUNNING_SERVICES="versitygw"
+  export MOCK_LEGACY_MINIO=true
+  export MOCK_LEGACY_MINIO_MISSING=true
+  export MOCK_MINIO_RUN_FAIL=true
+
+  if (cd "$ws" && ./versitygw_init.sh) > "$ws/minio-failure.out" 2>&1; then
+    unset MOCK_LEGACY_MINIO MOCK_LEGACY_MINIO_MISSING MOCK_MINIO_RUN_FAIL
+    return 1
+  fi
+
+  [[ -f "$legacy_path/object.bin" ]] || return 1
+  assert_file_contains "$ws/minio-failure.out" 'Could not start the temporary MinIO migration server'
+  assert_file_contains "$ws/mock-log/commands.log" 'docker rm -f remote-falcon-images.minio-migration-'
+  unset MOCK_LEGACY_MINIO MOCK_LEGACY_MINIO_MISSING MOCK_MINIO_RUN_FAIL
+}
+
 test_health_check_empty_s3_bucket() {
   local ws
   ws="$(make_workspace)"
@@ -1309,6 +1398,8 @@ run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_c
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
 run_test "versitygw_init.sh fails when bucket creation fails" test_versitygw_init_fails_when_bucket_creation_fails
 run_test "MinIO migration verifies objects and preserves source data" test_minio_migration_preserves_source
+run_test "MinIO migration recreates a missing legacy container" test_minio_migration_recreates_missing_container
+run_test "MinIO migration preserves its volume when the temporary server fails" test_minio_migration_preserves_volume_when_temporary_server_fails
 run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
 run_test "health_check.sh fails when the S3 bucket is missing" test_health_check_requires_s3_bucket
 run_test "configure-rf.sh exposes expected CLI help" test_configure_rf_help

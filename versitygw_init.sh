@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.2
+# VERSION=2026.9.27.4
 
 # Configure new VersityGW container
 #set -euo pipefail
@@ -264,88 +264,128 @@ if ! check_bucket_policy "$CONTAINER_NAME"; then
   exit 1
 fi
 
-# Migrate the known legacy Remote Falcon MinIO volume when its old container is
-# still available. The source is retained as a dated backup after verification.
+# Migrate the known legacy Remote Falcon MinIO volume. If the retired container
+# no longer exists, temporarily recreate it against the preserved bind mount.
+# The source is retained as a dated backup after verification.
 migrate_minio_to_versitygw() {
-  local minio_container="remote-falcon-images.minio"
-  local minio_user minio_password rf_network diff_output backup_path
-  local was_running=false network_added=false
+  local legacy_container="remote-falcon-images.minio"
+  local migration_image="coollabsio/minio:latest"
+  local minio_container="$legacy_container"
+  local minio_user minio_password rf_network diff_output backup_path legacy_parent legacy_name backup_name
+  local was_running=false network_added=false temporary_container=false minio_ready=false
+
+  cleanup_minio_migration_container() {
+    if [[ "$temporary_container" == true ]]; then
+      docker rm -f "$minio_container" >/dev/null 2>&1 || true
+    else
+      [[ "$network_added" == true ]] && docker network disconnect "$rf_network" "$minio_container" >/dev/null 2>&1 || true
+      [[ "$was_running" == false ]] && docker stop "$minio_container" >/dev/null 2>&1 || true
+    fi
+  }
 
   [[ -d "$LEGACY_MINIO_PATH" ]] || return 0
   echo -e "${YELLOW}⚠️ Found legacy Remote Falcon MinIO data at '$LEGACY_MINIO_PATH'.${NC}"
 
-  if ! docker container inspect "$minio_container" >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠️ The legacy '$minio_container' container was not found. Preserving the MinIO data for manual migration.${NC}"
-    return 0
+  rf_network=$(docker inspect "$CONTAINER_NAME" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' | head -n 1)
+  if [[ -z "$rf_network" ]]; then
+    echo -e "${RED}❌ Could not determine the Versity Gateway Docker network. The source data was not changed.${NC}"
+    return 1
   fi
 
-  minio_user=$(docker inspect "$minio_container" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^MINIO_ROOT_USER=//p' | head -n 1)
-  minio_password=$(docker inspect "$minio_container" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^MINIO_ROOT_PASSWORD=//p' | head -n 1)
+  if docker container inspect "$legacy_container" >/dev/null 2>&1; then
+    minio_user=$(docker inspect "$minio_container" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^MINIO_ROOT_USER=//p' | head -n 1)
+    minio_password=$(docker inspect "$minio_container" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^MINIO_ROOT_PASSWORD=//p' | head -n 1)
+  else
+    minio_container="remote-falcon-images.minio-migration-$$"
+    minio_user="${MINIO_ROOT_USER:-}"
+    minio_password="${MINIO_ROOT_PASSWORD:-}"
+    temporary_container=true
+  fi
+
   if [[ -z "$minio_user" || -z "$minio_password" ]]; then
     echo -e "${RED}❌ Could not recover the legacy MinIO credentials. The source data was not changed.${NC}"
     return 1
   fi
 
-  if [[ "$(docker inspect -f '{{.State.Running}}' "$minio_container")" == "true" ]]; then
+  if [[ "$temporary_container" == true ]]; then
+    echo -e "${BLUE}🔄 Recreating a temporary MinIO server from '$LEGACY_MINIO_PATH' with '$migration_image'...${NC}"
+    export MINIO_ROOT_USER="$minio_user" MINIO_ROOT_PASSWORD="$minio_password"
+    if ! docker run --rm -d --name "$minio_container" \
+      --network "$rf_network" \
+      --label io.remotefalcon.purpose=minio-migration \
+      -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD \
+      -v "$LEGACY_MINIO_PATH:/data" \
+      "$migration_image" server /data --console-address ':9001' >/dev/null; then
+      echo -e "${RED}❌ Could not start the temporary MinIO migration server. The source data was not changed.${NC}"
+      cleanup_minio_migration_container
+      return 1
+    fi
+  elif [[ "$(docker inspect -f '{{.State.Running}}' "$minio_container")" == "true" ]]; then
     was_running=true
   else
     echo -e "${BLUE}🔄 Starting the stopped legacy MinIO container for migration...${NC}"
     docker start "$minio_container" >/dev/null || return 1
   fi
 
-  rf_network=$(docker inspect "$CONTAINER_NAME" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' | head -n 1)
-  if [[ -z "$rf_network" ]]; then
-    echo -e "${RED}❌ Could not determine the Versity Gateway Docker network. The source data was not changed.${NC}"
-    [[ "$was_running" == false ]] && docker stop "$minio_container" >/dev/null
-    return 1
-  fi
-  if ! docker inspect "$minio_container" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' | grep -Fxq "$rf_network"; then
+  if [[ "$temporary_container" == false ]] && ! docker inspect "$minio_container" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' | grep -Fxq "$rf_network"; then
     docker network connect "$rf_network" "$minio_container" || return 1
     network_added=true
   fi
 
   echo -e "${BLUE}🔧 Connecting the migration client to MinIO and Versity Gateway...${NC}"
-  if ! docker exec "$minio_container" mc alias set minio http://127.0.0.1:9000 "$minio_user" "$minio_password" >/dev/null ||
+  for _ in {1..30}; do
+    if docker exec "$minio_container" mc alias set minio http://127.0.0.1:9000 "$minio_user" "$minio_password" >/dev/null 2>&1; then
+      minio_ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$minio_ready" != true ]] ||
      ! docker exec "$minio_container" mc alias set versitygw http://versitygw:7070 "$S3_ROOT_USER" "$S3_ROOT_PASSWORD" >/dev/null; then
     echo -e "${RED}❌ Could not connect to both object stores. The source data was not changed.${NC}"
-    [[ "$network_added" == true ]] && docker network disconnect "$rf_network" "$minio_container" >/dev/null 2>&1 || true
-    [[ "$was_running" == false ]] && docker stop "$minio_container" >/dev/null
+    cleanup_minio_migration_container
     return 1
   fi
 
   if ! docker exec "$minio_container" mc ls "minio/$IMAGES_S3_BUCKET" >/dev/null 2>&1; then
     echo -e "${RED}❌ Legacy bucket '$IMAGES_S3_BUCKET' was not found. The source data was not changed.${NC}"
-    [[ "$network_added" == true ]] && docker network disconnect "$rf_network" "$minio_container" >/dev/null 2>&1 || true
-    [[ "$was_running" == false ]] && docker stop "$minio_container" >/dev/null
+    cleanup_minio_migration_container
     return 1
   fi
 
   echo -e "${BLUE}📦 Mirroring legacy images to Versity Gateway...${NC}"
   if ! docker exec "$minio_container" mc mirror --overwrite "minio/$IMAGES_S3_BUCKET" "versitygw/$IMAGES_S3_BUCKET"; then
     echo -e "${RED}❌ MinIO migration failed. The source data was not changed.${NC}"
-    [[ "$network_added" == true ]] && docker network disconnect "$rf_network" "$minio_container" >/dev/null 2>&1 || true
-    [[ "$was_running" == false ]] && docker stop "$minio_container" >/dev/null
+    cleanup_minio_migration_container
     return 1
   fi
 
   diff_output=$(docker exec "$minio_container" mc --no-color diff "minio/$IMAGES_S3_BUCKET" "versitygw/$IMAGES_S3_BUCKET") || {
     echo -e "${RED}❌ Could not verify the migrated objects. The source data was not changed.${NC}"
-    [[ "$network_added" == true ]] && docker network disconnect "$rf_network" "$minio_container" >/dev/null 2>&1 || true
-    [[ "$was_running" == false ]] && docker stop "$minio_container" >/dev/null
+    cleanup_minio_migration_container
     return 1
   }
   if [[ -n "$diff_output" ]]; then
     echo "$diff_output"
     echo -e "${RED}❌ Migrated object names or sizes do not match. The source data was not changed.${NC}"
-    [[ "$network_added" == true ]] && docker network disconnect "$rf_network" "$minio_container" >/dev/null 2>&1 || true
-    [[ "$was_running" == false ]] && docker stop "$minio_container" >/dev/null
+    cleanup_minio_migration_container
     return 1
   fi
 
   echo -e "${GREEN}✅ MinIO objects match Versity Gateway by path and size.${NC}"
   docker stop "$minio_container" >/dev/null || return 1
+  if [[ "$temporary_container" == false && "$network_added" == true ]]; then
+    docker network disconnect "$rf_network" "$minio_container" >/dev/null 2>&1 || true
+  fi
   backup_path="${LEGACY_MINIO_PATH}.migrated-$(date +%Y%m%d-%H%M%S)"
-  if mv "$LEGACY_MINIO_PATH" "$backup_path" 2>/dev/null || sudo -n mv "$LEGACY_MINIO_PATH" "$backup_path" 2>/dev/null; then
+  legacy_parent=$(dirname "$LEGACY_MINIO_PATH")
+  legacy_name=$(basename "$LEGACY_MINIO_PATH")
+  backup_name=$(basename "$backup_path")
+  if mv "$LEGACY_MINIO_PATH" "$backup_path" 2>/dev/null ||
+     sudo -n mv "$LEGACY_MINIO_PATH" "$backup_path" 2>/dev/null ||
+     { [[ "$legacy_parent" != "/" ]] && docker run --rm --entrypoint /bin/mv \
+         -v "$legacy_parent:/legacy-parent" "$migration_image" \
+         -- "/legacy-parent/$legacy_name" "/legacy-parent/$backup_name" >/dev/null; }; then
     echo -e "${GREEN}✅ Preserved the legacy MinIO volume at '$backup_path'.${NC}"
   else
     echo -e "${YELLOW}⚠️ Migration succeeded, but the legacy volume could not be renamed. It remains at '$LEGACY_MINIO_PATH'.${NC}"

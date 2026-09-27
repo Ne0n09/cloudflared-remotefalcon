@@ -216,7 +216,7 @@ Click the name of the script to expand the section to display details about the 
 
     - The script can be run again manually with no ill-effects to ensure Versity Gateway is configured properly.
 
-    - If the legacy `/home/minio-volume` directory and its `remote-falcon-images.minio` container are found, the script automatically mirrors the old image bucket into Versity Gateway. It verifies object paths and sizes, stops the retired MinIO container, and renames the old volume to a dated `.migrated-*` backup instead of deleting it.
+    - If the legacy `/home/minio-volume` directory is found, the script automatically mirrors the old image bucket into Versity Gateway. When the retired `remote-falcon-images.minio` container is already gone, the script temporarily runs `coollabsio/minio:latest` against the preserved volume and credentials. It verifies object paths and sizes, removes the temporary container, and renames the old volume to a dated `.migrated-*` backup instead of deleting it.
 
     - The script is automatically downloaded by configure-rf.
 
