@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.26.1
+# VERSION=2026.9.27.1
 
 set -u
 
@@ -1057,6 +1057,64 @@ EXPECTED
   assert_file_contains "$ROOT_DIR/update_scripts.sh" '--no-configure'
 }
 
+test_upgrade_handles_missing_docker_group_access() {
+  local ws bin installer current_user
+  command -v script >/dev/null 2>&1 || {
+    echo "The script command is required for the interactive installer test."
+    return 1
+  }
+  ws="$(mktemp -d "$TEST_TMP/docker-access.XXXXXX")"
+  bin="$ws/bin"
+  installer="$ws/install.sh"
+  current_user="$(id -un)"
+  mkdir -p "$bin"
+  cp "$ROOT_DIR/install.sh" "$installer"
+  # Stop immediately after the access preflight so this test never downloads or
+  # modifies an installation. The re-executed installer must reach this point.
+  sed -i '/^ensure_update_docker_access$/a exit 0' "$installer"
+
+  cat > "$bin/docker" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$1" == "info" && "${MOCK_DOCKER_ACCESS:-false}" == "true" ]]
+MOCK
+  cat > "$bin/sudo" <<'MOCK'
+#!/usr/bin/env bash
+case "$1" in
+  -v)
+    exit 0
+    ;;
+  docker)
+    MOCK_DOCKER_ACCESS=true docker "${@:2}"
+    ;;
+  groupadd|usermod)
+    printf '%s\n' "$*" >> "$MOCK_DOCKER_GROUP_LOG"
+    ;;
+  -u)
+    shift 4
+    export MOCK_DOCKER_ACCESS=true
+    exec "$@"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+MOCK
+  chmod +x "$bin/docker" "$bin/sudo"
+
+  export MOCK_DOCKER_GROUP_LOG="$ws/group.log"
+  PATH="$bin:$PATH" printf 'y\n' | PATH="$bin:$PATH" script -qec \
+    "bash '$installer' --update --target '$ws/target' --version test --no-configure" \
+    /dev/null > "$ws/output.log" || return 1
+
+  assert_file_contains "$ws/output.log" "Add '$current_user' to the docker group and continue the upgrade\?"
+  assert_file_contains "$ws/output.log" 'Docker access configured\. Continuing the upgrade now'
+  assert_file_contains "$ws/group.log" '^groupadd --force docker$'
+  assert_file_contains "$ws/group.log" "^usermod -aG docker $current_user$"
+  if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
+    assert_file_contains "$ROOT_DIR/docs/updates.md" 'asks whether to add that user to the `docker` group before changing any installation files'
+  fi
+}
+
 test_fresh_remote_install_rebuilds_latest_tags() {
   assert_file_contains "$ROOT_DIR/configure-rf.sh" '\[ "\$pending_changes" = false \] && \[ "\$pending_arg_changes" = false \]'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Remote Falcon.*latest.*assuming new install.*run_workflow.sh'
@@ -1189,6 +1247,7 @@ if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
 fi
 run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
 run_test "legacy upgrades run the safe transition in order" test_legacy_upgrade_is_orchestrated
+run_test "legacy upgrades handle missing Docker group access" test_upgrade_handles_missing_docker_group_access
 run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
 run_test "release updater merges live values into current configuration" test_release_updater_merges_live_config

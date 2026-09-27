@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2026.9.27.1
+
+- Older installations now detect missing Docker access before the upgrade changes any files. Interactive upgrades offer to add the current user to the Docker group, warn that this grants root-level host privileges, and continue immediately as the same user after administrator authentication without requiring a logout or creating root-owned installation files.
+
 ## 2026.9.26.1
 
 - Added a one-command upgrade path for older installations. The installer now merges and validates configuration, updates containers with rollback checks, migrates legacy MinIO storage, removes retired containers, and runs the final full-stack health check automatically.
