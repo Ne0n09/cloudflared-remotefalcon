@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2026.9.26.1
+
+- Added a one-command upgrade path for older installations. The installer now merges and validates configuration, updates containers with rollback checks, migrates legacy MinIO storage, removes retired containers, and runs the final full-stack health check automatically.
+
 ## 2026.9.25.1
 
 - Added targeted health checks such as `./health_check.sh 0s plugins-api` while retaining all services as the default. Container upgrades now launch one targeted health-check process and let that process handle endpoint retries within the deployment deadline.

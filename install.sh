@@ -45,6 +45,9 @@ curl -fsSL --retry 3 -o "$temporary_dir/SHA256SUMS" "$release_url/SHA256SUMS"
 
 bash "$temporary_dir/payload/update_scripts.sh" --install-from "$temporary_dir/payload" --target "$TARGET_DIR" --mode "$MODE"
 
-if [[ "$RUN_CONFIGURE" == true && "$MODE" == "install" ]]; then
-  exec "$TARGET_DIR/configure-rf.sh"
+if [[ "$RUN_CONFIGURE" == true ]]; then
+  case "$MODE" in
+    install) exec "$TARGET_DIR/configure-rf.sh" ;;
+    update) exec "$TARGET_DIR/upgrade_installation.sh" ;;
+  esac
 fi

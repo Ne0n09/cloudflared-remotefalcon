@@ -36,6 +36,16 @@ Click the name of the script to expand the section to display details about the 
 
     ![Configure-rf demo](../images/configure-rf-clean-install.gif)
 
+??? example "upgrade_installation.sh"
+
+    #### upgrade_installation.sh
+
+    - Completes an upgrade after the installer has merged the current scripts and configuration templates.
+
+    - Starts Versity Gateway safely alongside legacy MinIO, updates every container with deployment checks and rollback protection, migrates verified object-storage data, removes retired containers, and runs the complete health check.
+
+    - The public installer runs this script automatically in update mode. It normally does not need to be run separately.
+
 ??? example "update_containers.sh"
 
     #### update_containers.sh

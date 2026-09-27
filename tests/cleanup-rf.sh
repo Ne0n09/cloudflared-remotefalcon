@@ -31,6 +31,7 @@ SCRIPTS_TO_REMOVE=(
   "configure-rf.sh"
   "shared_functions.sh"
   "update_containers.sh"
+  "upgrade_installation.sh"
   "health_check.sh"
   "versitygw_init.sh"
   "setup_cloudflare.sh"

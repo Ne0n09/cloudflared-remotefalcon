@@ -13,6 +13,7 @@ executable shared_functions.sh
 executable sync_repo_secrets.sh
 executable update_containers.sh
 executable update_scripts.sh
+executable upgrade_installation.sh
 executable versitygw_init.sh
 managed remotefalcon/.env.example
 template remotefalcon/compose.yaml

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.25.1
+# VERSION=2026.9.26.1
 
 set -u
 
@@ -77,6 +77,7 @@ make_workspace() {
   cp "$ROOT_DIR/sync_repo_secrets.sh" "$ws/"
   cp "$ROOT_DIR/update_containers.sh" "$ws/"
   cp "$ROOT_DIR/update_scripts.sh" "$ws/"
+  cp "$ROOT_DIR/upgrade_installation.sh" "$ws/"
   cp "$ROOT_DIR/versitygw_init.sh" "$ws/"
   cp "$ROOT_DIR/remotefalcon/default.conf" "$ws/remotefalcon/"
   cp "$ROOT_DIR/remotefalcon/compose.yaml" "$ws/remotefalcon/"
@@ -119,6 +120,9 @@ NGINX_CERT=example.com_origin_cert.pem
 NGINX_KEY=example.com_origin_key.pem
 CLIENT_HEADER=client-ip
 ENV
+
+  # Never let a host's real legacy MinIO path affect an isolated unit test.
+  printf 'MINIO_PATH=%s\n' "$ws/legacy-minio-absent" >> "$ws/remotefalcon/.env"
 
   printf 'mock certificate\n' > "$ws/remotefalcon/example.com_origin_cert.pem"
   printf 'mock private key\n' > "$ws/remotefalcon/example.com_origin_key.pem"
@@ -469,6 +473,7 @@ test_bash_syntax() {
     sync_repo_secrets.sh
     update_containers.sh
     update_scripts.sh
+    upgrade_installation.sh
     versitygw_init.sh
   )
 
@@ -974,7 +979,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+Added targeted health checks'
+  assert_file_contains "$output" '^-[[:space:]]+Added a one-command upgrade path'
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
@@ -990,12 +995,66 @@ test_github_release_uses_documented_notes() {
 
 test_install_manifest_is_authoritative() {
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable configure-rf\.sh$'
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable upgrade_installation\.sh$'
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^template remotefalcon/compose\.yaml$'
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^release-dir tests$'
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired minio_init\.sh$'
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired revert\.sh$'
   assert_file_contains "$ROOT_DIR/update_scripts.sh" 'mapfile -t scripts.*install-manifest'
   assert_file_not_contains "$ROOT_DIR/update_scripts.sh" '^scripts=\('
+}
+
+test_legacy_upgrade_is_orchestrated() {
+  local ws expected
+  ws="$(mktemp -d "$TEST_TMP/legacy-upgrade.XXXXXX")"
+  cp "$ROOT_DIR/upgrade_installation.sh" "$ws/"
+
+  cat > "$ws/shared_functions.sh" <<'MOCK'
+#!/usr/bin/env bash
+CYAN=
+GREEN=
+NC=
+check_compose_exists() { :; }
+check_env_exists() { :; }
+parse_env() { :; }
+rf_compose() {
+  printf 'compose %s\n' "$*" >> "$MOCK_UPGRADE_LOG"
+  if [[ "$*" == "ps --services --filter status=running" ]]; then
+    printf 'nginx\n'
+  fi
+}
+MOCK
+  cat > "$ws/update_containers.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf 'update %s\n' "$*" >> "$MOCK_UPGRADE_LOG"
+MOCK
+  cat > "$ws/versitygw_init.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf 'migrate\n' >> "$MOCK_UPGRADE_LOG"
+MOCK
+  cat > "$ws/health_check.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf 'health %s\n' "$*" >> "$MOCK_UPGRADE_LOG"
+MOCK
+  chmod +x "$ws"/*.sh
+  export MOCK_UPGRADE_LOG="$ws/upgrade.log"
+
+  "$ws/upgrade_installation.sh" >/dev/null || return 1
+
+  expected="$ws/expected.log"
+  cat > "$expected" <<'EXPECTED'
+compose config -q
+compose up -d versitygw
+compose ps --services --filter status=running
+compose restart nginx
+update all auto-apply
+migrate
+compose up -d --remove-orphans
+health 0s
+EXPECTED
+  cmp "$expected" "$MOCK_UPGRADE_LOG" || return 1
+  assert_file_contains "$ROOT_DIR/install.sh" 'exec "\$TARGET_DIR/upgrade_installation\.sh"'
+  assert_file_contains "$ROOT_DIR/update_scripts.sh" '--no-configure'
 }
 
 test_fresh_remote_install_rebuilds_latest_tags() {
@@ -1049,6 +1108,7 @@ COMPOSE
   [[ ! -e "$target/remotefalcon/compose.yaml.new" ]] || return 1
   [[ ! -e "$target/remotefalcon/default.conf.new" ]] || return 1
   [[ -x "$target/configure-rf.sh" ]] || return 1
+  [[ -x "$target/upgrade_installation.sh" ]] || return 1
   [[ -f "$target/install-manifest.txt" ]] || return 1
   [[ -f "$target/LICENSE" ]] || return 1
   [[ ! -e "$target/minio_init.sh" ]] || return 1
@@ -1128,6 +1188,7 @@ if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
   run_test "GitHub releases use the documented version notes" test_github_release_uses_documented_notes
 fi
 run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
+run_test "legacy upgrades run the safe transition in order" test_legacy_upgrade_is_orchestrated
 run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
 run_test "release updater merges live values into current configuration" test_release_updater_merges_live_config

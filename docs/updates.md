@@ -64,21 +64,31 @@ An update automatically applies the current `.env`, `compose.yaml`, and `default
 
 The released `default.conf` replaces the active file so routing fixes apply automatically. Custom edits made directly to `compose.yaml` outside image references, or directly to `default.conf`, must be represented in the project templates or reapplied from the dated backup.
 
-The script update changes configuration files but does not recreate running containers. Run `configure-rf.sh` or perform a controlled Compose recreation after the update when the new configuration must take effect immediately.
+Running `update_scripts.sh` by itself changes configuration files but does not recreate running containers. Use the complete installer command below when the new configuration and container releases should be applied together.
 
 The image builder uses the unified `build.yml` workflow. `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.
 
 Infrastructure images use tested version tags in `compose.yaml`. Run `update_containers.sh` to check and apply newer versions with backup, deployment validation, and rollback instead of changing those tags to `latest`.
 
-## Repeatable Debian deployment test
+## Upgrading an installation without `update_scripts.sh`
 
-On a dedicated test host, `tests/fresh-deployment-test.sh` can verify a release update and then perform fresh local and remote image build installations. It copies values from an existing private `.env`, assigns isolated MongoDB and Versity Gateway data directories, runs installation through `configure-rf.sh`, and performs the full health check.
+Installations from before the release updater was added can be upgraded with the current installer. Before upgrading, make a filesystem or VM backup of the MongoDB and MinIO data directories named in `remotefalcon/.env`.
+
+Run the following from the existing installation directory that contains `configure-rf.sh` and the `remotefalcon` directory:
 
 ```sh
-./tests/fresh-deployment-test.sh \
-  --source-env /path/to/existing/remotefalcon/.env \
-  --mode both \
-  --replace-running
+cd /path/to/cloudflared-remotefalcon
+curl -fsSL --retry 3 \
+  -o /tmp/cloudflared-remotefalcon-install.sh \
+  https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh
+chmod +x /tmp/cloudflared-remotefalcon-install.sh
+/tmp/cloudflared-remotefalcon-install.sh \
+  --update \
+  --target "$PWD"
 ```
 
-Use `--mode update`, `local`, or `remote` to run one path. Remote mode requires working `GITHUB_PAT` and `REPO` values in the source `.env`. The explicit `--replace-running` option is required when fixed-name Remote Falcon containers already exist. Test logs and result markers are written under `~/rf-fresh-deployment-tests/results` by default.
+The installer verifies the release archive, creates a dated configuration backup, preserves existing `.env` values and image references, and validates the merged Compose configuration before applying it. It then upgrades containers in a safe order, checks each changed service, migrates legacy MinIO objects to Versity Gateway, removes retired containers, and runs the complete health check.
+
+If a service fails its deployment check, its previous image and Compose configuration are restored. A failed MinIO migration leaves the source data unchanged; after a successful verified migration, the old data directory is retained with a dated `.migrated-*` name.
+
+Existing `REPO` and `GITHUB_PAT` settings are reused for GitHub-built images. Without GitHub builds, application images are built locally and the upgrade can take longer.
