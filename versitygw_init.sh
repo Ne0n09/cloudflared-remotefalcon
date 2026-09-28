@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.4
+# VERSION=2026.9.27.5
 
 # Configure new VersityGW container
 #set -euo pipefail
@@ -148,7 +148,7 @@ echo -e "${BLUE}⚙️ Running Versity Gateway container initialization script t
 if ! is_container_running "$CONTAINER_NAME"; then
   echo -e "${YELLOW}⚠️ $CONTAINER_NAME does not exist or is not running.${NC}"
   echo -e "${BLUE}🔄 Attempting to start $CONTAINER_NAME...${NC}"
-  docker compose -f "$COMPOSE_FILE" up -d $CONTAINER_NAME
+  rf_compose up -d "$CONTAINER_NAME"
 fi
 
 # Check VersityGW health before proceeding to make sure the container is up and healthy
@@ -161,8 +161,8 @@ if [[ $S3_ENDPOINT != "http://versitygw:7070" ]]; then
   sed -i "s|^S3_ENDPOINT=.*|S3_ENDPOINT=$S3_ENDPOINT|" "$ENV_FILE"
 
   echo -e "${BLUE}🔄 Restarting container 'control-panel' to use the new S3_ENDPOINT $S3_ENDPOINT...${NC}"
-  docker compose -f "$COMPOSE_FILE" rm -f -s control-panel
-  docker compose -f "$COMPOSE_FILE" up -d control-panel
+  rf_compose rm -f -s control-panel
+  rf_compose up -d control-panel
 else
   echo -e "${GREEN}✅ S3_ENDPOINT is set to recommended default value http://versitygw:7070.${NC}"
 fi
@@ -185,8 +185,8 @@ fi
 # Restart the VersityGW container if the root credentials were changed
 if [[ $changed_creds == true ]]; then
   echo -e "${BLUE}🔄 Restarting container '$CONTAINER_NAME' due to changed root credentials...${BLUE}"
-  docker compose -f "$COMPOSE_FILE" rm -f -s $CONTAINER_NAME
-  docker compose -f "$COMPOSE_FILE" up -d $CONTAINER_NAME
+  rf_compose rm -f -s "$CONTAINER_NAME"
+  rf_compose up -d "$CONTAINER_NAME"
   check_versitygw_health
 else
   echo -e "${GREEN}✅ S3_ROOT_USER and S3_ROOT_PASSWORD are set to non-default values.${NC}"
@@ -210,8 +210,8 @@ fi
 # Restart control panel container if the S3 access key or secret key were changed since those are used by the control panel to access the S3 storage
 if [[ $changed_creds == true ]]; then
   echo -e "${BLUE}🔄 Restarting container 'control-panel' to use the new S3 access key and secret key...${BLUE}"
-  docker compose -f "$COMPOSE_FILE" rm -f -s control-panel
-  docker compose -f "$COMPOSE_FILE" up -d control-panel
+  rf_compose rm -f -s control-panel
+  rf_compose up -d control-panel
 else
   echo -e "${GREEN}✅ S3_ACCESS_KEY and S3_SECRET_KEY are already set to non-default values.${NC}"
 fi
@@ -391,7 +391,7 @@ migrate_minio_to_versitygw() {
     echo -e "${YELLOW}⚠️ Migration succeeded, but the legacy volume could not be renamed. It remains at '$LEGACY_MINIO_PATH'.${NC}"
   fi
   echo -e "${BLUE}🔄 Restarting nginx to apply the Versity Gateway configuration...${NC}"
-  docker compose -f "$COMPOSE_FILE" restart nginx
+  rf_compose restart nginx
   echo -e "${GREEN}✅ Migration to Versity Gateway complete.${NC}"
 }
 

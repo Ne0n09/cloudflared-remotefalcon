@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.2
+# VERSION=2026.9.27.5
 
 #set -euo pipefail
 #set -x
@@ -44,6 +44,14 @@ fi
 
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/shared_functions.sh"
+
+# Use a private per-run directory so a prior sudo/root health check cannot
+# leave shared files in /tmp that block later checks by the installation user.
+HEALTH_TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/remote-falcon-health.XXXXXX") || {
+  echo -e "${RED}❌ Could not create temporary health-check files.${NC}" >&2
+  exit 1
+}
+trap 'rm -rf "$HEALTH_TMP_DIR"' EXIT
 
 # Define known error patterns and custom messages
 declare -A CONTAINER_PATTERNS
@@ -180,9 +188,9 @@ if [[ -f $ENV_FILE ]]; then
 
 check_endpoint() {
   # Perform the request and capture both code and DNS errors
-  response_file="/tmp/curl_response"
-  http_code_file="/tmp/http_code"
-  error_log="/tmp/curl_error.log"
+  response_file="$HEALTH_TMP_DIR/curl_response"
+  http_code_file="$HEALTH_TMP_DIR/http_code"
+  error_log="$HEALTH_TMP_DIR/curl_error.log"
 
   # Ensure cleanup before each check
   rm -f "$response_file" "$http_code_file"

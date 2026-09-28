@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.4
+# VERSION=2026.9.27.5
 
 set -u
 
@@ -814,6 +814,8 @@ test_update_targeted_health_and_rollback() {
 
 test_health_check_uses_recent_logs() {
   assert_file_contains "$ROOT_DIR/health_check.sh" 'docker logs --since "\$\{HEALTH_LOG_SINCE:-10m\}"'
+  assert_file_contains "$ROOT_DIR/health_check.sh" 'mktemp -d "\$\{TMPDIR:-/tmp\}/remote-falcon-health\.XXXXXX"'
+  assert_file_not_contains "$ROOT_DIR/health_check.sh" '="/tmp/(http_code|curl_response|curl_error\.log)"'
 }
 
 test_update_containers_dry_run() {
@@ -872,6 +874,8 @@ test_versitygw_init() {
   assert_file_contains "$ws/mock-log/commands.log" 'create-bucket'
   assert_file_contains "$ws/mock-log/commands.log" 'put-bucket-policy'
   assert_file_contains "$ws/mock-log/commands.log" 'list-buckets'
+  assert_file_contains "$ROOT_DIR/versitygw_init.sh" 'rf_compose up -d "\$CONTAINER_NAME"'
+  assert_file_not_contains "$ROOT_DIR/versitygw_init.sh" 'docker compose -f "\$COMPOSE_FILE"'
 }
 
 test_versitygw_init_fails_when_bucket_creation_fails() {
@@ -1276,6 +1280,7 @@ MOCK
 
   assert_file_contains "$ws/output.log" "Add '$current_user' to the docker group and continue the upgrade\?"
   assert_file_contains "$ws/output.log" 'Docker access configured\. Continuing the upgrade now'
+  assert_file_contains "$ws/output.log" "run 'newgrp docker' in this SSH session"
   assert_file_contains "$ws/group.log" '^groupadd --force docker$'
   assert_file_contains "$ws/group.log" "^usermod -aG docker $current_user$"
   if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
@@ -1306,6 +1311,7 @@ MONGO_INITDB_ROOT_USERNAME=existing-user
 MONGO_INITDB_ROOT_PASSWORD=existing-password
 CUSTOM_SETTING=preserved
 ENV
+  printf 'VERSITYGW_PATH=/home/versitygw-volume   \n' >> "$target/remotefalcon/.env"
   cat > "$target/remotefalcon/compose.yaml" <<'COMPOSE'
 services:
   mongo:
@@ -1326,6 +1332,8 @@ COMPOSE
   assert_file_contains "$target/remotefalcon/.env" '^MONGO_INITDB_ROOT_USERNAME=existing-user$'
   assert_file_contains "$target/remotefalcon/.env" '^MONGO_INITDB_ROOT_PASSWORD=existing-password$'
   assert_file_contains "$target/remotefalcon/.env" '^CUSTOM_SETTING=preserved$'
+  assert_file_contains "$target/remotefalcon/.env" '^VERSITYGW_PATH=/home/versitygw-volume$'
+  assert_file_not_contains "$ROOT_DIR/remotefalcon/.env.example" '^VERSITYGW_PATH=.*[[:space:]]+$'
   assert_file_contains "$target/remotefalcon/.env" '^RF_IMAGE_TAG_MODE=platform$'
   [[ -f "$target/.rf-platform-rebuild-required" ]] || return 1
   assert_file_contains "$target/remotefalcon/compose.yaml" '^    image: mongo:4\.4\.29$'

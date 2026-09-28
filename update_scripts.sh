@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.2
+# VERSION=2026.9.27.5
 
 set -euo pipefail
 
@@ -82,6 +82,7 @@ merge_env_configuration() {
       if (match($0, /^[A-Za-z_][A-Za-z0-9_]*=/)) {
         key=substr($0, 1, index($0, "=")-1)
         values[key]=substr($0, index($0, "=")+1)
+        sub(/[[:space:]]+$/, "", values[key])
         if (!(key in ordered)) { order[++count]=key; ordered[key]=1 }
       }
       next

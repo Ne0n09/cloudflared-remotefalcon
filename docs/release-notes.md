@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.9.27.5
+
+- Fixed legacy Versity Gateway upgrades using different storage paths before and after migration. Trailing whitespace is removed from preserved `.env` values, the default `VERSITYGW_PATH` no longer contains a trailing space, and all initializer Compose operations now use the same explicit `.env` handling as the final deployment.
+
+- Health checks now use private per-run temporary files, preventing a prior privileged upgrade from leaving root-owned `/tmp` files that break later checks. When the installer adds Docker group membership, it now prompts the user to run `newgrp docker` in the original SSH session after the upgrade.
+
 ## 2026.9.27.4
 
 - Legacy MinIO migration no longer requires the retired `remote-falcon-images.minio` container to exist. When `/home/minio-volume` remains, the initializer starts a temporary `coollabsio/minio:latest` server with the preserved credentials and volume, mirrors and verifies every object, removes the temporary container, and retains the original data at a dated `.migrated-*` path. A failed migration leaves the source path in place.

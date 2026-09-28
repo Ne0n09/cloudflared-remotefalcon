@@ -71,8 +71,10 @@ ensure_update_docker_access() {
   resume_args=(--update --target "$TARGET_DIR" --version "$VERSION")
   [[ "$RUN_CONFIGURE" == true ]] || resume_args+=(--no-configure)
   echo "Docker access configured. Continuing the upgrade now..."
+  echo "After the upgrade finishes, run 'newgrp docker' in this SSH session so subsequent Docker commands work without sudo."
   exec sudo -u "$current_user" -g docker env \
     "RF_INSTALL_REPOSITORY=$REPOSITORY" \
+    "RF_DOCKER_GROUP_ADDED=true" \
     bash "$script_path" "${resume_args[@]}"
 }
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.2
+# VERSION=2026.9.27.5
 
 #set -euo pipefail
 
@@ -655,7 +655,7 @@ if [[ $EUID -ne 0 ]] && ! docker info >/dev/null 2>&1; then
       sudo groupadd --force docker
       sudo usermod -aG docker "$USER"
       echo -e "${GREEN}✔ Added '$USER' to the docker group.${NC}"
-      echo "Log out of this SSH/login session and back in, then rerun ./configure-rf.sh."
+      echo "Run 'newgrp docker' in this SSH/login session, then rerun ./configure-rf.sh."
       exit 2
       ;;
     rootless)
