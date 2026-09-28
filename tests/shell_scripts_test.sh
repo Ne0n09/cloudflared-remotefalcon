@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.5
+# VERSION=2026.9.27.6
 
 set -u
 
@@ -1173,7 +1173,7 @@ MOCK
   chmod +x "$ws"/*.sh
   export MOCK_UPGRADE_LOG="$ws/upgrade.log"
 
-  "$ws/upgrade_installation.sh" >/dev/null || return 1
+  RF_DOCKER_GROUP_ADDED=true "$ws/upgrade_installation.sh" > "$ws/upgrade.out" || return 1
 
   expected="$ws/expected.log"
   cat > "$expected" <<'EXPECTED'
@@ -1187,6 +1187,7 @@ compose up -d --remove-orphans
 health 0s
 EXPECTED
   cmp "$expected" "$MOCK_UPGRADE_LOG" || return 1
+  assert_file_contains "$ws/upgrade.out" "Run 'newgrp docker' now"
   assert_file_contains "$ROOT_DIR/install.sh" 'exec "\$TARGET_DIR/upgrade_installation\.sh"'
   assert_file_contains "$ROOT_DIR/update_scripts.sh" '--no-configure'
 }

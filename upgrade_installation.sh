@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.5
+# VERSION=2026.9.27.6
 
 set -euo pipefail
 
@@ -97,6 +97,6 @@ rf_compose up -d --remove-orphans
 
 echo -e "${GREEN}✔ Remote Falcon upgrade completed successfully.${NC}"
 if [[ "${RF_DOCKER_GROUP_ADDED:-false}" == true ]]; then
-  echo -e "${YELLOW}Docker group access was added for your account.${NC}"
+  echo "Docker group access was added for your account."
   echo "Run 'newgrp docker' now in the SSH session that launched this upgrade so future Docker commands work without sudo."
 fi

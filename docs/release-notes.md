@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2026.9.27.6
+
+- Fixed the release self-test failure that occurred after accepting Docker group enrollment. The post-upgrade `newgrp docker` prompt no longer depends on optional terminal color variables, including in the isolated legacy-upgrade test environment.
+
 ## 2026.9.27.5
 
 - Fixed legacy Versity Gateway upgrades using different storage paths before and after migration. Trailing whitespace is removed from preserved `.env` values, the default `VERSITYGW_PATH` no longer contains a trailing space, and all initializer Compose operations now use the same explicit `.env` handling as the final deployment.
