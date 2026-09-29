@@ -46,9 +46,11 @@ jobs:
           full_sha=$(git rev-parse HEAD)
           short_sha=$(git rev-parse --short=7 HEAD)
           commit_date=$(git log -1 --format=%cd --date=format:'%Y.%m.%d')
-          echo "full_sha=$full_sha" >> "$GITHUB_OUTPUT"
-          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
-          echo "commit_date=$commit_date" >> "$GITHUB_OUTPUT"
+          {
+            echo "full_sha=$full_sha"
+            echo "short_sha=$short_sha"
+            echo "commit_date=$commit_date"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Resolve lowercase image repository
         id: image-repository

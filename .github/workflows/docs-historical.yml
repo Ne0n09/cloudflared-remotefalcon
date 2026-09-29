@@ -1,0 +1,50 @@
+name: Deploy historical documentation
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git tag or commit containing the historical documentation
+        required: true
+        default: v2026.9.27.6
+      version:
+        description: Documentation version shown in the version selector
+        required: true
+        default: 2026.9.27.6
+      alias:
+        description: Optional version alias
+        required: false
+        default: legacy-private-builder
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: 3.x
+      - name: Publish historical documentation
+        env:
+          DOCS_VERSION: ${{ inputs.version }}
+          DOCS_ALIAS: ${{ inputs.alias }}
+        run: |
+          [[ "$DOCS_VERSION" =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]]
+          [[ -z "$DOCS_ALIAS" || "$DOCS_ALIAS" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
+          pip install --requirement requirements-docs.txt
+          pip install mike==2.2.0
+          sed -i 's|^site_url:.*|site_url: https://ne0n09.github.io/cloudflared-remotefalcon/|' mkdocs.yml
+          git fetch origin gh-pages --depth=1
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          if [[ -n "$DOCS_ALIAS" ]]; then
+            mike deploy --push --update-aliases "$DOCS_VERSION" "$DOCS_ALIAS"
+          else
+            mike deploy --push "$DOCS_VERSION"
+          fi

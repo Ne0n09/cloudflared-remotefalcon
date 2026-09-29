@@ -1,26 +1,11 @@
-# Remote Falcon container images
+# Deprecated GitHub image-builder setup
 
-AMD64 installations use public backend images published by this project. The
-`plugins-api`, `control-panel`, `viewer`, and `external-api` images are pulled
-anonymously from GitHub Container Registry. End users do not need a GitHub
-account, repository, Personal Access Token, or Actions configuration.
+!!! warning "Deprecated compatibility documentation"
 
-The `ui` image is built locally because its domain, API URLs, hostname layout,
-map settings, and optional analytics settings are compiled into the browser
-bundle. Those deployment-specific values are never placed in the public
-backend images.
+    New installations must not create a private image-builder repository or Personal Access Token. This page remains only as a pointer for installations that already use the legacy workflow.
 
-The public workflow builds only `linux/amd64`. Other architectures currently
-fall back to local JVM backend builds.
+AMD64 installations pull `plugins-api`, `control-panel`, `viewer`, and `external-api` anonymously from this project's public GitHub Container Registry packages. The deployment-specific `ui` image is built locally. No GitHub account is required.
 
-## Legacy private image builder
+Existing installations with both `REPO` and `GITHUB_PAT` configured can continue using the deprecated private image-builder compatibility path until they migrate. Refer to the matching historical documentation version in the version selector for its original setup instructions.
 
-Existing installations with both `REPO` and `GITHUB_PAT` configured continue
-to use their private image-builder repository for all five application images.
-This is an advanced compatibility option, not a requirement for a normal
-AMD64 installation.
-
-The private workflow and helper scripts remain documented under
-[workflows](../about/workflows.md). Keep tokens only in the private `.env`
-file. New installations should leave `REPO=username/repo` and `GITHUB_PAT`
-empty to use the public backend images.
+To use the current public-image path, leave `REPO=username/repo` and `GITHUB_PAT` empty, then follow the current [Remote Falcon installation](remotefalcon.md) documentation.

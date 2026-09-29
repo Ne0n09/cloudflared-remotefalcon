@@ -4,8 +4,6 @@ Ready to get [started](install/index.md)?
 
 Check out the [Remote Falcon Docs](https://docs.remotefalcon.com/) to learn more about Remote Falcon.
 
-![Demo slide show](./images/slide_show_9_8_25.gif)
-
 ## Architecture
 
 Adding a bit to the Remote Falcon architecture diagram from [here](https://docs.remotefalcon.com/docs/developer-docs/how-it-works/architecture), we have Cloudflared and Versity Gateway.

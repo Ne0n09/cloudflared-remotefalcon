@@ -18,7 +18,7 @@ For full details, check the [cloudflared-remotefalcon documentation](https://ne0
 
 To learn more about Remote Falcon, see the [Remote Falcon documentation](https://docs.remotefalcon.com/).
 
-Installation is a two-step process:
+Installation is a two-step process. There is no separate GitHub account, repository, or image-builder setup step:
 
 1. [Configure Cloudflare](https://ne0n09.github.io/cloudflared-remotefalcon/install/cloudflare/).
 2. [Install Remote Falcon](https://ne0n09.github.io/cloudflared-remotefalcon/install/remotefalcon/).
@@ -26,7 +26,3 @@ Installation is a two-step process:
 AMD64 installations pull the four public backend images anonymously and build the deployment-specific UI locally. End users do not need a GitHub account or private image-builder repository.
 
 You may refer to the [release notes](https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/) for updates to the scripts and files.
-
-## configure-rf demo
-
-![Example configure-rf demo](docs/images/slide_show_9_8_25.gif)

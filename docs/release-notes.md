@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.9.28.5
+
+- Removed the obsolete GitHub setup step and outdated GIFs from current installation guidance, marked private image-builder material as deprecated compatibility documentation, and stopped public-image configuration from installing GitHub CLI.
+
+- Documentation is now published from tagged releases with a version selector. A manual historical-docs workflow can archive the final private-builder-era documentation before the first versioned release, preserving it for older installations.
+
 ## 2026.9.28.4
 
 - The legacy upgrade installer now locates an existing Remote Falcon installation automatically when `--target` is omitted. It prefers the current directory or a parent, stops on ambiguous matches, and accepts `--target` as an explicit override.
@@ -320,9 +326,9 @@ https://github.com/minio/minio/issues/21647#issuecomment-3418675115
 
 - Easier updates! When running configure-rf.sh it will display current local versions of [scripts](about/scripts.md), [files](about/files.md), and workflow versions and compare them to the latest available versions on GitHub.
 
-- Updated configure-rf.sh to prompt for [compose.yaml, .env, and default.conf updates](updates.md#updating-composeyaml-env-and-defaultconf) to assist with downloading new config file updates.
+- Updated configure-rf.sh to prompt for [compose.yaml, .env, and default.conf updates](updates.md#updating-scripts-and-configuration-templates) to assist with downloading new config file updates.
 
-- Updated configure-rf.sh to prompt for [Remote Falcon Image Builder workflow updates](updates.md#updating-remote-falcon-image-builder-workflows).
+- Updated configure-rf.sh to prompt for [Remote Falcon Image Builder workflow updates](about/workflows.md#deprecated-private-buildyml).
 
 - Removed ghcr.io/${REPO}/ from the default compose.yaml. This will automatically get updated by update_compose_image_path in shared_function.sh when update_container.sh or configure-rf.sh is run.
 
@@ -336,7 +342,7 @@ https://github.com/minio/minio/issues/21647#issuecomment-3418675115
 
 - Updated health_check.sh NGINX health check so if on-disk cert/key is changed NGINX will be restarted if it is running.
 
-- Updated configure-rf.sh to display a prompt for [script updates](updates.md#script-updates) to assist in downloading new script updates.
+- Updated configure-rf.sh to display a prompt for [script updates](updates.md#updating-scripts-and-configuration-templates) to assist in downloading new script updates.
 
 ## 2025.10.14.1
 

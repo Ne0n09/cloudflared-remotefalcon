@@ -1,4 +1,4 @@
-name: ci 
+name: docs
 on:
   push:
     branches:
@@ -6,12 +6,22 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/ci.yml'
+      - 'requirements-docs.txt'
+  pull_request:
+    branches:
+      - master
+      - main
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
       - '.github/workflows/ci.yml'
       - 'requirements-docs.txt'
 permissions:
-  contents: write
+  contents: read
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -30,4 +40,4 @@ jobs:
           restore-keys: |
             mkdocs-material-
       - run: pip install --requirement requirements-docs.txt
-      - run: mkdocs gh-deploy --force
+      - run: mkdocs build --strict

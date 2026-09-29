@@ -1,5 +1,5 @@
 site_name: cloudflared-remotefalcon docs
-site_url: https://ne0n09.github.io/cloudflared-remotefalcon/docs/
+site_url: https://ne0n09.github.io/cloudflared-remotefalcon/
 repo_url: https://github.com/Ne0n09/cloudflared-remotefalcon
 docs_dir: docs
 theme:
@@ -53,17 +53,19 @@ nav:
     - 'Scripts': about/scripts.md
     - 'Files': about/files.md
     - 'Workflows': about/workflows.md
+    - 'Documentation versions': about/documentation.md
   - 'Release Notes': release-notes.md
   - 'Installation': 
     - 'Installation': install/index.md
     - 'Prerequisites': install/prerequisites.md
     - 'Cloudflare': install/cloudflare.md
-    - 'GitHub': install/github.md
     - 'Remote Falcon': install/remotefalcon.md
   - 'Post-Install': post-install.md
   - 'Updates': updates.md
   - 'Extra': extra.md
   - 'Troubleshooting': troubleshooting.md
+  - 'Legacy compatibility':
+    - 'Deprecated GitHub image builder': install/github.md
 
 
 markdown_extensions:
@@ -97,6 +99,9 @@ plugins:
   - git-revision-date-localized
 
 extra:
+  version:
+    provider: mike
+    alias: true
   social:
     - icon: simple/github
       link: https://github.com/Ne0n09/cloudflared-remotefalcon

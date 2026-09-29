@@ -18,7 +18,7 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 - On AMD64, four backend images are pulled anonymously from the project's public GHCR packages. The deployment-specific UI is built locally.
 
-- Existing installations with `REPO` and `GITHUB_PAT` retain the legacy private builder override. Other architectures currently build all application images locally.
+- Existing installations with `REPO` and `GITHUB_PAT` retain the deprecated private-builder compatibility override. New installations should not configure it. Other architectures currently build all application images locally.
 
 - Before an all-service public update, the updater verifies that the same platform commit tag exists for all four backends. An incomplete release leaves the application containers unchanged.
 
@@ -68,7 +68,7 @@ The released `default.conf` replaces the active file so routing fixes apply auto
 
 Running `update_scripts.sh` by itself changes configuration files but does not recreate running containers. Use the complete installer command below when the new configuration and container releases should be applied together.
 
-The repository's public workflow builds the four AMD64 backends without deployment secrets. The legacy private image builder still uses `build.yml`; `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.
+The repository's public workflow builds the four AMD64 backends without deployment secrets. The deprecated private image-builder compatibility path still uses `build.yml`; `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.
 
 Fresh Compose templates start NGINX, Cloudflared, MongoDB, and Versity Gateway at `latest`. During configuration, `update_containers.sh` starts each image, detects its concrete version, and replaces `latest` with that explicit tag for repeatable restarts and rollback. Existing installations preserve their current image references during script and template updates.
 
@@ -101,4 +101,4 @@ If the current user cannot access Docker, the installer asks whether to add that
 
 If a service fails its deployment check, its previous image and Compose configuration are restored. A failed MinIO migration leaves the source data unchanged; after a successful verified migration, the old data directory is retained with a dated `.migrated-*` name.
 
-Existing `REPO` and `GITHUB_PAT` settings are reused as a legacy private-builder override. Otherwise AMD64 uses anonymous public backend pulls plus a local UI build.
+Existing `REPO` and `GITHUB_PAT` settings are reused only as a deprecated private-builder compatibility override. Otherwise AMD64 uses anonymous public backend pulls plus a local UI build.

@@ -48,7 +48,7 @@ This page covers the Cloudflare [domain name](cloudflare.md#add-domain-name-to-c
 
     ![Cloudflare API key](../images/cloudflare_api_key.PNG)
 
-8. Proceed to GitHub [configuration](github.md) if you want to build Remote Falcon images through GitHub or you can skip to the [Remote Falcon installation](remotefalcon.md) if you want to build images locally.
+8. Proceed to the [Remote Falcon installation](remotefalcon.md). No GitHub account or private image-builder setup is required.
 
 9. During the Remote Falcon installation enter your Cloudflare API Token at the prompt:
 ```sh title="configure-rf Cloudfalre API Token prompt" 
@@ -259,4 +259,4 @@ Scroll down and you should see the Cloudflare Nameservers.
 
 Ensure that you are using these name servers with your domain name registrar/provider.
 
-Next is GitHub [configuration](github.md) if you want to build Remote Falcon images through GitHub or you can skip to the [Remote Falcon installation](remotefalcon.md) if you want to build images locally.
+Next, continue with the [Remote Falcon installation](remotefalcon.md). No GitHub account or private image-builder setup is required.

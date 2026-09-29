@@ -34,8 +34,6 @@ Click the name of the script to expand the section to display details about the 
     ./configure-rf.sh -y --set DOMAIN=YOURDOMAIN.COM
     ```
 
-    ![Configure-rf demo](../images/configure-rf-clean-install.gif)
-
 ??? example "upgrade_installation.sh"
 
     #### upgrade_installation.sh
@@ -96,8 +94,6 @@ Click the name of the script to expand the section to display details about the 
     ./update_containers.sh all dry-run health
     ./update_containers.sh all auto-apply
     ```
-    ![Update containers demo](../images/update_containers_9_7_25.gif)
-
 ??? example "health_check.sh"
 
     #### health_check.sh
@@ -120,7 +116,7 @@ Click the name of the script to expand the section to display details about the 
 
     - Checks Mongo to search for any shows that are configured and provides their URL.
 
-    - Checks if [SWAP_CP](../post-install.md#swap-viewer-page-subomdain) is enabled and displays the Control Panel URL.
+    - Checks if [SWAP_CP](../post-install.md#swap-viewer-page-subdomain) is enabled and displays the Control Panel URL.
 
     - Checks for any known issues by checking container logs directly.
 
@@ -132,11 +128,13 @@ Click the name of the script to expand the section to display details about the 
 
     To check only one container immediately, run `./health_check.sh 0s plugins-api` (replace `plugins-api` with another service name). Omitting the service checks all containers.
 
-    ![Health check demo](../images/health_check_9_7_25.gif)
-
 ??? example "sync_repo_secrets.sh"
 
     #### sync_repo_secrets.sh
+
+    !!! warning "Deprecated private-builder compatibility"
+
+        New installations do not use this script. It remains available only for installations that already use a private image-builder repository.
 
     - If [REPO](files.md#env) and [GITHUB_PAT](files.md#env) are configured in the .env file this script will sync the build arguments required to build images with GitHub Actions.
 
@@ -144,11 +142,13 @@ Click the name of the script to expand the section to display details about the 
     ./sync_repo_secrets.sh
     ```
 
-    ![Sync repo secrets demo](../images/sync_repo_secrets_9_7_25.gif)
-
 ??? example "run_workflow.sh"
 
     #### run_workflow.sh
+
+    !!! warning "Deprecated private-builder compatibility"
+
+        New installations use the public AMD64 backend images and build the UI locally. This script remains available only for installations that already use a private image-builder repository.
 
     - If [REPO](files.md#env) and [GITHUB_PAT](files.md#env) are configured in the .env file this script will run a GitHub Actions workflow to build new Remote Falcon Images.
     
@@ -166,8 +166,6 @@ Click the name of the script to expand the section to display details about the 
     ./run_workflow.sh plugins-api=69c0c53 control-panel=671bbed viewer=060011d ui=245c529 external-api=f7e09fe # Runs the build.yml GitHub Actions workflow to build all containers to the specified commit SHAs.
     ```
 
-    ![Run Workflow demo](../images/run_workflow_9_7_25.gif)
-
 ??? example "generate_jwt.sh"
 
     #### generate_jwt.sh
@@ -184,8 +182,6 @@ Click the name of the script to expand the section to display details about the 
     ./generate_jwt.sh
     ```
 
-    ![Generate_JWT demo](../images/generate_jwt.gif)
-
 ??? example "make_admin.sh"
 
     #### make_admin.sh
@@ -201,8 +197,6 @@ Click the name of the script to expand the section to display details about the 
     ```sh title="Run make_admin.sh"
     ./make_admin.sh
     ```
-
-    ![Make_admin demo](../images/make_admin.gif)
 
 ??? example "versitygw_init.sh"
 

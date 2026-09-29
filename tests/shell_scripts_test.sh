@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.28.4
+# VERSION=2026.9.28.5
 
 set -u
 
@@ -1110,6 +1110,12 @@ test_configure_rf_has_no_archived_updater() {
   assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'git clone "https://\$\{GITHUB_PAT\}'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh'
   assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/(shared_functions|update_containers)'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '^ensure_legacy_github_cli\(\)'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'REPO.*username/repo.*GITHUB_PAT'
+  assert_file_not_contains "$ROOT_DIR/README.md" 'Docker Compose 5\.5\.1|September 18, 2026'
+  assert_file_not_contains "$ROOT_DIR/README.md" '2\. \[GitHub\]'
+  assert_file_not_contains "$ROOT_DIR/README.md" '\.gif\)'
+  assert_file_not_contains "$ROOT_DIR/docs/about/scripts.md" '\.gif\)'
 }
 
 test_fresh_install_checks_each_deployed_service() {
@@ -1180,6 +1186,16 @@ test_ci_has_pinned_static_validation() {
   assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-material==[0-9]'
   assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-glightbox==[0-9]'
   assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-git-revision-date-localized-plugin==[0-9]'
+  assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mike==[0-9]'
+  assert_file_contains "$ROOT_DIR/mkdocs.yml" '^site_url: https://ne0n09\.github\.io/cloudflared-remotefalcon/$'
+  assert_file_contains "$ROOT_DIR/mkdocs.yml" '^[[:space:]]+provider: mike$'
+  assert_file_not_contains "$ROOT_DIR/mkdocs.yml" "^[[:space:]]+- 'GitHub': install/github\.md$"
+  assert_file_contains "$ROOT_DIR/.github/workflows/ci.yml" 'mkdocs build --strict'
+  assert_file_not_contains "$ROOT_DIR/.github/workflows/ci.yml" 'mkdocs gh-deploy'
+  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'mike deploy --push --update-aliases'
+  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'mike set-default --push latest'
+  assert_file_contains "$ROOT_DIR/.github/workflows/docs-historical.yml" 'default: v2026\.9\.27\.6'
+  assert_file_contains "$ROOT_DIR/.github/workflows/docs-historical.yml" 'default: legacy-private-builder'
 }
 
 test_public_backend_workflow_is_amd64_and_coordinated() {
@@ -1225,7 +1241,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+The legacy upgrade installer now locates an existing Remote Falcon installation automatically' || return 1
+  assert_file_contains "$output" '^-[[:space:]]+Removed the obsolete GitHub setup step and outdated GIFs from current installation guidance' || return 1
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 

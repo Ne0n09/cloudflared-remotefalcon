@@ -22,7 +22,11 @@ The UI is intentionally excluded because its public URLs and site settings are
 build-time values. It is built locally from `apps/ui` during configuration and
 upgrades.
 
-## Legacy private build.yml
+## Deprecated private build.yml
+
+!!! warning "Legacy compatibility only"
+
+    Do not create a private image-builder repository for a new installation. The original setup instructions are retained in the `legacy-private-builder` documentation version.
 
 Installations that already configure `REPO` and `GITHUB_PAT` can continue to
 use the private image-builder workflow for all five application images.

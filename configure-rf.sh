@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.28.2
+# VERSION=2026.9.28.5
 
 #set -euo pipefail
 
@@ -696,25 +696,27 @@ ROOTLESS
   esac
 fi
 
-# Check if GitHub CLI (gh) is installed
-if ! command -v gh >/dev/null 2>&1; then
-  echo "Installing GitHub CLI (gh)... you may need to enter your password for the 'sudo' command."
+# Existing private image-builder installations still require GitHub CLI.
+# Public-image installations must not install or require it.
+ensure_legacy_github_cli() {
+  command -v gh >/dev/null 2>&1 && return 0
+
+  echo "Installing GitHub CLI for the deprecated private image-builder configuration..."
   (type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)) \
   && sudo mkdir -p -m 755 /etc/apt/keyrings \
   && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-  && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+  && cat "$out" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
   && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
   && sudo mkdir -p -m 755 /etc/apt/sources.list.d \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
   && sudo apt update \
   && sudo apt install gh -y
-  if ! command -v gh >/dev/null 2>&1; then
-    echo -e "${RED}❌ GitHub CLI (gh) install failed. Please install GitHub CLI (gh) to proceed.${NC}"
-    exit 1
-  else
-    echo -e "${GREEN}✅ GitHub CLI (gh) installation complete!${NC}"
-    fi
-fi
+  command -v gh >/dev/null 2>&1 || {
+    echo -e "${RED}❌ GitHub CLI installation failed. Install gh or remove the legacy REPO and GITHUB_PAT settings.${NC}"
+    return 1
+  }
+  echo -e "${GREEN}✅ GitHub CLI installation complete.${NC}"
+}
 
 # Auto install jq if not installed
 if ! command -v jq >/dev/null 2>&1; then
@@ -763,6 +765,10 @@ parse_env "$ENV_FILE"
 DOCKERFILE="${DOCKERFILE:-Dockerfile.dev}"
 ORIGIN_CERTS_CONFIGURED_BY_SETUP=false
 print_env
+
+if [[ -n "${REPO:-}" && "$REPO" != "username/repo" && -n "${GITHUB_PAT:-}" ]]; then
+  ensure_legacy_github_cli
+fi
 
 # Function for the GitHub configuration flow to configure GITHUB_PAT and REPO
 configure_github() {

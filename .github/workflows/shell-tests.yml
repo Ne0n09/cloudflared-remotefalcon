@@ -10,10 +10,8 @@ on:
       - 'VERSION'
       - 'remotefalcon/**'
       - 'tests/**'
-      - '.github/workflows/shell-tests.yml'
-      - '.github/workflows/release.yml'
+      - '.github/workflows/**'
       - 'image-builder/.github/workflows/build.yml'
-      - '.github/workflows/build-public-images.yml'
       - 'install-manifest.txt'
   pull_request:
     paths:
@@ -21,10 +19,8 @@ on:
       - 'VERSION'
       - 'remotefalcon/**'
       - 'tests/**'
-      - '.github/workflows/shell-tests.yml'
-      - '.github/workflows/release.yml'
+      - '.github/workflows/**'
       - 'image-builder/.github/workflows/build.yml'
-      - '.github/workflows/build-public-images.yml'
       - 'install-manifest.txt'
 
 jobs:

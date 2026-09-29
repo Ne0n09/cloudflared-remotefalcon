@@ -42,7 +42,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `REPO`
 
-    :   Optional legacy override for an existing private image-builder repository. It is active only when a `GITHUB_PAT` is also configured.
+    :   Deprecated compatibility override for an existing private image-builder repository. It is active only when a `GITHUB_PAT` is also configured. New installations leave the default unchanged.
 
     `TUNNEL_TOKEN`
 
@@ -102,7 +102,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `POSTHOG_CLI_API_KEY`
 
-    :   Optional PostHog personal API key used only while building UI source maps. It is stored as a GitHub Actions secret when remote image building is configured.
+    :   Optional PostHog personal API key used only while building UI source maps. Existing deprecated private-builder installations store it as a GitHub Actions secret; public-image installations use it only for the local UI build.
 
     `PUBLIC_POSTHOG_HOST`
 
@@ -126,7 +126,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `GITHUB_PAT`
 
-    :   Optional [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) used only with the legacy private image-builder override. Normal AMD64 installations leave it empty.
+    :   Optional [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) used only with the deprecated private image-builder compatibility override. Normal AMD64 installations leave it empty.
 
     `SOCIAL_META`
 
@@ -162,7 +162,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `S3_ROOT_PASSWORD`
 
-    :   Specifies the root password for Versity Gateway. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
+    :   Specifies the root password for Versity Gateway. The [versitygw_init](scripts.md#versitygw_initsh) script will automatically update the default value to a random value.
 
     `S3_ENDPOINT`
 
@@ -170,11 +170,11 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `S3_ACCESS_KEY`
 
-    :   Specifies the S3 access key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
+    :   Specifies the S3 access key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh) script will automatically update the default value to a random value.
 
     `S3_SECRET_KEY`
 
-    :   Specifies the S3 seceret key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
+    :   Specifies the S3 seceret key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh) script will automatically update the default value to a random value.
 
     `IMAGES_S3_BUCKET`
 

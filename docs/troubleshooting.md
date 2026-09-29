@@ -196,7 +196,9 @@ Alternatively, here's some one-liner commands that automatically login and run t
   sudo docker exec -it mongo bash -c "mongosh --quiet 'mongodb://root:root@localhost:27017' --eval 'db = db.getSiblingDB(\"remote-falcon\"); const subdomains = db.show.find({}, { showSubdomain: 1, _id: 0 }).toArray();subdomains.forEach(doc => {if (doc.showSubdomain) {print(doc.showSubdomain);}});'"
   ```
 
-### GitHub
+### Deprecated private image builder
+
+The following GitHub commands apply only to installations that still use the deprecated private image-builder compatibility path. New public-image installations do not need GitHub authentication or a container-registry login.
 
 - Check GitHub authorization status:
     ```
