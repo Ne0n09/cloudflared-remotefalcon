@@ -7,7 +7,7 @@ commit and builds `plugins-api`, `control-panel`, `viewer`, and `external-api`
 from the monorepo root. The production Dockerfiles require no deployment build
 arguments. Each image is published as a multi-platform manifest for
 `linux/amd64` and `linux/arm64` with the same seven-digit platform commit tag.
-Each architecture builds on a native GitHub-hosted runner before the workflow
+Each architecture builds on a native Ubuntu 24.04 GitHub-hosted runner before the workflow
 combines both outputs into the coordinated manifest.
 
 Before promotion, every architecture image is pulled on its native runner and
