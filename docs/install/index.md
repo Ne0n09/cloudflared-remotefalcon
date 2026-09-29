@@ -1,10 +1,8 @@
-Assuming that you meet the [prerequisites](prerequisites.md), installation is broken into three steps:
+Assuming that you meet the [prerequisites](prerequisites.md), installation is broken into two steps:
 
 1. Create a [Cloudflare](cloudflare.md) account and configure Cloudflare settings.
 
-2. (OPTIONAL) Create a [GitHub](github.md) account and generate a GITHUB_PAT.
-
-3. Download and run [configure-rf](../about/scripts.md#configure-rfsh) to configure and install [Remote Falcon](remotefalcon.md).
+2. Download and run [configure-rf](../about/scripts.md#configure-rfsh) to configure and install [Remote Falcon](remotefalcon.md). AMD64 users pull the four public backend images anonymously; no GitHub account is required.
 
 - Review the [post-install](../post-install.md) section after installation for steps on how to configure the FPP plugin along with some other helpful tips.
 

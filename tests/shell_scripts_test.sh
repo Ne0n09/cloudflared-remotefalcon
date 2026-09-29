@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.6
+# VERSION=2026.9.27.7
 
 set -u
 
@@ -88,6 +88,7 @@ make_workspace() {
 DOMAIN=example.com
 TUNNEL_TOKEN=old-token
 REPO=username/repo
+RF_BACKEND_IMAGE_REPO=ne0n09/cloudflared-remotefalcon
 GITHUB_PAT=
 HOST_ENV=production
 DOCKERFILE=Dockerfile
@@ -437,6 +438,10 @@ elif [[ "$1" == "inspect" && "$*" == *"{{.Config.Image}}"* ]]; then
 elif [[ "$1" == "ps" ]]; then
   printf 'ghcr.io/example/external-api:abc1234\n'
 elif [[ "$1" == "logs" ]]; then
+  container="${@: -1}"
+  if [[ "$container" == "control-panel" && -n "${MOCK_CONTROL_PANEL_LOGS:-}" ]]; then
+    printf '%s\n' "$MOCK_CONTROL_PANEL_LOGS"
+  fi
   exit 0
 elif [[ "$1" == "exec" && "$2" == "nginx" && "$*" == *"nginx -t"* ]]; then
   printf 'nginx: the configuration file /etc/nginx/nginx.conf syntax is ok\n'
@@ -544,12 +549,16 @@ test_shared_functions() {
     [[ "${MONGO_URI}" == 'mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin' ]] || exit 1
 
     REPO="owner/repo"
+    GITHUB_PAT="ghp_test"
     update_compose_image_path
     grep -Fq 'ghcr.io/${REPO}/external-api:' "$COMPOSE_FILE" || exit 1
 
     REPO="username/repo"
+    GITHUB_PAT=""
     update_compose_image_path
     ! grep -Fq 'ghcr.io/${REPO}/external-api:' "$COMPOSE_FILE" || exit 1
+    grep -Fq 'ghcr.io/${RF_BACKEND_IMAGE_REPO}/external-api:' "$COMPOSE_FILE" || exit 1
+    grep -Eq '^[[:space:]]*image: ui:' "$COMPOSE_FILE" || exit 1
 
     replace_compose_tag external-api 1234567890abcdef1234567890abcdef12345678
     grep -Eq 'external-api:1234567' "$COMPOSE_FILE" || exit 1
@@ -565,6 +574,11 @@ test_shared_functions() {
     is_arm_cpu || exit 1
     uname() { printf 'x86_64\n'; }
     ! is_arm_cpu || exit 1
+    is_amd64_cpu || exit 1
+    public_backend_images_supported || exit 1
+    uname() { printf 'i686\n'; }
+    ! is_amd64_cpu || exit 1
+    ! public_backend_images_supported || exit 1
 
     memory_check() { return 1; }
     REPO="username/repo"
@@ -816,6 +830,28 @@ test_health_check_uses_recent_logs() {
   assert_file_contains "$ROOT_DIR/health_check.sh" 'docker logs --since "\$\{HEALTH_LOG_SINCE:-10m\}"'
   assert_file_contains "$ROOT_DIR/health_check.sh" 'mktemp -d "\$\{TMPDIR:-/tmp\}/remote-falcon-health\.XXXXXX"'
   assert_file_not_contains "$ROOT_DIR/health_check.sh" '="/tmp/(http_code|curl_response|curl_error\.log)"'
+  assert_file_not_contains "$ROOT_DIR/health_check.sh" 'docker logs control-panel'
+}
+
+test_health_check_detects_unknown_s3_access_key() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+
+  if (
+    cd "$ws" || exit 1
+    MOCK_RUNNING_SERVICES="control-panel" \
+    MOCK_CONTROL_PANEL_LOGS='2026-09-28T03:22:27.265Z ERROR software.amazon.awssdk.services.s3.model.S3Exception: The AWS Access Key Id you provided does not exist in our records. (Service: S3, Status Code: 403)' \
+      ./health_check.sh 0s control-panel
+  ) > "$ws/unknown-s3-key.out" 2>&1; then
+    echo "Expected an unknown VersityGW access key to fail the health check"
+    return 1
+  fi
+
+  assert_file_contains "$ws/unknown-s3-key.out" 'VersityGW does not recognize the S3 access key used by control-panel' || return 1
+  assert_file_contains "$ws/unknown-s3-key.out" 'Run ./versitygw_init.sh' || return 1
+  assert_file_contains "$ws/unknown-s3-key.out" 'force-recreate control-panel' || return 1
+  assert_file_contains "$ws/unknown-s3-key.out" 'The AWS Access Key Id you provided does not exist in our records' || return 1
 }
 
 test_update_containers_dry_run() {
@@ -1089,13 +1125,29 @@ test_ci_has_pinned_static_validation() {
   assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-git-revision-date-localized-plugin==[0-9]'
 }
 
+test_public_backend_workflow_is_amd64_and_coordinated() {
+  local workflow="$ROOT_DIR/.github/workflows/build-public-images.yml"
+
+  assert_file_contains "$workflow" '^  packages: write$'
+  assert_file_contains "$workflow" '^          context: \.$'
+  assert_file_contains "$workflow" '^          platforms: linux/amd64$'
+  assert_file_contains "$workflow" 'file: apps/\$\{\{ matrix\.service \}\}/Dockerfile'
+  assert_file_contains "$workflow" '^  promote:$'
+  assert_file_contains "$workflow" '^      - build$'
+  assert_file_contains "$workflow" 'docker buildx imagetools create'
+  assert_file_not_contains "$workflow" 'apps/ui'
+  assert_file_not_contains "$workflow" 'build-args:'
+  [[ $(grep -Ec '^          - (plugins-api|control-panel|viewer|external-api)$' "$workflow") == 8 ]] || return 1
+}
+
 test_fresh_deployment_harness_safety() {
   bash -n "$ROOT_DIR/tests/fresh-deployment-test.sh" || return 1
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'Rerun with --replace-running on a dedicated test host'
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'Refusing unsafe cleanup path'
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" './configure-rf.sh -y --docker-mode manual'
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'update_scripts.sh --version "\$VERSION"'
-  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'ghcr.io/\$\{repo\}/\$\{service\}'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'ghcr.io/\$\{public_repo\}/\$\{service\}'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'UI was not built locally'
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'remove_local_app_images'
 }
 
@@ -1113,7 +1165,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+Added a one-command upgrade path'
+  assert_file_contains "$output" '^-[[:space:]]+Added a public GitHub Actions workflow'
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
@@ -1289,9 +1341,12 @@ MOCK
   fi
 }
 
-test_fresh_remote_install_rebuilds_latest_tags() {
+test_fresh_public_install_uses_hybrid_images() {
   assert_file_contains "$ROOT_DIR/configure-rf.sh" '\[ "\$pending_changes" = false \] && \[ "\$pending_arg_changes" = false \]'
-  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Remote Falcon.*latest.*assuming new install.*run_workflow.sh'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Public AMD64 backend images will be pulled anonymously'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'rf_compose build ui'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: ghcr.io/\$\{RF_BACKEND_IMAGE_REPO\}/plugins-api:latest'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: ui:latest'
 }
 
 test_remote_deploy_checks_built_services_before_full_stack() {
@@ -1398,6 +1453,7 @@ run_test "run_workflow.sh restores a failed deployment" test_run_workflow_rolls_
 run_test "shared_functions.sh hides secrets in output" test_print_env_redacts_secrets
 run_test "health_check.sh fails without .env" test_health_check_missing_env_fails
 run_test "health_check.sh ignores stale log errors" test_health_check_uses_recent_logs
+run_test "health_check.sh diagnoses an unknown VersityGW access key" test_health_check_detects_unknown_s3_access_key
 run_test "targeted health checks isolate the selected service" test_targeted_health_check
 run_test "Quarkus runtime migration is targeted and idempotent" test_quarkus_environment_migration
 run_test "control-panel runtime migration is targeted and idempotent" test_control_panel_environment_migration
@@ -1420,6 +1476,7 @@ run_test "compose supplies current platform runtime configuration" test_current_
 run_test "infrastructure images use tested version tags" test_infrastructure_images_are_version_pinned
 if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
   run_test "CI uses pinned actions and static validators" test_ci_has_pinned_static_validation
+  run_test "public backend workflow publishes one coordinated AMD64 release" test_public_backend_workflow_is_amd64_and_coordinated
 fi
 run_test "fresh deployment harness has guarded update and build modes" test_fresh_deployment_harness_safety
 if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
@@ -1430,7 +1487,7 @@ run_test "installation manifest drives managed and retired files" test_install_m
 run_test "legacy upgrades run the safe transition in order" test_legacy_upgrade_is_orchestrated
 run_test "legacy upgrades rebuild all platform images in one workflow" test_legacy_upgrade_rebuilds_platform_images_as_one_workflow
 run_test "legacy upgrades handle missing Docker group access" test_upgrade_handles_missing_docker_group_access
-run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
+run_test "fresh AMD64 installs use public backends and a local UI" test_fresh_public_install_uses_hybrid_images
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
 run_test "release updater merges live values into current configuration" test_release_updater_merges_live_config
 run_test "release updater leaves live configuration unchanged after validation failure" test_release_updater_rejects_invalid_config

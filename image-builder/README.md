@@ -1,6 +1,6 @@
-# Remote Falcon image builder
+# Remote Falcon legacy private image builder
 
-This directory mirrors the public image-builder workflow for building the current [Remote Falcon platform monorepo](https://github.com/Remote-Falcon/remote-falcon-platform) into a private GitHub Container Registry.
+Normal AMD64 installations now pull four public backend images and build only the UI locally. This directory is retained for existing or advanced deployments that explicitly want all application images in a private GitHub Container Registry.
 
 Copy `.github/workflows/build.yml` into your private image-builder repository. From the cloudflared-remotefalcon deployment, run `./sync_repo_secrets.sh` to populate its build inputs, then run `./run_workflow.sh` or start the workflow from GitHub Actions. The workflow builds plugins-api, control-panel, viewer, ui, and external-api. Its daily schedule checks for new platform commits.
 

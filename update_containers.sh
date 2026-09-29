@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.24.2
+# VERSION=2026.9.28.1
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -50,17 +50,24 @@ fi
 # Get a registry access token for GHCR
 get_token() {
   local image=$1
+  local repository=$2
   local credentials_file
-  # Request token using GitHub username and PAT
-  local response
+  local response curl_status
 
-  credentials_file=$(mktemp) || return 1
-  chmod 600 "$credentials_file"
-  printf 'machine ghcr.io login user password %s\n' "$GITHUB_PAT" > "$credentials_file"
-  response=$(curl -s --netrc-file "$credentials_file" \
-  "https://ghcr.io/token?scope=repository:${REPO}/${image}:pull" -w "%{http_code}")
-  local curl_status=$?
-  rm -f "$credentials_file"
+  if github_workflow_builds_configured && [[ "$repository" == "$REPO" ]]; then
+    credentials_file=$(mktemp) || return 1
+    chmod 600 "$credentials_file"
+    printf 'machine ghcr.io login user password %s\n' "$GITHUB_PAT" > "$credentials_file"
+    response=$(curl -s --netrc-file "$credentials_file" \
+      "https://ghcr.io/token?scope=repository:${repository}/${image}:pull" -w "%{http_code}")
+    curl_status=$?
+    rm -f "$credentials_file"
+  else
+    # Public GHCR packages issue anonymous pull tokens.
+    response=$(curl -s \
+      "https://ghcr.io/token?scope=repository:${repository}/${image}:pull" -w "%{http_code}")
+    curl_status=$?
+  fi
   [[ $curl_status -eq 0 ]] || return "$curl_status"
 
   # Extract HTTP code (last 3 chars) and body
@@ -81,23 +88,30 @@ get_token() {
 check_image_exists() {
   local image=$1
   local tag=$2
+  local repository
+
+  repository=$(image_repository_for_service "$image")
+  if [[ -z "$repository" ]]; then
+    echo -e "${YELLOW}⚠️ $image is configured as a local build.${NC}"
+    return 1
+  fi
 
   # Get a short-lived token for this image
   local token
-  token=$(get_token "$image") || return 1
+  token=$(get_token "$image" "$repository") || return 1
 
   # Query the manifest for the specific tag
   local status
   status=$(curl -s -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer $token" \
-  -H "Accept: application/vnd.oci.image.manifest.v1+json" \
-  "https://ghcr.io/v2/${REPO}/${image}/manifests/$tag")
+  -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+  "https://ghcr.io/v2/${repository}/${image}/manifests/$tag")
 
   if [[ "$status" == "200" ]]; then
-    echo -e "🐳 Image ghcr.io/${REPO}/$image:${GREEN}$tag${NC} exists in the GitHub Container Registry(GHCR)."
+    echo -e "🐳 Image ghcr.io/${repository}/$image:${GREEN}$tag${NC} exists in GitHub Container Registry."
     return 0
   elif [[ "$status" == "404" ]]; then
-    echo -e "${RED}❌ Image ghcr.io/${REPO}/$image:$tag does not exist in GitHub Container Registry(GHCR).${NC}"
+    echo -e "${RED}❌ Image ghcr.io/${repository}/$image:$tag does not exist in GitHub Container Registry.${NC}"
     return 1
   else
     echo -e "${YELLOW}⚠️ Unexpected response checking $image:$tag – HTTP $status${NC}"
@@ -181,6 +195,40 @@ wait_for_service_deployment() {
   return 1
 }
 
+prepare_service_image() {
+  local service_name="$1"
+
+  if service_uses_registry_image "$service_name"; then
+    echo -e "${BLUE}⬇️ Pulling the published $service_name image...${NC}"
+    rf_compose pull "$service_name"
+  else
+    echo -e "${BLUE}🔨 Building $service_name locally...${NC}"
+    rf_compose build "$service_name"
+  fi
+}
+
+preflight_public_backend_release() {
+  local platform_sha short_sha service
+
+  github_workflow_builds_configured && return 0
+  public_backend_images_supported || return 0
+
+  platform_sha=$(curl -fsSL "https://api.github.com/repos/${REMOTE_FALCON_REPO}/commits/main" | jq -r '.sha // empty')
+  [[ "$platform_sha" =~ ^[0-9a-f]{40}$ ]] || {
+    echo -e "${RED}❌ Could not resolve the current Remote Falcon platform commit.${NC}" >&2
+    return 1
+  }
+  short_sha=${platform_sha:0:7}
+
+  echo -e "${BLUE}🔍 Verifying the coordinated public backend release $short_sha...${NC}"
+  for service in "${RF_BACKEND_SERVICES[@]}"; do
+    if ! check_image_exists "$service" "$short_sha"; then
+      echo -e "${RED}❌ Public backend release $short_sha is incomplete. No application containers were updated.${NC}" >&2
+      return 1
+    fi
+  done
+}
+
 perform_update() {
   local service_name="$1"
   local latest_version="$2"
@@ -228,6 +276,7 @@ perform_update() {
   echo -e "✔ Updated $service_name image tag to version $latest_version in $COMPOSE_FILE..."
   echo -e "${BLUE}🔄 Restarting $service_name with the $latest_version image...${NC}"
   if rf_compose config -q &&
+     prepare_service_image "$service_name" &&
      rf_compose up -d --no-deps "$service_name" &&
      wait_for_service_deployment "$service_name" "${previous_image:+health}"; then
     rm -f "$previous_compose"
@@ -529,49 +578,48 @@ check_for_update() {
 
           case "$MODE" in
             "dry-run")
-              if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then # No REPO configured = local build
-                if (( correct_format == 0 )); then # No REPO configured and format is valid.
+              if ! service_uses_registry_image "$service_name"; then
+                if (( correct_format == 0 )); then
                   echo -e "🧪 ${YELLOW}Dry-run:${NC} would locally build and update $service_name to $short_sha"
-                else # No REPO configured and format is NOT valid
+                else
                   echo -e "🧪 ${YELLOW}Dry-run:${NC} would re-tag $service_name and locally build and update $service_name to $short_sha"
                 fi
-              else # REPO configured
-                if check_image_exists "$service_name" "$short_sha"; then # REPO configured and image exists
-                  if (( correct_format == 0 )); then # REPO configured, image exists, and format is valid
+              else
+                if check_image_exists "$service_name" "$short_sha"; then
+                  if (( correct_format == 0 )); then
                     echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $short_sha"
-                  else # REPO configured, image exists, and format is NOT valid
+                  else
                     echo -e "🧪 ${YELLOW}Dry-run:${NC} would re-tag $service_name and update $service_name to $short_sha"
                   fi
-                else # REPO configured and image does not exist
-                  if (( correct_format == 0 )); then # REPO configured, image does NOT exist, and format is valid
-                    echo -e "🧪 ${YELLOW}Dry-run:${NC} would perform run_workflow.sh to build and push $service_name:$short_sha to $REPO"
-                    echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $short_sha"
-                  else # REPO configured, image does NOT exist, and format is NOT valid
-                    echo -e "🧪 ${YELLOW}Dry-run:${NC} would perform run_workflow.sh to build and push $service_name:$short_sha to $REPO"
-                    echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $short_sha"
-                  fi
+                elif github_workflow_builds_configured; then
+                  echo -e "🧪 ${YELLOW}Dry-run:${NC} would perform run_workflow.sh to build and push $service_name:$short_sha to $REPO"
+                  echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $short_sha"
+                else
+                  echo -e "🧪 ${YELLOW}Dry-run:${NC} would wait for the public AMD64 $service_name:$short_sha image to be published"
                 fi
               fi
               ;;
             "auto-apply")
-              if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then # No REPO configured = local build
+              if ! service_uses_registry_image "$service_name"; then
                 update_rf_version # From shared_functions.sh
                 perform_update "$service_name" "$LATEST_VERSION" "$sed_command" 
-              else # REPO configured
-                if check_image_exists "$service_name" "$short_sha"; then # REPO configured and image exists
+              else
+                if check_image_exists "$service_name" "$short_sha"; then
                   perform_update "$service_name" "$LATEST_VERSION" "$sed_command" # $LATEST_VERSION will get converted to short sha in perform_update
-                else # REPO configured and image does not exist
+                elif github_workflow_builds_configured; then
                   if bash "$SCRIPT_DIR/run_workflow.sh" "$service_name=$LATEST_VERSION"; then
                     perform_update "$service_name" "$LATEST_VERSION" "$sed_command"
                   else
                     echo -e "${RED}❌ GitHub workflow did not complete successfully for $service_name.${NC}"
                   fi
+                else
+                  echo -e "${RED}❌ Public AMD64 image $service_name:$short_sha has not been published yet; leaving the current container unchanged.${NC}" >&2
+                  exit 1
                 fi
               fi
               ;;
             *)
-              # Interactive mode - prompt to locally build if $REPO is not configured, else prompt to run the workflow to build on GitHub
-              if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then
+              if ! service_uses_registry_image "$service_name"; then
                 read -rp "❓ Would you like to build $service_name:$short_sha? (y/n) [n]: " confirm
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
                   perform_update "$service_name" "$LATEST_VERSION" "$sed_command"
@@ -579,13 +627,12 @@ check_for_update() {
                   echo -e "⏭️ Skipped building $service_name."
                 fi
               else
-                # Interactive mode - prompt to run workflow and prompt to update compose.yaml if workflow completes successfully
-                if check_image_exists "$service_name" "$short_sha"; then # REPO configured and image exists
+                if check_image_exists "$service_name" "$short_sha"; then
                   read -rp "❓ Update $service_name to ${short_sha}? (y/n) [n]: " confirm
                   if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     perform_update "$service_name" "$LATEST_VERSION" "$sed_command" # $LATEST_VERSION will get converted to short sha in perform_update
                   fi
-                else # REPO configured and image does not exist
+                elif github_workflow_builds_configured; then
                   read -rp "❓ Would you like to build and push $service_name:$short_sha to repository $REPO with run_workflow.sh? (y/n) [n]: " confirm
                   if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     if bash "$SCRIPT_DIR/run_workflow.sh" "$service_name=$LATEST_VERSION"; then
@@ -596,6 +643,8 @@ check_for_update() {
                   else
                     echo -e "⏭️ Skipped building $service_name."
                   fi
+                else
+                  echo -e "${YELLOW}⚠️ Public AMD64 image $service_name:$short_sha has not been published yet; skipping it.${NC}"
                 fi
               fi
               ;;
@@ -621,6 +670,7 @@ check_compose_exists
 # If script is run with 'all', loop through all containers by calling the check_for_update function otherwise just check the specified container
 if [ "$SERVICE_NAME" == "all" ]; then
   echo -e "${BLUE}⚙️ Checking for container updates...${NC}"
+  preflight_public_backend_release || exit 1
   for container in "${CONTAINERS[@]}"; do
     check_for_update "$container"
   done

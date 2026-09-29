@@ -19,9 +19,7 @@ The exceptions are plugins-api(8083:8083) which allows for direct LAN access.
         build:
         context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
         dockerfile: apps/plugins-api/Dockerfile
-        args:
-            - OTEL_OPTS=${OTEL_OPTS}
-        image: plugins-api:latest
+        image: ghcr.io/${RF_BACKEND_IMAGE_REPO}/plugins-api:latest
         container_name: plugins-api
         restart: always
         ports:
@@ -38,9 +36,13 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
 ???+ info ".env variables"
 
+    `RF_BACKEND_IMAGE_REPO`
+
+    :   Public GHCR repository containing the four AMD64 backend images. Anonymous pulls do not require a GitHub account. The default is `ne0n09/cloudflared-remotefalcon`.
+
     `REPO`
 
-    :   The configure-rf script guides on setting this. This lets you run a [GitHub Actions workflow](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows) to build Remote Falcon images and store them on the GitHub Container Registry. Also required the GITHUB_PAT to be configured.
+    :   Optional legacy override for an existing private image-builder repository. It is active only when a `GITHUB_PAT` is also configured.
 
     `TUNNEL_TOKEN`
 
@@ -124,7 +126,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `GITHUB_PAT`
 
-    :   [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens). This is required if you would like to build Remote Falcon images via a [GitHub Actions workflow](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows).
+    :   Optional [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) used only with the legacy private image-builder override. Normal AMD64 installations leave it empty.
 
     `SOCIAL_META`
 

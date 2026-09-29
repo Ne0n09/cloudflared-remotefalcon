@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.24.3
+# VERSION=2026.9.28.1
 
 set -euo pipefail
 
@@ -24,7 +24,7 @@ Runs repeatable release and fresh deployment tests on a dedicated Linux host.
 
 Options:
   --source-env FILE       Existing private .env whose values should be reused
-  --mode MODE             update, local, remote, or both (default: both)
+  --mode MODE             update, public, private, or both (default: both)
   --work-root DIR         Test directories and data (default: $WORK_ROOT)
   --version TAG           Release to install, or latest (default: latest)
   --update-from TAG       Older release used by the updater test
@@ -32,7 +32,9 @@ Options:
   --keep                  Keep the final deployment and test data
   -h, --help              Show this help
 
-The remote mode requires valid GITHUB_PAT and REPO values in the source .env.
+The public mode pulls four AMD64 backends anonymously and builds UI locally.
+The private mode verifies the legacy private image-builder compatibility path
+and requires valid GITHUB_PAT and REPO values in the source .env.
 Secrets are copied into private test files and are not accepted as arguments.
 EOF
 }
@@ -52,7 +54,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$MODE" in
-  update|local|remote|both) ;;
+  update|public|private|both) ;;
   *) echo "Invalid mode: $MODE" >&2; exit 2 ;;
 esac
 
@@ -203,29 +205,33 @@ prepare_deployment() {
   set_env "$env_file" MONGO_PATH "$mongo_path"
   set_env "$env_file" VERSITYGW_PATH "$versity_path"
 
-  if [[ "$build_mode" == local ]]; then
+  if [[ "$build_mode" == public ]]; then
     remove_local_app_images
     set_env "$env_file" REPO "username/repo"
     set_env "$env_file" GITHUB_PAT ""
+    set_env "$env_file" RF_BACKEND_IMAGE_REPO "ne0n09/cloudflared-remotefalcon"
     set_env "$env_file" DOCKERFILE "Dockerfile.dev"
   else
-    [[ -n "$(read_env GITHUB_PAT "$env_file")" ]] || { echo "Remote mode requires GITHUB_PAT in the source .env." >&2; return 2; }
-    [[ "$(read_env REPO "$env_file")" == */* ]] || { echo "Remote mode requires owner/repository in REPO." >&2; return 2; }
+    [[ -n "$(read_env GITHUB_PAT "$env_file")" ]] || { echo "Private mode requires GITHUB_PAT in the source .env." >&2; return 2; }
+    [[ "$(read_env REPO "$env_file")" == */* ]] || { echo "Private mode requires owner/repository in REPO." >&2; return 2; }
   fi
 }
 
 validate_deployment() {
   local build_mode="$1" target="$2" env_file="$target/remotefalcon/.env"
-  local service image repo
+  local service image repo public_repo
   (cd "$target" && ./versitygw_init.sh && ./health_check.sh 0s) | tee "$RESULTS_DIR/${build_mode}-health.log"
 
   repo=$(read_env REPO "$env_file")
+  public_repo=$(read_env RF_BACKEND_IMAGE_REPO "$env_file")
   for service in "${APP_SERVICES[@]}"; do
     image=$(docker inspect --format '{{.Config.Image}}' "$service")
-    if [[ "$build_mode" == remote ]]; then
+    if [[ "$build_mode" == private ]]; then
       [[ "$image" == "ghcr.io/${repo}/${service}:"* ]] || { echo "$service did not use a remote image: $image" >&2; return 1; }
+    elif [[ "$service" == ui ]]; then
+      [[ "$image" == "ui:"* ]] || { echo "UI was not built locally: $image" >&2; return 1; }
     else
-      [[ "$image" != ghcr.io/* ]] || { echo "$service unexpectedly used a remote image: $image" >&2; return 1; }
+      [[ "$image" == "ghcr.io/${public_repo}/${service}:"* ]] || { echo "$service did not use the public image: $image" >&2; return 1; }
     fi
   done
   echo "PASS $build_mode $(cat "$target/VERSION")" | tee "$RESULTS_DIR/${build_mode}.result"
@@ -247,11 +253,11 @@ validate_update
 
 case "$MODE" in
   update) ;;
-  local) run_deployment local ;;
-  remote) run_deployment remote ;;
+  public) run_deployment public ;;
+  private) run_deployment private ;;
   both)
-    run_deployment local
-    run_deployment remote
+    run_deployment public
+    run_deployment private
     ;;
 esac
 

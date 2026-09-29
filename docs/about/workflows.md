@@ -1,11 +1,26 @@
-If you configured GitHub during `configure-rf.sh`, your private repository was created from the Remote Falcon image builder template.
+# Image workflows
 
-## build.yml
+## Public AMD64 backend workflow
 
-The unified workflow builds all five Remote Falcon app images or a selected service from the platform repository. The platform commit SHA is used as the image tag. It can be run manually in GitHub Actions or through `run_workflow.sh`.
+`build-public-images.yml` checks out one immutable Remote Falcon platform
+commit and builds `plugins-api`, `control-panel`, `viewer`, and `external-api`
+from the monorepo root. The production Dockerfiles require no deployment build
+arguments. Each image is published for `linux/amd64` with the same seven-digit
+platform commit tag.
 
-`run_workflow.sh` syncs build secrets, starts the workflow, and deploys only the built app services after the workflow succeeds. It checks the deployment and restores the prior images and Compose file on failure.
+The date and `latest` tags are promoted only after all four matrix builds
+succeed. The updater also verifies that all four immutable tags exist before an
+all-service update, preventing a partially published backend release from
+changing the running application stack.
 
-## Secrets
+The UI is intentionally excluded because its public URLs and site settings are
+build-time values. It is built locally from `apps/ui` during configuration and
+upgrades.
 
-The workflow reads secrets from your private repository. Use `sync_repo_secrets.sh` to update them from the VM's private `.env` file, or edit them under repository Settings → Secrets and variables → Actions.
+## Legacy private build.yml
+
+Installations that already configure `REPO` and `GITHUB_PAT` can continue to
+use the private image-builder workflow for all five application images.
+`sync_repo_secrets.sh` updates its build settings and `run_workflow.sh` starts
+the workflow, deploys only the selected services, and restores prior images and
+Compose configuration after a failed deployment check.

@@ -1,5 +1,17 @@
 # Release Notes
 
+## 2026.9.28.1
+
+- Added a public GitHub Actions workflow that builds coordinated `linux/amd64` images for plugins-api, control-panel, viewer, and external-api from one Remote Falcon platform commit. Date and `latest` tags are promoted only after every backend succeeds.
+
+- AMD64 installations now pull the four public backend images anonymously, so end users do not need a GitHub account, Personal Access Token, or private image-builder repository. The UI remains a local build because its deployment URLs and site settings are compiled into the bundle.
+
+- Updates verify that all four immutable backend tags exist before changing an application stack. Existing private image-builder settings remain supported as a compatibility override, and non-AMD64 hosts continue to use local JVM builds.
+
+## 2026.9.27.7
+
+- Health checks now detect Control Panel `403` errors caused by an S3 access key that Versity Gateway does not recognize, even when the application health endpoint is otherwise UP. The diagnostic recommends rerunning `./versitygw_init.sh`, recreating the Control Panel container with the current `.env`, and rerunning the health check.
+
 ## 2026.9.27.6
 
 - Fixed the release self-test failure that occurred after accepting Docker group enrollment. The post-upgrade `newgrp docker` prompt no longer depends on optional terminal color variables, including in the isolated legacy-upgrade test environment.

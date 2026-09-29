@@ -54,11 +54,13 @@ Click the name of the script to expand the section to display details about the 
 
     - Checks for updates and updates Remote Falcon containers to the latest available commit on the [Remote Falcon Github](https://github.com/Remote-Falcon).
 
-    - The [compose.yaml](files.md#composeyaml) build context hash is updated to the latest commit for the Remote Falcon containers.
+    - The [compose.yaml](files.md#composeyaml) build context hash is updated to the latest platform commit.
     
     - The compose.yaml container image tag is updated to the latest release.
 
     - A backup of the compose.yaml is created when any of the containers are updated.
+
+    - On AMD64, verifies and pulls coordinated public images for the four backend services without GitHub credentials. The UI remains a local build because its deployment settings are compiled into the bundle.
 
     - The image tag for the Remote Falcon container is updated in the compose.yaml to the short-hash:
     ```yaml linenums="50" hl_lines="3 6"
@@ -66,9 +68,7 @@ Click the name of the script to expand the section to display details about the 
         build:
           context: https://github.com/Remote-Falcon/remote-falcon-platform.git#cc1593aab27dc195a4c55b5b1410ddc06e96a60c
           dockerfile: apps/plugins-api/Dockerfile
-          args:
-            - OTEL_OPTS=${OTEL_OPTS}
-        image: plugins-api:cc1593a
+        image: ghcr.io/${RF_BACKEND_IMAGE_REPO}/plugins-api:cc1593a
         container_name: plugins-api
     ```
 
@@ -123,6 +123,8 @@ Click the name of the script to expand the section to display details about the 
     - Checks if [SWAP_CP](../post-install.md#swap-viewer-page-subomdain) is enabled and displays the Control Panel URL.
 
     - Checks for any known issues by checking container logs directly.
+
+    - Detects when the Control Panel is using an S3 access key that Versity Gateway does not recognize. The reported fix reruns `./versitygw_init.sh`, recreates the Control Panel container with the current `.env`, and then reruns the health check.
 
     ```sh title="Run health_check.sh" 
     ./health_check.sh

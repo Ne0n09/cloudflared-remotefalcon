@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.9.24.2
+# SHARED_FUNCTIONS_VERSION=2026.9.28.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -15,6 +15,9 @@ HEALTH_CHECK_SCRIPT="$SCRIPT_DIR/health_check.sh"
 REMOTE_FALCON_PLATFORM_REPO="Remote-Falcon/remote-falcon-platform"
 REMOTE_FALCON_PLATFORM_GIT_URL="https://github.com/${REMOTE_FALCON_PLATFORM_REPO}.git"
 REMOTE_FALCON_APPS_DIR="apps"
+DEFAULT_RF_BACKEND_IMAGE_REPO="ne0n09/cloudflared-remotefalcon"
+RF_BACKEND_IMAGE_REPO="${RF_BACKEND_IMAGE_REPO:-$DEFAULT_RF_BACKEND_IMAGE_REPO}"
+RF_BACKEND_SERVICES=(plugins-api control-panel viewer external-api)
 
 # Used to store .env variables
 declare -gA existing_env_vars
@@ -329,34 +332,63 @@ update_rf_version() {
   fi
 }
 
-# Function to update the compose image path if $REPO is configured in the .env to allow for local builds or pulling from GHCR
+# Return success when the service is one of the public Remote Falcon backends.
+is_rf_backend_service() {
+  local service_name="$1"
+  [[ " ${RF_BACKEND_SERVICES[*]} " == *" ${service_name} "* ]]
+}
+
+# The public image workflow currently publishes only linux/amd64 images.
+public_backend_images_supported() {
+  is_amd64_cpu
+}
+
+# Print the GHCR repository used by a service, or print nothing for local builds.
+image_repository_for_service() {
+  local service_name="$1"
+
+  if github_workflow_builds_configured; then
+    printf '%s\n' "$REPO"
+  elif is_rf_backend_service "$service_name" && public_backend_images_supported; then
+    printf '%s\n' "$RF_BACKEND_IMAGE_REPO"
+  fi
+}
+
+service_uses_registry_image() {
+  [[ -n "$(image_repository_for_service "$1")" ]]
+}
+
+# Function to select public backend images, a legacy private builder, or local images.
 update_compose_image_path() {
   local containers=("plugins-api" "control-panel" "viewer" "ui" "external-api")
-  local before after
+  local before after service prefix
 
   # Store hash before modifications
   before=$(md5sum "$COMPOSE_FILE")
 
-  if [[ -z "$REPO" || "$REPO" = "username/repo" ]]; then
-    # Remove ghcr.io/${REPO}/ prefix
-    sed -i 's|ghcr.io/${REPO}/||g' "$COMPOSE_FILE"
-  else
-    # Ensure literal ghcr.io/${REPO}/ prefix is present
-    for service in "${containers[@]}"; do
-      # Normalize both unprefixed and already-prefixed lines to the canonical form
-      sed -i -E "s|(^[[:space:]]*image:[[:space:]]*\"?)((${service}:[^\"[:space:]]+))(\"?)|\1ghcr.io/\${REPO}/\2\4|" "$COMPOSE_FILE"
-    done
-  fi
+  for service in "${containers[@]}"; do
+    prefix=""
+    if github_workflow_builds_configured; then
+      prefix='ghcr.io/${REPO}/'
+    elif is_rf_backend_service "$service" && public_backend_images_supported; then
+      prefix='ghcr.io/${RF_BACKEND_IMAGE_REPO}/'
+    fi
+
+    # Normalize unprefixed, public, and legacy private image references.
+    sed -i -E "s|(^[[:space:]]*image:[[:space:]]*\"?)([^\"[:space:]]*/)*(${service}:[^\"[:space:]]+)(\"?)|\1${prefix}\3\4|" "$COMPOSE_FILE"
+  done
 
   # Store hash after modifications
   after=$(md5sum "$COMPOSE_FILE")
 
   # Only display message if changes occurred
   if [[ "$before" != "$after" ]]; then
-    if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
+    if github_workflow_builds_configured; then
       echo -e "${BLUE}🐙 REPO is configured, 'ghcr.io/\${REPO}/' image: prefixes updated in $COMPOSE_FILE.${NC}"
+    elif public_backend_images_supported; then
+      echo -e "${BLUE}🐳 Public AMD64 backend image paths were applied; the UI remains a local build.${NC}"
     else
-      echo -e "${BLUE}🐙 REPO is not configured, 'ghcr.io/\${REPO}/' image: prefixes removed from $COMPOSE_FILE.${NC}"
+      echo -e "${BLUE}🐳 Public AMD64 images are unavailable on this architecture; local image paths were applied.${NC}"
     fi
   fi
 }
@@ -366,7 +398,7 @@ github_workflow_builds_configured() {
   [[ -n "${REPO:-}" && "$REPO" != "username/repo" && "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ && -n "${GITHUB_PAT:-}" ]]
 }
 
-# Function to detect ARM CPUs where free GitHub hosted runners are not practical for RF image builds
+# Function to detect ARM CPUs. Public project images currently target AMD64 only.
 is_arm_cpu() {
   local arch=""
 
@@ -380,6 +412,22 @@ is_arm_cpu() {
 
   arch="${arch,,}"
   [[ "$arch" =~ ^(arm|armv[0-9].*|aarch64|arm64)$ ]]
+}
+
+# Return success only on the architecture published by the public workflow.
+is_amd64_cpu() {
+  local arch=""
+
+  if command -v uname >/dev/null 2>&1; then
+    arch="$(uname -m 2>/dev/null || true)"
+  fi
+
+  if [[ -z "$arch" ]] && command -v lscpu >/dev/null 2>&1; then
+    arch="$(lscpu 2>/dev/null | awk -F: '/Architecture/ {gsub(/[[:space:]]/, "", $2); print $2; exit}')"
+  fi
+
+  arch="${arch,,}"
+  [[ "$arch" == "x86_64" || "$arch" == "amd64" ]]
 }
 
 # Function to check system memory and if less than 16GB display a warning message about building locally

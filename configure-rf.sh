@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.5
+# VERSION=2026.9.28.1
 
 #set -euo pipefail
 
@@ -199,6 +199,7 @@ update_env() {
 
   # Declare NEW variables to check against existing .env values to detect if anything changed
   declare -A new_env_vars=(
+    ["RF_BACKEND_IMAGE_REPO"]="$RF_BACKEND_IMAGE_REPO"
     ["REPO"]="$REPO"
     ["TUNNEL_TOKEN"]="$TUNNEL_TOKEN"
     ["DOMAIN"]="$DOMAIN"
@@ -230,16 +231,12 @@ update_env() {
   declare -A new_build_args=(
     ["VERSION"]="$VERSION"
     ["HOST_ENV"]="$HOST_ENV"
-    ["DOCKERFILE"]="$DOCKERFILE"
     ["DOMAIN"]="$DOMAIN"
     ["PROTOMAPS_API_KEY"]="$PROTOMAPS_API_KEY"
     ["MAP_STYLE_LIGHT"]="$MAP_STYLE_LIGHT"
     ["MAP_STYLE_DARK"]="$MAP_STYLE_DARK"
     ["PUBLIC_POSTHOG_KEY"]="$PUBLIC_POSTHOG_KEY"
     ["POSTHOG_CLI_API_KEY"]="$POSTHOG_CLI_API_KEY"
-    ["PUBLIC_POSTHOG_HOST"]="$PUBLIC_POSTHOG_HOST"
-    ["GA_TRACKING_ID"]="$GA_TRACKING_ID"
-    ["MIXPANEL_KEY"]="$MIXPANEL_KEY"
     ["HOSTNAME_PARTS"]="$HOSTNAME_PARTS"
     ["SOCIAL_META"]="$SOCIAL_META"
     ["SWAP_CP"]="$SWAP_CP"
@@ -247,9 +244,6 @@ update_env() {
     ["CONTROL_PANEL_SUBDOMAIN"]="$CONTROL_PANEL_SUBDOMAIN"
     ["CONTROL_HOST"]="$CONTROL_HOST"
     ["VIEWER_HOST"]="$VIEWER_HOST"
-    ["OTEL_OPTS"]="$OTEL_OPTS"
-    ["OTEL_URI"]="$OTEL_URI"
-    ["MONGO_URI"]="$MONGO_URI"
   )
 
 # Compare new_env_vars to existing_env_vars
@@ -807,86 +801,24 @@ configure_github() {
 }
 
 configure_build_strategy() {
-  local low_memory=false
-
-  if ! memory_check; then
-    low_memory=true
-  fi
-
-  if is_arm_cpu; then
-    echo -e "${YELLOW}⚠️ ARM CPU detected. Skipping GitHub workflow setup because building ARM Remote Falcon images on GitHub-hosted runners is not feasible on free plans.${NC}"
-    if [[ "$low_memory" == "true" ]] && ! github_workflow_builds_configured; then
-      DOCKERFILE="Dockerfile.dev"
-      echo -e "${YELLOW}⚠️ Setting DOCKERFILE=Dockerfile.dev for lower-memory local image builds.${NC}"
-    fi
+  if ! public_backend_images_supported; then
+    echo -e "${YELLOW}⚠️ This host is not AMD64. Public Remote Falcon backend images currently target AMD64, so this host will use local JVM builds.${NC}"
+    REPO="username/repo"
+    GITHUB_PAT=""
+    DOCKERFILE="Dockerfile.dev"
     return
   fi
 
-  if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
-    echo -e "${CYAN}ℹ️ Non-interactive mode enabled.${NC}"
-    configure_github
-    select_dockerfile_for_host "$low_memory"
+  if github_workflow_builds_configured; then
+    DOCKERFILE="Dockerfile"
+    echo -e "${CYAN}ℹ️ Existing private image-builder configuration detected: ${REPO}.${NC}"
     return
   fi
 
-  if [[ "$low_memory" == "true" ]]; then
-    local default_strategy="1"
-
-    if github_workflow_builds_configured; then
-      default_strategy="2"
-      echo -e "${CYAN}ℹ️ Existing GitHub workflow build configuration detected: ${REPO}${NC}"
-    fi
-
-    echo -e "${YELLOW}⚠️ Choose how Remote Falcon images should be built:${NC}"
-    echo -e "  ${YELLOW}1${NC}) Build locally with ${CYAN}Dockerfile.dev${NC} to build JVM-based images"
-    echo -e "  ${YELLOW}2${NC}) Configure private GitHub repository to build native images and pull from GHCR"
-    echo -e "  🔸 JVM builds with ${CYAN}Dockerfile.dev${NC} will build on low memory systems but will have higher memory usage." 
-    echo -e "  🔸 GitHub workflow builds will use ${CYAN}Dockerfile${NC} to build native images on GitHub and pull them from GHCR, resulting in lower memory usage."
-
-    case "$(get_input "❓ Choose image build strategy: [1-2]" "$default_strategy")" in
-      2)
-        if ! github_workflow_builds_configured; then
-          configure_github
-        fi
-        if github_workflow_builds_configured; then
-          DOCKERFILE="Dockerfile"
-          echo -e "${CYAN}ℹ️ GitHub workflow builds will be used for Remote Falcon images.${NC}"
-        else
-          DOCKERFILE="Dockerfile.dev"
-          echo -e "${YELLOW}⚠️ GitHub workflow builds are not configured. Keeping local lower-memory builds with DOCKERFILE=Dockerfile.dev.${NC}"
-        fi
-        ;;
-      *)
-        REPO="username/repo"
-        GITHUB_PAT=""
-        DOCKERFILE="Dockerfile.dev"
-        echo -e "${CYAN}ℹ️ Local builds will use DOCKERFILE=Dockerfile.dev.${NC}"
-        ;;
-    esac
-    return
-  fi
-
-  if [[ "$(get_input "❓ Update GitHub configuration for building Remote Falcon images remotely on GitHub? (y/n)" "n")" =~ ^[Yy]$ ]]; then
-    if [[ -n "$REPO" && "$REPO" != "username/repo" ]]; then
-      echo -e "${YELLOW}⚠️ Existing GitHub configuration detected: $REPO${NC}"
-
-      case "$(get_input "❓ Choose an option: [1] Disable remote builds  [2] Modify config  [3] Keep as-is" "3")" in
-        1)
-          echo -e "${YELLOW}⚠️ Disabling remote builds.${NC}"
-          GITHUB_PAT=""
-          REPO="username/repo"
-          ;;
-        2)
-          configure_github
-          ;;
-        3)
-          echo -e "${CYAN}ℹ️ Keeping existing configuration.${NC}"
-          ;;
-      esac
-    else
-      configure_github
-    fi
-  fi
+  REPO="username/repo"
+  GITHUB_PAT=""
+  DOCKERFILE="Dockerfile.dev"
+  echo -e "${CYAN}ℹ️ Public AMD64 backend images will be pulled anonymously; only the deployment-specific UI will be built locally.${NC}"
 }
 
 # Ask to configure .env values
@@ -1126,9 +1058,10 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
               echo -e "${RED}❌ Workflow to build all Remote Falcon images to current versions did not complete successfully, aborting.${NC}"
               exit 1
           fi
-        else # If any service is running and $REPO is not configured, build locally
-          echo -e "${YELLOW}⚠️ Containers are running. Build ARG changes detected. Running 'docker compose up -d --build --force-recreate' to apply any ARG and .env changes...${NC}"
-          docker compose -f "$COMPOSE_FILE" up -d --build --force-recreate
+        else
+          echo -e "${YELLOW}⚠️ UI build arguments changed. Rebuilding the UI locally and recreating the stack to apply runtime settings...${NC}"
+          rf_compose build ui
+          rf_compose up -d --force-recreate
         fi
       else # No ARGs changed, just run 'docker compose up -d' to pick up any environment variable changes
           echo -e "${YELLOW}⚠️ Containers are running. No build ARG changes detected. Running 'docker compose up -d' to apply any environmental variable changes...${NC}"
@@ -1182,9 +1115,10 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
             run_updates auto-apply
             versitygw_init
             run_configure_health_check
-          else # Assume existing install since no 'latest' tags found, force local build and restart
-            echo -e "${BLUE}🔄 Building Remote Falcon images to apply any updated build ARGs at their current version...${NC}"
-            docker compose up -d --build --force-recreate
+          else
+            echo -e "${BLUE}🔄 Building the UI locally to apply updated build arguments...${NC}"
+            rf_compose build ui
+            rf_compose up -d --force-recreate
           fi
         fi
       else # No containers running, image rebuild not required(ARGs weren't changed in script)
@@ -1203,7 +1137,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
             run_configure_health_check
           else # No containers running, no image rebuild required, so just bring the containers up
             echo -e "${GREEN}🚀 Bringing up existing containers to apply any .env changes...${NC}"
-            docker compose up -d
+            rf_compose up -d
           fi
         fi
       fi

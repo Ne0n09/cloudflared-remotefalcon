@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.6
+# VERSION=2026.9.28.1
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLATFORM_REBUILD_MARKER="$SCRIPT_DIR/.rf-platform-rebuild-required"
 APPLICATION_SERVICES=(plugins-api control-panel viewer ui external-api)
+BACKEND_SERVICES=(plugins-api control-panel viewer external-api)
 
 # shellcheck source=shared_functions.sh
 source "$SCRIPT_DIR/shared_functions.sh"
@@ -38,15 +39,29 @@ rebuild_all_application_images() {
     return
   fi
 
-  echo -e "${CYAN}Building all application images as one local batch before replacing any running application containers...${NC}"
+  if public_backend_images_supported; then
+    echo -e "${CYAN}Pulling the coordinated public AMD64 backends and building the deployment-specific UI...${NC}"
+  else
+    echo -e "${CYAN}Building all application images locally because public images target AMD64 only...${NC}"
+  fi
   snapshot=$(mktemp) || return 1
   cp "$COMPOSE_FILE" "$snapshot" || { rm -f "$snapshot"; return 1; }
   for service in "${APPLICATION_SERVICES[@]}"; do
     replace_compose_tag "$service" "$platform_sha"
   done
-  if rf_compose config -q &&
-     rf_compose build "${APPLICATION_SERVICES[@]}" &&
-     rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}"; then
+  update_compose_image_path
+
+  if public_backend_images_supported; then
+    if rf_compose config -q &&
+       rf_compose pull "${BACKEND_SERVICES[@]}" &&
+       rf_compose build ui &&
+       rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}"; then
+      rm -f "$snapshot"
+      return 0
+    fi
+  elif rf_compose config -q &&
+       rf_compose build "${APPLICATION_SERVICES[@]}" &&
+       rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}"; then
     rm -f "$snapshot"
     return 0
   fi
