@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.9.29.4
+
+- Fixed strict documentation builds by checking out complete Git history, preventing the revision-date plugin's shallow-clone warning from failing the workflow.
+
+- Pinned every GitHub-hosted workflow runner to Ubuntu 24.04 and upgraded Checkout, Setup Python, and Cache to immutable Node.js 24 action releases.
+
 ## 2026.9.29.3
 
 - Pinned the public backend workflow's x64 GitHub-hosted runners to Ubuntu 24.04, preventing the upcoming `ubuntu-latest` migration to Ubuntu 26.04 from silently changing the build and smoke-test environment. Native ARM64 builds remain pinned to Ubuntu 24.04 ARM.

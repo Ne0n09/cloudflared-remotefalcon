@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.29.3
+# VERSION=2026.9.29.4
 
 set -u
 
@@ -1233,7 +1233,14 @@ test_ci_has_pinned_static_validation() {
   assert_file_contains "$ROOT_DIR/mkdocs.yml" '^[[:space:]]+provider: mike$'
   assert_file_not_contains "$ROOT_DIR/mkdocs.yml" "^[[:space:]]+- 'GitHub': install/github\.md$"
   assert_file_contains "$ROOT_DIR/.github/workflows/ci.yml" 'mkdocs build --strict'
+  assert_file_contains "$ROOT_DIR/.github/workflows/ci.yml" 'fetch-depth: 0'
   assert_file_not_contains "$ROOT_DIR/.github/workflows/ci.yml" 'mkdocs gh-deploy'
+  if grep -RE 'ubuntu-latest|actions/checkout@11d5960a326750d5838078e36cf38b85af677262|actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065|actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830' "$ROOT_DIR/.github/workflows"; then
+    return 1
+  fi
+  assert_file_contains "$ROOT_DIR/.github/workflows/ci.yml" 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\.0\.1'
+  assert_file_contains "$ROOT_DIR/.github/workflows/ci.yml" 'actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7\.0\.0'
+  assert_file_contains "$ROOT_DIR/.github/workflows/ci.yml" 'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\.1\.0'
   assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'mike deploy --push --update-aliases'
   assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'mike set-default --push latest'
   assert_file_contains "$ROOT_DIR/.github/workflows/docs-historical.yml" 'default: v2026\.9\.27\.6'
@@ -1296,7 +1303,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" "^-[[:space:]]+Pinned the public backend workflow's x64 GitHub-hosted runners to Ubuntu 24.04" || return 1
+  assert_file_contains "$output" '^-[[:space:]]+Fixed strict documentation builds by checking out complete Git history' || return 1
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
