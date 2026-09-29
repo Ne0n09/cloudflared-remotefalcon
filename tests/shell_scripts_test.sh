@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.28.3
+# VERSION=2026.9.28.4
 
 set -u
 
@@ -1225,7 +1225,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+Fresh Compose templates now start NGINX, Cloudflared, MongoDB, and Versity Gateway at `latest`' || return 1
+  assert_file_contains "$output" '^-[[:space:]]+The legacy upgrade installer now locates an existing Remote Falcon installation automatically' || return 1
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
@@ -1248,6 +1248,73 @@ test_install_manifest_is_authoritative() {
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired revert\.sh$'
   assert_file_contains "$ROOT_DIR/update_scripts.sh" 'mapfile -t scripts.*install-manifest'
   assert_file_not_contains "$ROOT_DIR/update_scripts.sh" '^scripts=\('
+}
+
+test_upgrade_installer_discovers_installation() {
+  local ws home_dir install_root run_dir installer
+  ws="$(mktemp -d "$TEST_TMP/installer-discovery.XXXXXX")"
+  home_dir="$ws/home"
+  install_root="$home_dir/cloudflared-remotefalcon"
+  run_dir="$ws/unrelated"
+  installer="$ws/install.sh"
+  mkdir -p "$install_root/remotefalcon" "$run_dir"
+  touch "$install_root/configure-rf.sh" \
+    "$install_root/shared_functions.sh" \
+    "$install_root/update_containers.sh" \
+    "$install_root/remotefalcon/compose.yaml" \
+    "$install_root/remotefalcon/.env"
+  cp "$ROOT_DIR/install.sh" "$installer"
+  sed -i '/^resolve_update_target$/a printf '\''%s\\n%s\\n'\'' "$TARGET_DIR" "$PWD" > "$MOCK_DISCOVERY_LOG"; exit 0' "$installer"
+
+  (
+    cd "$run_dir" || exit 1
+    HOME="$home_dir" MOCK_DISCOVERY_LOG="$ws/discovery.log" \
+      bash "$installer" --update --no-configure
+  ) || return 1
+
+  [[ "$(sed -n '1p' "$ws/discovery.log")" == "$install_root" ]] || return 1
+  [[ "$(sed -n '2p' "$ws/discovery.log")" == "$install_root" ]] || return 1
+}
+
+test_upgrade_installs_required_jq() {
+  local ws bin upgrade
+  ws="$(mktemp -d "$TEST_TMP/upgrade-jq.XXXXXX")"
+  bin="$ws/bin"
+  upgrade="$ws/upgrade_installation.sh"
+  mkdir -p "$bin"
+  cp "$ROOT_DIR/upgrade_installation.sh" "$upgrade"
+  sed -i '/^ensure_jq_installed$/a exit 0' "$upgrade"
+  ln -s "$(command -v dirname)" "$bin/dirname"
+
+  cat > "$bin/sudo" <<'MOCK'
+#!/bin/bash
+exec "$@"
+MOCK
+  cat > "$bin/apt-get" <<'MOCK'
+#!/bin/bash
+if [[ "$1" == update ]]; then
+  exit 0
+fi
+if [[ "$1" == install && "$*" == *" jq"* ]]; then
+  printf '#!/bin/bash\nexit 0\n' > "$MOCK_JQ_BIN/jq"
+  /bin/chmod +x "$MOCK_JQ_BIN/jq"
+  exit 0
+fi
+exit 1
+MOCK
+  chmod +x "$bin/sudo" "$bin/apt-get"
+
+  PATH="$bin" MOCK_JQ_BIN="$bin" /bin/bash "$upgrade" > "$ws/success.out" || return 1
+  [[ -x "$bin/jq" ]] || return 1
+  assert_file_contains "$ws/success.out" '^jq installation complete\.$' || return 1
+
+  rm -f "$bin/jq"
+  printf '#!/bin/bash\nexit 1\n' > "$bin/apt-get"
+  chmod +x "$bin/apt-get"
+  if PATH="$bin" MOCK_JQ_BIN="$bin" /bin/bash "$upgrade" > "$ws/failure.out" 2>&1; then
+    return 1
+  fi
+  assert_file_contains "$ws/failure.out" '^jq installation failed\. Install jq and rerun the upgrade\.$'
 }
 
 test_legacy_upgrade_is_orchestrated() {
@@ -1352,7 +1419,12 @@ test_upgrade_handles_missing_docker_group_access() {
   bin="$ws/bin"
   installer="$ws/install.sh"
   current_user="$(id -un)"
-  mkdir -p "$bin"
+  mkdir -p "$bin" "$ws/target/remotefalcon"
+  touch "$ws/target/configure-rf.sh" \
+    "$ws/target/shared_functions.sh" \
+    "$ws/target/update_containers.sh" \
+    "$ws/target/remotefalcon/compose.yaml" \
+    "$ws/target/remotefalcon/.env"
   cp "$ROOT_DIR/install.sh" "$installer"
   # Stop immediately after the access preflight so this test never downloads or
   # modifies an installation. The re-executed installer must reach this point.
@@ -1360,7 +1432,13 @@ test_upgrade_handles_missing_docker_group_access() {
 
   cat > "$bin/docker" <<'MOCK'
 #!/usr/bin/env bash
-[[ "$1" == "info" && "${MOCK_DOCKER_ACCESS:-false}" == "true" ]]
+if [[ "$1" == "info" && "${MOCK_DOCKER_ACCESS:-false}" == "true" ]]; then
+  exit 0
+fi
+if [[ "$1" == "compose" && "$2" == "version" && "${MOCK_DOCKER_ACCESS:-false}" == "true" ]]; then
+  exit 0
+fi
+exit 1
 MOCK
   cat > "$bin/sudo" <<'MOCK'
 #!/usr/bin/env bash
@@ -1547,6 +1625,8 @@ if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
   run_test "GitHub releases use the documented version notes" test_github_release_uses_documented_notes
 fi
 run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
+run_test "upgrade installer discovers an existing installation" test_upgrade_installer_discovers_installation
+run_test "upgrade installs jq and reports installation failure" test_upgrade_installs_required_jq
 run_test "legacy upgrades run the safe transition in order" test_legacy_upgrade_is_orchestrated
 run_test "legacy upgrades rebuild all platform images in one workflow" test_legacy_upgrade_rebuilds_platform_images_as_one_workflow
 run_test "legacy upgrades handle missing Docker group access" test_upgrade_handles_missing_docker_group_access

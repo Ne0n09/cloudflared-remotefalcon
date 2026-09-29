@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.9.28.4
+
+- The legacy upgrade installer now locates an existing Remote Falcon installation automatically when `--target` is omitted. It prefers the current directory or a parent, stops on ambiguous matches, and accepts `--target` as an explicit override.
+
+- The upgrade now installs `jq` through a supported system package manager when it is missing and stops with a clear error if installation is unsuccessful. The installer also checks for OpenSSL and the Docker Compose plugin before changing installation files.
+
 ## 2026.9.28.3
 
 - Fresh Compose templates now start NGINX, Cloudflared, MongoDB, and Versity Gateway at `latest`. The configuration update pass detects each concrete release and rewrites `compose.yaml` with explicit version tags.

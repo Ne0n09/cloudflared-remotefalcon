@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.28.1
+# VERSION=2026.9.28.4
 
 set -euo pipefail
 
@@ -8,6 +8,53 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLATFORM_REBUILD_MARKER="$SCRIPT_DIR/.rf-platform-rebuild-required"
 APPLICATION_SERVICES=(plugins-api control-panel viewer ui external-api)
 BACKEND_SERVICES=(plugins-api control-panel viewer external-api)
+
+ensure_jq_installed() {
+  command -v jq >/dev/null 2>&1 && return 0
+
+  echo "jq is not installed. Attempting to install it..."
+  local -a privilege=()
+  if [[ $EUID -ne 0 ]]; then
+    command -v sudo >/dev/null 2>&1 || {
+      echo "jq is required, but sudo is not installed. Install jq and rerun the upgrade." >&2
+      return 1
+    }
+    privilege=(sudo)
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    if ! "${privilege[@]}" apt-get update || ! "${privilege[@]}" apt-get install -y jq; then
+      echo "jq installation failed. Install jq and rerun the upgrade." >&2
+      return 1
+    fi
+  elif command -v dnf >/dev/null 2>&1; then
+    if ! "${privilege[@]}" dnf install -y jq; then
+      echo "jq installation failed. Install jq and rerun the upgrade." >&2
+      return 1
+    fi
+  elif command -v yum >/dev/null 2>&1; then
+    if ! "${privilege[@]}" yum install -y jq; then
+      echo "jq installation failed. Install jq and rerun the upgrade." >&2
+      return 1
+    fi
+  elif command -v apk >/dev/null 2>&1; then
+    if ! "${privilege[@]}" apk add jq; then
+      echo "jq installation failed. Install jq and rerun the upgrade." >&2
+      return 1
+    fi
+  else
+    echo "jq is required, but no supported package manager was found. Install jq and rerun the upgrade." >&2
+    return 1
+  fi
+
+  command -v jq >/dev/null 2>&1 || {
+    echo "jq installation failed. Install jq and rerun the upgrade." >&2
+    return 1
+  }
+  echo "jq installation complete."
+}
+
+ensure_jq_installed
 
 # shellcheck source=shared_functions.sh
 source "$SCRIPT_DIR/shared_functions.sh"

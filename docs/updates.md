@@ -76,18 +76,18 @@ Fresh Compose templates start NGINX, Cloudflared, MongoDB, and Versity Gateway a
 
 Installations from before the release updater was added can be upgraded with the current installer. Before upgrading, make a filesystem or VM backup of the MongoDB and MinIO data directories named in `remotefalcon/.env`.
 
-Run the following from the existing installation directory that contains `configure-rf.sh` and the `remotefalcon` directory:
+The installer can be run from any directory. During an upgrade it first checks the current directory and its parents, then searches the current user's home and common installation locations for a directory containing the managed scripts plus `remotefalcon/compose.yaml` and `remotefalcon/.env`. If more than one installation is found, it stops and asks you to select one with `--target`.
 
 ```sh
-cd /path/to/cloudflared-remotefalcon
 curl -fsSL --retry 3 \
   -o /tmp/cloudflared-remotefalcon-install.sh \
   https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh
 chmod +x /tmp/cloudflared-remotefalcon-install.sh
 /tmp/cloudflared-remotefalcon-install.sh \
-  --update \
-  --target "$PWD"
+  --update
 ```
+
+To override automatic discovery, add `--target /path/to/cloudflared-remotefalcon`. The upgrade also installs `jq` automatically with `apt-get`, `dnf`, `yum`, or `apk` when needed and stops if that installation fails. OpenSSL and the Docker Compose plugin are checked before installation files are changed.
 
 The installer verifies the release archive, creates a dated configuration backup, preserves existing `.env` values and image references, and validates the merged Compose configuration before applying it. It then upgrades containers in a safe order, checks each changed service, migrates legacy MinIO objects to Versity Gateway, removes retired containers, and runs the complete health check.
 
