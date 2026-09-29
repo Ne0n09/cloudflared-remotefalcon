@@ -2,59 +2,37 @@
 
 ## 2026.9.29.4
 
+### Public multi-platform backend images
+
+- Added coordinated public `linux/amd64` and `linux/arm64` images for plugins-api, control-panel, viewer, and external-api. End users can pull these images anonymously without a GitHub account, Personal Access Token, or private image-builder repository; the deployment-specific UI continues to build locally.
+
+- Public images build on native Ubuntu 24.04 runners and publish one multi-platform manifest per Remote Falcon platform commit. Scheduled runs skip commits that already have all four complete manifests, while manual runs rebuild them using the GitHub Actions layer cache.
+
+- Added native runtime smoke tests for every service and architecture. Each architecture image must pull with the expected CPU architecture and remain running against MongoDB before coordinated commit, date, and `latest` tags are promoted.
+
+- Updates now verify all four immutable public backend images before changing an installation and consistently use the platform commit SHA instead of older per-application SHAs. Existing private image-builder settings remain available as a compatibility override.
+
+### Installation and update compatibility
+
+- Fresh installations and existing `.env` files now receive the public-image repository and tag-mode settings, eliminating missing-variable warnings. Secret prompts display masked `*` characters as values are typed or pasted.
+
+- On x86-64 CPUs without AVX, fresh MongoDB configurations are pinned to `4.4.29`. Container updates explain the compatibility pin and do not offer MongoDB 5.0 or newer on those systems.
+
+- NGINX, Cloudflared, MongoDB, and Versity Gateway initially resolve from `latest`, then the configuration pass rewrites Compose with each detected concrete version. Existing installations continue to preserve their current image references during script updates.
+
+- The legacy upgrade installer can locate an existing Remote Falcon installation automatically, supports an explicit `--target` override, installs `jq` through a supported package manager when necessary, and verifies OpenSSL and Docker Compose before changing installation files.
+
+- Health checks now diagnose Control Panel `403` responses caused by a Versity Gateway access key mismatch and provide the required recovery steps.
+
+### Documentation and automation
+
+- Removed the obsolete GitHub setup step and outdated GIFs from current installation guidance, stopped public-image configuration from installing GitHub CLI, and marked private image-builder instructions as deprecated compatibility documentation.
+
+- Documentation is now published from tagged releases with a version selector. A manual workflow preserves the final private-builder-era documentation for older installations.
+
 - Fixed strict documentation builds by checking out complete Git history, preventing the revision-date plugin's shallow-clone warning from failing the workflow.
 
-- Pinned every GitHub-hosted workflow runner to Ubuntu 24.04 and upgraded Checkout, Setup Python, and Cache to immutable Node.js 24 action releases.
-
-## 2026.9.29.3
-
-- Pinned the public backend workflow's x64 GitHub-hosted runners to Ubuntu 24.04, preventing the upcoming `ubuntu-latest` migration to Ubuntu 26.04 from silently changing the build and smoke-test environment. Native ARM64 builds remain pinned to Ubuntu 24.04 ARM.
-
-## 2026.9.29.2
-
-- Added native AMD64 and ARM64 runtime smoke tests to the public backend workflow. Each architecture image must pull with the expected architecture and remain running against a temporary MongoDB container before coordinated SHA, date, and `latest` tags are promoted.
-
-## 2026.9.29.1
-
-- Public backend images now build on native AMD64 and ARM64 GitHub-hosted runners and publish one coordinated multi-platform manifest. Scheduled builds consider an upstream SHA complete only when every backend tag contains both architectures.
-
-- On x86-64 CPUs without AVX, fresh MongoDB configurations are pinned to `4.4.29` before startup. Container updates report the compatibility pin and do not offer MongoDB 5.0 or newer; explicit versions that would require a sequential upgrade or unsafe downgrade are left unchanged.
-
-## 2026.9.28.5
-
-- Removed the obsolete GitHub setup step and outdated GIFs from current installation guidance, marked private image-builder material as deprecated compatibility documentation, and stopped public-image configuration from installing GitHub CLI.
-
-- Documentation is now published from tagged releases with a version selector. A manual historical-docs workflow can archive the final private-builder-era documentation before the first versioned release, preserving it for older installations.
-
-## 2026.9.28.4
-
-- The legacy upgrade installer now locates an existing Remote Falcon installation automatically when `--target` is omitted. It prefers the current directory or a parent, stops on ambiguous matches, and accepts `--target` as an explicit override.
-
-- The upgrade now installs `jq` through a supported system package manager when it is missing and stops with a clear error if installation is unsuccessful. The installer also checks for OpenSSL and the Docker Compose plugin before changing installation files.
-
-## 2026.9.28.3
-
-- Fresh Compose templates now start NGINX, Cloudflared, MongoDB, and Versity Gateway at `latest`. The configuration update pass detects each concrete release and rewrites `compose.yaml` with explicit version tags.
-
-- Corrected infrastructure tag validation so the updater tests the actual Compose tag format before replacing `latest`. Existing installations continue to preserve their current image references during script updates.
-
-## 2026.9.28.2
-
-- Fixed existing `.env` files missing `RF_BACKEND_IMAGE_REPO` so Compose uses the public repository default without repeated warnings, and the configurator now writes both public-image migration settings.
-
-- Fixed public-image updates to consistently use the platform commit SHA instead of older per-app commit SHAs. Secret prompts now display masked `*` characters as input is typed or pasted.
-
-## 2026.9.28.1
-
-- Added a public GitHub Actions workflow that builds coordinated `linux/amd64` images for plugins-api, control-panel, viewer, and external-api from one Remote Falcon platform commit. Scheduled runs skip SHA-tagged images that already exist, while date and `latest` tags are promoted only after every required backend succeeds.
-
-- AMD64 installations now pull the four public backend images anonymously, so end users do not need a GitHub account, Personal Access Token, or private image-builder repository. The UI remains a local build because its deployment URLs and site settings are compiled into the bundle.
-
-- Updates verify that all four immutable backend tags exist before changing an application stack. Existing private image-builder settings remain supported as a compatibility override, and non-AMD64 hosts continue to use local JVM builds.
-
-## 2026.9.27.7
-
-- Health checks now detect Control Panel `403` errors caused by an S3 access key that Versity Gateway does not recognize, even when the application health endpoint is otherwise UP. The diagnostic recommends rerunning `./versitygw_init.sh`, recreating the Control Panel container with the current `.env`, and rerunning the health check.
+- Pinned all GitHub-hosted workflow runners to Ubuntu 24.04 and upgraded Checkout, Setup Python, and Cache to immutable Node.js 24 action releases.
 
 ## 2026.9.27.6
 
