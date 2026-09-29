@@ -1,5 +1,9 @@
 # Release Notes
 
+## 2026.9.29.2
+
+- Added native AMD64 and ARM64 runtime smoke tests to the public backend workflow. Each architecture image must pull with the expected architecture and remain running against a temporary MongoDB container before coordinated SHA, date, and `latest` tags are promoted.
+
 ## 2026.9.29.1
 
 - Public backend images now build on native AMD64 and ARM64 GitHub-hosted runners and publish one coordinated multi-platform manifest. Scheduled builds consider an upstream SHA complete only when every backend tag contains both architectures.

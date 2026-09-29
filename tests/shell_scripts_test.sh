@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.29.1
+# VERSION=2026.9.29.2
 
 set -u
 
@@ -1251,6 +1251,11 @@ test_public_backend_workflow_is_multiarch_and_coordinated() {
   assert_file_contains "$workflow" 'short_sha \}\}-\$\{\{ matrix\.architecture'
   assert_file_contains "$workflow" 'index\("amd64"\) != null'
   assert_file_contains "$workflow" 'index\("arm64"\) != null'
+  assert_file_contains "$workflow" '^      - name: Smoke test native architecture image$'
+  assert_file_contains "$workflow" 'mongo:7\.0\.43'
+  assert_file_contains "$workflow" "docker image inspect --format '\{\{\.Architecture\}\}'"
+  assert_file_contains "$workflow" "docker inspect --format '\{\{\.State\.Running\}\}'"
+  assert_file_contains "$workflow" 'remained running on \$ARCHITECTURE with MongoDB available'
   assert_file_contains "$workflow" 'file: apps/\$\{\{ matrix\.service \}\}/Dockerfile'
   assert_file_contains "$workflow" '^  promote:$'
   assert_file_contains "$workflow" '^      - build$'
@@ -1289,7 +1294,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+Public backend images now build on native AMD64 and ARM64 GitHub-hosted runners' || return 1
+  assert_file_contains "$output" '^-[[:space:]]+Added native AMD64 and ARM64 runtime smoke tests to the public backend workflow' || return 1
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 

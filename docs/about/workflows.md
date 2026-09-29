@@ -10,6 +10,12 @@ arguments. Each image is published as a multi-platform manifest for
 Each architecture builds on a native GitHub-hosted runner before the workflow
 combines both outputs into the coordinated manifest.
 
+Before promotion, every architecture image is pulled on its native runner and
+started against a temporary MongoDB container. The smoke test verifies the
+pulled architecture and requires the Remote Falcon application process to
+remain running. A failed AMD64 or ARM64 smoke test prevents the coordinated
+SHA, date, and `latest` tags from being published.
+
 The date and `latest` tags are promoted only after all four matrix builds
 succeed. The updater also verifies that all four immutable tags exist before an
 all-service update, preventing a partially published backend release from
