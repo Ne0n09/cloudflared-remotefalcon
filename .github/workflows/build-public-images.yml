@@ -30,6 +30,7 @@ jobs:
       short_sha: ${{ steps.version.outputs.short_sha }}
       commit_date: ${{ steps.version.outputs.commit_date }}
       image_repository: ${{ steps.image-repository.outputs.value }}
+      release_exists: ${{ steps.release.outputs.exists }}
     steps:
       - name: Check out Remote Falcon platform
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -55,6 +56,34 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: echo "value=${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'schedule'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check coordinated release
+        if: github.event_name == 'schedule'
+        id: release
+        env:
+          IMAGE_REPOSITORY: ${{ steps.image-repository.outputs.value }}
+          TAG: ${{ steps.version.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          exists=true
+          for service in plugins-api control-panel viewer external-api; do
+            image="${REGISTRY}/${IMAGE_REPOSITORY}/${service}:${TAG}"
+            if docker manifest inspect "$image" >/dev/null 2>&1; then
+              echo "Image already exists: $image"
+            else
+              echo "Image needs to be built: $image"
+              exists=false
+            fi
+          done
+          echo "exists=$exists" >> "$GITHUB_OUTPUT"
+
   build:
     needs: prepare
     runs-on: ubuntu-latest
@@ -68,13 +97,6 @@ jobs:
           - external-api
     name: Build ${{ matrix.service }} (linux/amd64)
     steps:
-      - name: Check out Remote Falcon platform
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: ${{ env.PLATFORM_REPOSITORY }}
-          ref: ${{ needs.prepare.outputs.full_sha }}
-          fetch-depth: 1
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
@@ -82,10 +104,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check if image already exists
+        if: github.event_name == 'schedule'
+        id: check
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_repository }}/${{ matrix.service }}
+          TAG: ${{ needs.prepare.outputs.short_sha }}
+        run: |
+          if docker manifest inspect "${IMAGE}:${TAG}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Image ${IMAGE}:${TAG} already exists"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Image ${IMAGE}:${TAG} does not exist"
+          fi
+
+      - name: Check out Remote Falcon platform
+        if: github.event_name == 'workflow_dispatch' || steps.check.outputs.exists == 'false'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ env.PLATFORM_REPOSITORY }}
+          ref: ${{ needs.prepare.outputs.full_sha }}
+          fetch-depth: 1
+
       - name: Set up Docker Buildx
+        if: github.event_name == 'workflow_dispatch' || steps.check.outputs.exists == 'false'
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Build and push immutable AMD64 image
+        if: github.event_name == 'workflow_dispatch' || steps.check.outputs.exists == 'false'
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         env:
           DOCKER_BUILD_SUMMARY: false
@@ -110,6 +157,7 @@ jobs:
     needs:
       - prepare
       - build
+    if: github.event_name == 'workflow_dispatch' || needs.prepare.outputs.release_exists == 'false'
     runs-on: ubuntu-latest
     strategy:
       matrix:

@@ -1134,6 +1134,9 @@ test_public_backend_workflow_is_amd64_and_coordinated() {
   assert_file_contains "$workflow" 'file: apps/\$\{\{ matrix\.service \}\}/Dockerfile'
   assert_file_contains "$workflow" '^  promote:$'
   assert_file_contains "$workflow" '^      - build$'
+  assert_file_contains "$workflow" 'docker manifest inspect'
+  assert_file_contains "$workflow" "if: github.event_name == 'workflow_dispatch' \|\| steps.check.outputs.exists == 'false'"
+  assert_file_contains "$workflow" "if: github.event_name == 'workflow_dispatch' \|\| needs.prepare.outputs.release_exists == 'false'"
   assert_file_contains "$workflow" 'docker buildx imagetools create'
   assert_file_not_contains "$workflow" 'apps/ui'
   assert_file_not_contains "$workflow" 'build-args:'

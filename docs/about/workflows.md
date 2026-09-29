@@ -13,6 +13,11 @@ succeed. The updater also verifies that all four immutable tags exist before an
 all-service update, preventing a partially published backend release from
 changing the running application stack.
 
+Daily scheduled runs resolve the current upstream platform SHA and inspect all
+four immutable image tags. Services whose SHA tag already exists are skipped.
+If all four exist, the workflow performs no builds or tag promotion. Manual
+dispatches intentionally rebuild all four services.
+
 The UI is intentionally excluded because its public URLs and site settings are
 build-time values. It is built locally from `apps/ui` during configuration and
 upgrades.

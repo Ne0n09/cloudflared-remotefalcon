@@ -2,7 +2,7 @@
 
 ## 2026.9.28.1
 
-- Added a public GitHub Actions workflow that builds coordinated `linux/amd64` images for plugins-api, control-panel, viewer, and external-api from one Remote Falcon platform commit. Date and `latest` tags are promoted only after every backend succeeds.
+- Added a public GitHub Actions workflow that builds coordinated `linux/amd64` images for plugins-api, control-panel, viewer, and external-api from one Remote Falcon platform commit. Scheduled runs skip SHA-tagged images that already exist, while date and `latest` tags are promoted only after every required backend succeeds.
 
 - AMD64 installations now pull the four public backend images anonymously, so end users do not need a GitHub account, Personal Access Token, or private image-builder repository. The UI remains a local build because its deployment URLs and site settings are compiled into the bundle.
 
