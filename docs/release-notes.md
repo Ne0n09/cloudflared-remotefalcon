@@ -1,5 +1,55 @@
 # Release Notes
 
+## 2026.9.29.3
+
+- Pinned the public backend workflow's x64 GitHub-hosted runners to Ubuntu 24.04, preventing the upcoming `ubuntu-latest` migration to Ubuntu 26.04 from silently changing the build and smoke-test environment. Native ARM64 builds remain pinned to Ubuntu 24.04 ARM.
+
+## 2026.9.29.2
+
+- Added native AMD64 and ARM64 runtime smoke tests to the public backend workflow. Each architecture image must pull with the expected architecture and remain running against a temporary MongoDB container before coordinated SHA, date, and `latest` tags are promoted.
+
+## 2026.9.29.1
+
+- Public backend images now build on native AMD64 and ARM64 GitHub-hosted runners and publish one coordinated multi-platform manifest. Scheduled builds consider an upstream SHA complete only when every backend tag contains both architectures.
+
+- On x86-64 CPUs without AVX, fresh MongoDB configurations are pinned to `4.4.29` before startup. Container updates report the compatibility pin and do not offer MongoDB 5.0 or newer; explicit versions that would require a sequential upgrade or unsafe downgrade are left unchanged.
+
+## 2026.9.28.5
+
+- Removed the obsolete GitHub setup step and outdated GIFs from current installation guidance, marked private image-builder material as deprecated compatibility documentation, and stopped public-image configuration from installing GitHub CLI.
+
+- Documentation is now published from tagged releases with a version selector. A manual historical-docs workflow can archive the final private-builder-era documentation before the first versioned release, preserving it for older installations.
+
+## 2026.9.28.4
+
+- The legacy upgrade installer now locates an existing Remote Falcon installation automatically when `--target` is omitted. It prefers the current directory or a parent, stops on ambiguous matches, and accepts `--target` as an explicit override.
+
+- The upgrade now installs `jq` through a supported system package manager when it is missing and stops with a clear error if installation is unsuccessful. The installer also checks for OpenSSL and the Docker Compose plugin before changing installation files.
+
+## 2026.9.28.3
+
+- Fresh Compose templates now start NGINX, Cloudflared, MongoDB, and Versity Gateway at `latest`. The configuration update pass detects each concrete release and rewrites `compose.yaml` with explicit version tags.
+
+- Corrected infrastructure tag validation so the updater tests the actual Compose tag format before replacing `latest`. Existing installations continue to preserve their current image references during script updates.
+
+## 2026.9.28.2
+
+- Fixed existing `.env` files missing `RF_BACKEND_IMAGE_REPO` so Compose uses the public repository default without repeated warnings, and the configurator now writes both public-image migration settings.
+
+- Fixed public-image updates to consistently use the platform commit SHA instead of older per-app commit SHAs. Secret prompts now display masked `*` characters as input is typed or pasted.
+
+## 2026.9.28.1
+
+- Added a public GitHub Actions workflow that builds coordinated `linux/amd64` images for plugins-api, control-panel, viewer, and external-api from one Remote Falcon platform commit. Scheduled runs skip SHA-tagged images that already exist, while date and `latest` tags are promoted only after every required backend succeeds.
+
+- AMD64 installations now pull the four public backend images anonymously, so end users do not need a GitHub account, Personal Access Token, or private image-builder repository. The UI remains a local build because its deployment URLs and site settings are compiled into the bundle.
+
+- Updates verify that all four immutable backend tags exist before changing an application stack. Existing private image-builder settings remain supported as a compatibility override, and non-AMD64 hosts continue to use local JVM builds.
+
+## 2026.9.27.7
+
+- Health checks now detect Control Panel `403` errors caused by an S3 access key that Versity Gateway does not recognize, even when the application health endpoint is otherwise UP. The diagnostic recommends rerunning `./versitygw_init.sh`, recreating the Control Panel container with the current `.env`, and rerunning the health check.
+
 ## 2026.9.27.6
 
 - Fixed the release self-test failure that occurred after accepting Docker group enrollment. The post-upgrade `newgrp docker` prompt no longer depends on optional terminal color variables, including in the isolated legacy-upgrade test environment.
@@ -290,9 +340,9 @@ https://github.com/minio/minio/issues/21647#issuecomment-3418675115
 
 - Easier updates! When running configure-rf.sh it will display current local versions of [scripts](about/scripts.md), [files](about/files.md), and workflow versions and compare them to the latest available versions on GitHub.
 
-- Updated configure-rf.sh to prompt for [compose.yaml, .env, and default.conf updates](updates.md#updating-composeyaml-env-and-defaultconf) to assist with downloading new config file updates.
+- Updated configure-rf.sh to prompt for [compose.yaml, .env, and default.conf updates](updates.md#updating-scripts-and-configuration-templates) to assist with downloading new config file updates.
 
-- Updated configure-rf.sh to prompt for [Remote Falcon Image Builder workflow updates](updates.md#updating-remote-falcon-image-builder-workflows).
+- Updated configure-rf.sh to prompt for [Remote Falcon Image Builder workflow updates](about/workflows.md#deprecated-private-buildyml).
 
 - Removed ghcr.io/${REPO}/ from the default compose.yaml. This will automatically get updated by update_compose_image_path in shared_function.sh when update_container.sh or configure-rf.sh is run.
 
@@ -306,7 +356,7 @@ https://github.com/minio/minio/issues/21647#issuecomment-3418675115
 
 - Updated health_check.sh NGINX health check so if on-disk cert/key is changed NGINX will be restarted if it is running.
 
-- Updated configure-rf.sh to display a prompt for [script updates](updates.md#script-updates) to assist in downloading new script updates.
+- Updated configure-rf.sh to display a prompt for [script updates](updates.md#updating-scripts-and-configuration-templates) to assist in downloading new script updates.
 
 ## 2025.10.14.1
 

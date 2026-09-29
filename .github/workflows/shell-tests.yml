@@ -10,8 +10,7 @@ on:
       - 'VERSION'
       - 'remotefalcon/**'
       - 'tests/**'
-      - '.github/workflows/shell-tests.yml'
-      - '.github/workflows/release.yml'
+      - '.github/workflows/**'
       - 'image-builder/.github/workflows/build.yml'
       - 'install-manifest.txt'
   pull_request:
@@ -20,8 +19,7 @@ on:
       - 'VERSION'
       - 'remotefalcon/**'
       - 'tests/**'
-      - '.github/workflows/shell-tests.yml'
-      - '.github/workflows/release.yml'
+      - '.github/workflows/**'
       - 'image-builder/.github/workflows/build.yml'
       - 'install-manifest.txt'
 

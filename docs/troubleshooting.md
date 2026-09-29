@@ -59,7 +59,7 @@ If you want to test if viewer statistics are working you can disconnect your pho
 
 If your Mongo container is constantly restarting when checking `#!sh sudo docker ps` then check the logs with `#!sh sudo docker logs mongo`
 
-If you see a message similar to the below you will need to downgrade the Mongo image to a version prior to 5.0 if your CPU does not support AVX.
+If you see a message similar to the one below, the x86-64 CPU exposed to Docker does not support AVX. MongoDB 5.0 and newer cannot run on that CPU.
 
 ```
 WARNING: MongoDB 5.0+ requires a CPU with AVX support, and your current system does not appear to have that!
@@ -67,26 +67,20 @@ see https://jira.mongodb.org/browse/SERVER-54407
 see also https://www.mongodb.com/community/forums/t/mongodb-5-0-cpu-intel-g4650-compatibility/116610/2
 see also https://github.com/docker-library/mongo/issues/485#issuecomment-891991814
 ```
-If you are running a VM in a system such as Proxmox you can try changing the CPU type to `host`. 
+If you are running a VM in a system such as Proxmox, you can try changing the VM CPU type to `host` so AVX is exposed when the physical CPU supports it.
 
-To downgrade you can check the latest version of 4 here [Mongo 4.x tags](https://hub.docker.com/_/mongo/tags?page_size=&ordering=&name=4.)
+The installer and container updater detect this condition on x86-64 hosts. A fresh `mongo:latest` entry is pinned to `mongo:4.4.29` before MongoDB starts, and `update_containers.sh` explains the CPU compatibility pin instead of offering MongoDB 5.0 or newer.
 
-1. Update the image tag in your compose.yaml
-  ```sh
-  nano remotefalcon/compose.yaml
-  ```
+```yaml title="compose.yaml"
+mongo:
+  image: mongo:4.4.29
+```
 
-2. Modify the Mongo image line:
-  ```yaml title="compose.yaml" linenums="27" hl_lines="2"
-    mongo:
-      image: mongo:latest
-  ```
+!!! danger "Do not automatically downgrade an existing MongoDB 5.0+ data directory"
 
-3. Add the specific 4.x version tag that you would like to use from [Mongo 4.x tags](https://hub.docker.com/_/mongo/tags?page_size=&ordering=&name=4.)
-  ```yaml title="compose.yaml" linenums="27" hl_lines="2"
-    mongo:
-      image: mongo:4.0.28
-  ```
+    Database files created by a newer MongoDB release may not be compatible with 4.4. Likewise, older MongoDB 4.0 or 4.2 installations require their documented sequential upgrade path. The updater leaves these explicit tags unchanged instead of performing an unsafe automatic jump or downgrade.
+
+MongoDB documents the [x86-64 AVX requirement](https://www.mongodb.com/docs/manual/administration/production-notes/#x86-64). Additional background is available in [SERVER-54407](https://jira.mongodb.org/browse/SERVER-54407), the [MongoDB community discussion](https://www.mongodb.com/community/forums/t/mongodb-5-0-cpu-intel-g4650-compatibility/116610/2), and the [Docker image issue](https://github.com/docker-library/mongo/issues/485#issuecomment-891991814).
 
 ### Show page is always redirected to the Control Panel
 
@@ -196,7 +190,9 @@ Alternatively, here's some one-liner commands that automatically login and run t
   sudo docker exec -it mongo bash -c "mongosh --quiet 'mongodb://root:root@localhost:27017' --eval 'db = db.getSiblingDB(\"remote-falcon\"); const subdomains = db.show.find({}, { showSubdomain: 1, _id: 0 }).toArray();subdomains.forEach(doc => {if (doc.showSubdomain) {print(doc.showSubdomain);}});'"
   ```
 
-### GitHub
+### Deprecated private image builder
+
+The following GitHub commands apply only to installations that still use the deprecated private image-builder compatibility path. New public-image installations do not need GitHub authentication or a container-registry login.
 
 - Check GitHub authorization status:
     ```

@@ -16,9 +16,11 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 - This allows for versioning of the RF containers and the ability to roll back the [compose.yaml](about/files.md#composeyaml) if an update breaks your Remote Falcon server.
 
-- If [GitHub](install/github.md) is configured the images will be pulled from GHCR if they exist or they can be built manually if they do not exist.
+- On AMD64 and ARM64, four backend images are pulled anonymously from the project's public multi-platform GHCR packages. The deployment-specific UI is built locally.
 
-- Otherwise the images are built locally.
+- Existing installations with `REPO` and `GITHUB_PAT` retain the deprecated private-builder compatibility override. New installations should not configure it. Other architectures currently build all application images locally.
+
+- Before an all-service public update, the updater verifies that the same platform commit tag exists for all four backends. An incomplete release leaves the application containers unchanged.
 
 ## Updating Mongo, Versity Gateway, NGINX, and Cloudflared containers
 
@@ -66,30 +68,30 @@ The released `default.conf` replaces the active file so routing fixes apply auto
 
 Running `update_scripts.sh` by itself changes configuration files but does not recreate running containers. Use the complete installer command below when the new configuration and container releases should be applied together.
 
-The image builder uses the unified `build.yml` workflow. `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.
+The repository's public workflow builds the four AMD64/ARM64 backends without deployment secrets. The deprecated private image-builder compatibility path still uses `build.yml`; `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.
 
-Infrastructure images use tested version tags in `compose.yaml`. Run `update_containers.sh` to check and apply newer versions with backup, deployment validation, and rollback instead of changing those tags to `latest`.
+Fresh Compose templates start NGINX, Cloudflared, MongoDB, and Versity Gateway at `latest`. During configuration, `update_containers.sh` starts each image, detects its concrete version, and replaces `latest` with that explicit tag for repeatable restarts and rollback. Existing installations preserve their current image references during script and template updates.
 
 ## Upgrading an installation without `update_scripts.sh`
 
 Installations from before the release updater was added can be upgraded with the current installer. Before upgrading, make a filesystem or VM backup of the MongoDB and MinIO data directories named in `remotefalcon/.env`.
 
-Run the following from the existing installation directory that contains `configure-rf.sh` and the `remotefalcon` directory:
+The installer can be run from any directory. During an upgrade it first checks the current directory and its parents, then searches the current user's home and common installation locations for a directory containing the managed scripts plus `remotefalcon/compose.yaml` and `remotefalcon/.env`. If more than one installation is found, it stops and asks you to select one with `--target`.
 
 ```sh
-cd /path/to/cloudflared-remotefalcon
 curl -fsSL --retry 3 \
   -o /tmp/cloudflared-remotefalcon-install.sh \
   https://raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh
 chmod +x /tmp/cloudflared-remotefalcon-install.sh
 /tmp/cloudflared-remotefalcon-install.sh \
-  --update \
-  --target "$PWD"
+  --update
 ```
+
+To override automatic discovery, add `--target /path/to/cloudflared-remotefalcon`. The upgrade also installs `jq` automatically with `apt-get`, `dnf`, `yum`, or `apk` when needed and stops if that installation fails. OpenSSL and the Docker Compose plugin are checked before installation files are changed.
 
 The installer verifies the release archive, creates a dated configuration backup, preserves existing `.env` values and image references, and validates the merged Compose configuration before applying it. It then upgrades containers in a safe order, checks each changed service, migrates legacy MinIO objects to Versity Gateway, removes retired containers, and runs the complete health check.
 
-When upgrading from the older per-application image repositories, the installer updates the existing GitHub image-builder repository to the unified `build.yml` workflow and synchronizes the current build settings from `.env`. All five application images are then rebuilt in one matrix workflow. Containers are deployed together only after every image builds successfully. Installations that build locally perform the five builds as one batch before replacing any running application containers.
+When upgrading from older per-application images on AMD64 or ARM64, the installer pins all applications to one platform commit, pulls the four coordinated public backends, builds the deployment-specific UI locally, and only then recreates the application stack. Existing private-builder installations retain their coordinated five-image workflow. Other architectures build all five applications locally as one batch.
 
 Versity Gateway initialization is a required upgrade step. The installer creates and verifies the configured image bucket, its owner, and its public-read policy before attempting a legacy MinIO migration or running the final health check. A bucket initialization failure stops the upgrade with the source MinIO data unchanged.
 
@@ -99,4 +101,4 @@ If the current user cannot access Docker, the installer asks whether to add that
 
 If a service fails its deployment check, its previous image and Compose configuration are restored. A failed MinIO migration leaves the source data unchanged; after a successful verified migration, the old data directory is retained with a dated `.migrated-*` name.
 
-Existing `REPO` and `GITHUB_PAT` settings are reused for GitHub-built images. Without GitHub builds, application images are built locally and the upgrade can take longer.
+Existing `REPO` and `GITHUB_PAT` settings are reused only as a deprecated private-builder compatibility override. Otherwise AMD64 and ARM64 use anonymous public backend pulls plus a local UI build.

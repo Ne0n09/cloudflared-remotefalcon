@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.5
+# VERSION=2026.9.27.7
 
 #set -euo pipefail
 #set -x
@@ -56,7 +56,10 @@ trap 'rm -rf "$HEALTH_TMP_DIR"' EXIT
 # Define known error patterns and custom messages
 declare -A CONTAINER_PATTERNS
 
-# Format: "pattern|custom message"
+# Format: "pattern|custom message[|always-fail]"
+# By default, a recent log error is informational when the service endpoint has
+# recovered. Use always-fail for configuration errors that leave a feature
+# broken even while the application health endpoint reports UP.
 CONTAINER_PATTERNS["cloudflared"]='
 Error response from daemon: No such container|Container is not running
 certificate is valid for|Verify Origin certificate and Tunnel Public Hostname configuration includes *.yourdomain.com.
@@ -94,6 +97,8 @@ state=CONNECTING, exception={com.mongodb.MongoSocketOpenException: Exception ope
 
 CONTAINER_PATTERNS["control-panel"]='
 Error response from daemon: No such container|Container is not running
+The AWS Access Key Id you provided does not exist in our records|VersityGW does not recognize the S3 access key used by control-panel. Run ./versitygw_init.sh, then run docker compose --env-file ./remotefalcon/.env -f ./remotefalcon/compose.yaml up -d --force-recreate control-panel and rerun ./health_check.sh.|always-fail
+InvalidAccessKeyId|VersityGW does not recognize the S3 access key used by control-panel. Run ./versitygw_init.sh, then run docker compose --env-file ./remotefalcon/.env -f ./remotefalcon/compose.yaml up -d --force-recreate control-panel and rerun ./health_check.sh.|always-fail
 '
 
 CONTAINER_PATTERNS["ui"]='
@@ -114,10 +119,15 @@ check_container_logs() {
   while IFS= read -r entry; do
     [[ -z "$entry" ]] && continue  # skip blanks
     local pattern="${entry%%|*}"
-    local message="${entry#*|}"
+    local details="${entry#*|}"
+    local message="${details%%|*}"
+    local failure_policy=""
+    if [[ "$details" == *"|"* ]]; then
+      failure_policy="${details##*|}"
+    fi
 
     if echo "$logs" | grep -qE "$pattern"; then
-      if [[ "${ENDPOINT_HEALTHY[$container]:-false}" == true ]]; then
+      if [[ "${ENDPOINT_HEALTHY[$container]:-false}" == true && "$failure_policy" != "always-fail" ]]; then
         echo -e "⚠️ Earlier log error; $container endpoint is currently UP: $message"
       else
         echo -e "❌ ${RED}Error detected:${NC} $message"
@@ -125,7 +135,7 @@ check_container_logs() {
       echo -e "   ↳ ${YELLOW}Log snippet:${NC}"
       echo "$logs" | grep -E "$pattern" | tail -5 | sed 's/^/      /'
       found=true
-      [[ "${ENDPOINT_HEALTHY[$container]:-false}" == true ]] || HEALTHY=false
+      [[ "${ENDPOINT_HEALTHY[$container]:-false}" == true && "$failure_policy" != "always-fail" ]] || HEALTHY=false
     fi
   done <<< "${CONTAINER_PATTERNS[$container]}"
 
@@ -380,11 +390,6 @@ check_endpoint() {
       else
         echo "$object_summary"
       fi
-    fi
-
-    # Verify control-panel has a valid S3_ACCESS_KEY
-    if [[ "$TARGET_SERVICE" == all ]] && docker logs control-panel 2>&1 | grep -q "InvalidAccessKeyId"; then
-      echo -e "${RED}❌ control-panel is reporting InvalidAccessKeyId. You may want to re-run ./versitygw_init.sh to correct this.${NC}"
     fi
 
   else

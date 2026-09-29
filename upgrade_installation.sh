@@ -1,12 +1,60 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.6
+# VERSION=2026.9.29.1
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLATFORM_REBUILD_MARKER="$SCRIPT_DIR/.rf-platform-rebuild-required"
 APPLICATION_SERVICES=(plugins-api control-panel viewer ui external-api)
+BACKEND_SERVICES=(plugins-api control-panel viewer external-api)
+
+ensure_jq_installed() {
+  command -v jq >/dev/null 2>&1 && return 0
+
+  echo "jq is not installed. Attempting to install it..."
+  local -a privilege=()
+  if [[ $EUID -ne 0 ]]; then
+    command -v sudo >/dev/null 2>&1 || {
+      echo "jq is required, but sudo is not installed. Install jq and rerun the upgrade." >&2
+      return 1
+    }
+    privilege=(sudo)
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    if ! "${privilege[@]}" apt-get update || ! "${privilege[@]}" apt-get install -y jq; then
+      echo "jq installation failed. Install jq and rerun the upgrade." >&2
+      return 1
+    fi
+  elif command -v dnf >/dev/null 2>&1; then
+    if ! "${privilege[@]}" dnf install -y jq; then
+      echo "jq installation failed. Install jq and rerun the upgrade." >&2
+      return 1
+    fi
+  elif command -v yum >/dev/null 2>&1; then
+    if ! "${privilege[@]}" yum install -y jq; then
+      echo "jq installation failed. Install jq and rerun the upgrade." >&2
+      return 1
+    fi
+  elif command -v apk >/dev/null 2>&1; then
+    if ! "${privilege[@]}" apk add jq; then
+      echo "jq installation failed. Install jq and rerun the upgrade." >&2
+      return 1
+    fi
+  else
+    echo "jq is required, but no supported package manager was found. Install jq and rerun the upgrade." >&2
+    return 1
+  fi
+
+  command -v jq >/dev/null 2>&1 || {
+    echo "jq installation failed. Install jq and rerun the upgrade." >&2
+    return 1
+  }
+  echo "jq installation complete."
+}
+
+ensure_jq_installed
 
 # shellcheck source=shared_functions.sh
 source "$SCRIPT_DIR/shared_functions.sh"
@@ -38,15 +86,29 @@ rebuild_all_application_images() {
     return
   fi
 
-  echo -e "${CYAN}Building all application images as one local batch before replacing any running application containers...${NC}"
+  if public_backend_images_supported; then
+    echo -e "${CYAN}Pulling the coordinated public AMD64/ARM64 backends and building the deployment-specific UI...${NC}"
+  else
+    echo -e "${CYAN}Building all application images locally because public images target AMD64 and ARM64 only...${NC}"
+  fi
   snapshot=$(mktemp) || return 1
   cp "$COMPOSE_FILE" "$snapshot" || { rm -f "$snapshot"; return 1; }
   for service in "${APPLICATION_SERVICES[@]}"; do
     replace_compose_tag "$service" "$platform_sha"
   done
-  if rf_compose config -q &&
-     rf_compose build "${APPLICATION_SERVICES[@]}" &&
-     rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}"; then
+  update_compose_image_path
+
+  if public_backend_images_supported; then
+    if rf_compose config -q &&
+       rf_compose pull "${BACKEND_SERVICES[@]}" &&
+       rf_compose build ui &&
+       rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}"; then
+      rm -f "$snapshot"
+      return 0
+    fi
+  elif rf_compose config -q &&
+       rf_compose build "${APPLICATION_SERVICES[@]}" &&
+       rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}"; then
     rm -f "$snapshot"
     return 0
   fi

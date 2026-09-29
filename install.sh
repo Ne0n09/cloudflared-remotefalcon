@@ -3,13 +3,15 @@ set -euo pipefail
 
 REPOSITORY="${RF_INSTALL_REPOSITORY:-Ne0n09/cloudflared-remotefalcon}"
 TARGET_DIR="${RF_INSTALL_DIR:-$PWD}"
+TARGET_EXPLICIT=false
+[[ -n "${RF_INSTALL_DIR:-}" ]] && TARGET_EXPLICIT=true
 MODE="install"
 RUN_CONFIGURE=true
 VERSION="latest"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --target) TARGET_DIR="$2"; shift 2 ;;
+    --target) TARGET_DIR="$2"; TARGET_EXPLICIT=true; shift 2 ;;
     --update) MODE="update"; shift ;;
     --check) MODE="check"; shift ;;
     --version) VERSION="$2"; shift 2 ;;
@@ -21,13 +23,120 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+is_remote_falcon_installation() {
+  local candidate="$1"
+  [[ -f "$candidate/configure-rf.sh" &&
+     -f "$candidate/shared_functions.sh" &&
+     -f "$candidate/update_containers.sh" &&
+     -f "$candidate/remotefalcon/compose.yaml" &&
+     -f "$candidate/remotefalcon/.env" ]]
+}
+
+resolve_update_target() {
+  [[ "$MODE" == "update" ]] || return 0
+
+  if [[ "$TARGET_EXPLICIT" == true ]]; then
+    [[ -d "$TARGET_DIR" ]] || {
+      echo "The specified upgrade target does not exist: $TARGET_DIR" >&2
+      return 1
+    }
+    is_remote_falcon_installation "$TARGET_DIR" || {
+      echo "The specified target is not a Remote Falcon installation: $TARGET_DIR" >&2
+      echo "Expected the managed scripts, remotefalcon/compose.yaml, and remotefalcon/.env." >&2
+      return 1
+    }
+  else
+    local candidate current root script
+    local -a candidates=()
+    local -a preferred_candidates=(
+      "${HOME:-}"
+      "${HOME:-}/cloudflared-remotefalcon"
+      "${HOME:-}/remotefalcon"
+      /home/remotefalcon
+      /opt/cloudflared-remotefalcon
+      /srv/cloudflared-remotefalcon
+    )
+    local -a search_roots=("${HOME:-}" /home /opt /srv)
+    declare -A seen=()
+
+    # Prefer the current directory or one of its parents. This covers running
+    # the installer from either the installation root or its remotefalcon dir.
+    current="$PWD"
+    while [[ -n "$current" ]]; do
+      if is_remote_falcon_installation "$current"; then
+        TARGET_DIR="$current"
+        break
+      fi
+      [[ "$current" == / ]] && break
+      current="$(dirname "$current")"
+    done
+
+    if ! is_remote_falcon_installation "$TARGET_DIR"; then
+      for candidate in "${preferred_candidates[@]}"; do
+        if [[ -n "$candidate" ]] && is_remote_falcon_installation "$candidate"; then
+          TARGET_DIR="$candidate"
+          break
+        fi
+      done
+    fi
+
+    if ! is_remote_falcon_installation "$TARGET_DIR"; then
+      command -v find >/dev/null 2>&1 || {
+        echo "Automatic installation discovery requires the find command." >&2
+        echo "Install findutils or rerun with --target /path/to/cloudflared-remotefalcon." >&2
+        return 1
+      }
+      for root in "${search_roots[@]}"; do
+        [[ -n "$root" && -d "$root" ]] || continue
+        while IFS= read -r -d '' script; do
+          candidate="${script%/configure-rf.sh}"
+          case "$candidate" in
+            */remotefalcon-backups/*|*/vm-staging/*|*/.git/*|*/old/*) continue ;;
+          esac
+          is_remote_falcon_installation "$candidate" || continue
+          [[ -n "${seen[$candidate]:-}" ]] && continue
+          seen["$candidate"]=1
+          candidates+=("$candidate")
+        done < <(find "$root" -maxdepth 6 -type f -name configure-rf.sh -print0 2>/dev/null)
+      done
+
+      case "${#candidates[@]}" in
+        0)
+          echo "Could not locate an existing Remote Falcon installation." >&2
+          echo "Rerun with --target /path/to/cloudflared-remotefalcon." >&2
+          return 1
+          ;;
+        1) TARGET_DIR="${candidates[0]}" ;;
+        *)
+          echo "Multiple Remote Falcon installations were found:" >&2
+          printf '  %s\n' "${candidates[@]}" >&2
+          echo "Rerun with --target and the installation to upgrade." >&2
+          return 1
+          ;;
+      esac
+    fi
+  fi
+
+  TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
+  cd "$TARGET_DIR"
+  echo "Using Remote Falcon installation: $TARGET_DIR"
+}
+
+resolve_update_target
+
 ensure_update_docker_access() {
   [[ "$MODE" == "update" ]] || return 0
   command -v docker >/dev/null 2>&1 || {
     echo "Docker is not installed. Install Docker, then rerun this upgrade." >&2
     return 1
   }
-  docker info >/dev/null 2>&1 && return 0
+  if docker info >/dev/null 2>&1; then
+    docker compose version >/dev/null 2>&1 || {
+      echo "Docker Compose is not installed. Install the Docker Compose plugin, then rerun this upgrade." >&2
+      return 1
+    }
+    return 0
+  fi
 
   if [[ $EUID -eq 0 ]]; then
     echo "Docker is installed, but the Docker service is unavailable. Start Docker, then rerun this upgrade." >&2
@@ -64,6 +173,10 @@ ensure_update_docker_access() {
     echo "Docker is unavailable even with administrator access. Start Docker, then rerun this upgrade." >&2
     return 1
   fi
+  if ! sudo docker compose version >/dev/null 2>&1; then
+    echo "Docker Compose is not installed. Install the Docker Compose plugin, then rerun this upgrade." >&2
+    return 1
+  fi
   sudo groupadd --force docker
   sudo usermod -aG docker "$current_user"
 
@@ -81,6 +194,12 @@ ensure_update_docker_access() {
 for command in curl tar sha256sum; do
   command -v "$command" >/dev/null || { echo "Required command not found: $command" >&2; exit 1; }
 done
+if [[ "$MODE" == "update" ]]; then
+  command -v openssl >/dev/null || {
+    echo "Required command not found: openssl. Install OpenSSL, then rerun this upgrade." >&2
+    exit 1
+  }
+fi
 
 # Older installations commonly require sudo for Docker. Resolve that before
 # downloading or changing any release files, then continue as the same user so

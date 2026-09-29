@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.6
+# VERSION=2026.9.29.3
 
 set -u
 
@@ -88,6 +88,7 @@ make_workspace() {
 DOMAIN=example.com
 TUNNEL_TOKEN=old-token
 REPO=username/repo
+RF_BACKEND_IMAGE_REPO=ne0n09/cloudflared-remotefalcon
 GITHUB_PAT=
 HOST_ENV=production
 DOCKERFILE=Dockerfile
@@ -437,6 +438,10 @@ elif [[ "$1" == "inspect" && "$*" == *"{{.Config.Image}}"* ]]; then
 elif [[ "$1" == "ps" ]]; then
   printf 'ghcr.io/example/external-api:abc1234\n'
 elif [[ "$1" == "logs" ]]; then
+  container="${@: -1}"
+  if [[ "$container" == "control-panel" && -n "${MOCK_CONTROL_PANEL_LOGS:-}" ]]; then
+    printf '%s\n' "$MOCK_CONTROL_PANEL_LOGS"
+  fi
   exit 0
 elif [[ "$1" == "exec" && "$2" == "nginx" && "$*" == *"nginx -t"* ]]; then
   printf 'nginx: the configuration file /etc/nginx/nginx.conf syntax is ok\n'
@@ -544,12 +549,16 @@ test_shared_functions() {
     [[ "${MONGO_URI}" == 'mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin' ]] || exit 1
 
     REPO="owner/repo"
+    GITHUB_PAT="ghp_test"
     update_compose_image_path
     grep -Fq 'ghcr.io/${REPO}/external-api:' "$COMPOSE_FILE" || exit 1
 
     REPO="username/repo"
+    GITHUB_PAT=""
     update_compose_image_path
     ! grep -Fq 'ghcr.io/${REPO}/external-api:' "$COMPOSE_FILE" || exit 1
+    grep -Fq 'ghcr.io/${RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon}/external-api:' "$COMPOSE_FILE" || exit 1
+    grep -Eq '^[[:space:]]*image: ui:' "$COMPOSE_FILE" || exit 1
 
     replace_compose_tag external-api 1234567890abcdef1234567890abcdef12345678
     grep -Eq 'external-api:1234567' "$COMPOSE_FILE" || exit 1
@@ -563,8 +572,25 @@ test_shared_functions() {
 
     uname() { printf 'aarch64\n'; }
     is_arm_cpu || exit 1
+    is_arm64_cpu || exit 1
+    public_backend_images_supported || exit 1
     uname() { printf 'x86_64\n'; }
     ! is_arm_cpu || exit 1
+    ! is_arm64_cpu || exit 1
+    is_amd64_cpu || exit 1
+    public_backend_images_supported || exit 1
+    RF_CPU_FLAGS_OVERRIDE="sse sse2 avx avx2"
+    cpu_supports_avx || exit 1
+    ! mongo_requires_no_avx_pin || exit 1
+    RF_CPU_FLAGS_OVERRIDE="sse sse2"
+    ! cpu_supports_avx || exit 1
+    mongo_requires_no_avx_pin || exit 1
+    uname() { printf 'aarch64\n'; }
+    ! mongo_requires_no_avx_pin || exit 1
+    uname() { printf 'i686\n'; }
+    ! is_amd64_cpu || exit 1
+    ! public_backend_images_supported || exit 1
+    unset RF_CPU_FLAGS_OVERRIDE
 
     memory_check() { return 1; }
     REPO="username/repo"
@@ -816,6 +842,28 @@ test_health_check_uses_recent_logs() {
   assert_file_contains "$ROOT_DIR/health_check.sh" 'docker logs --since "\$\{HEALTH_LOG_SINCE:-10m\}"'
   assert_file_contains "$ROOT_DIR/health_check.sh" 'mktemp -d "\$\{TMPDIR:-/tmp\}/remote-falcon-health\.XXXXXX"'
   assert_file_not_contains "$ROOT_DIR/health_check.sh" '="/tmp/(http_code|curl_response|curl_error\.log)"'
+  assert_file_not_contains "$ROOT_DIR/health_check.sh" 'docker logs control-panel'
+}
+
+test_health_check_detects_unknown_s3_access_key() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+
+  if (
+    cd "$ws" || exit 1
+    MOCK_RUNNING_SERVICES="control-panel" \
+    MOCK_CONTROL_PANEL_LOGS='2026-09-28T03:22:27.265Z ERROR software.amazon.awssdk.services.s3.model.S3Exception: The AWS Access Key Id you provided does not exist in our records. (Service: S3, Status Code: 403)' \
+      ./health_check.sh 0s control-panel
+  ) > "$ws/unknown-s3-key.out" 2>&1; then
+    echo "Expected an unknown VersityGW access key to fail the health check"
+    return 1
+  fi
+
+  assert_file_contains "$ws/unknown-s3-key.out" 'VersityGW does not recognize the S3 access key used by control-panel' || return 1
+  assert_file_contains "$ws/unknown-s3-key.out" 'Run ./versitygw_init.sh' || return 1
+  assert_file_contains "$ws/unknown-s3-key.out" 'force-recreate control-panel' || return 1
+  assert_file_contains "$ws/unknown-s3-key.out" 'The AWS Access Key Id you provided does not exist in our records' || return 1
 }
 
 test_update_containers_dry_run() {
@@ -835,6 +883,23 @@ test_update_containers_dry_run() {
     return 1
   }
   [[ "$output" == *"external-api"* ]] || return 1
+}
+
+test_public_images_use_platform_sha_without_migrated_env() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  sed '/^# ========== Main update logic ==========/,$d' "$ws/update_containers.sh" > "$ws/update-functions.sh"
+
+  (
+    cd "$ws" || exit 1
+    source "$ws/update-functions.sh"
+    RF_IMAGE_TAG_MODE=app
+    REPO="username/repo"
+    GITHUB_PAT=""
+    [[ "$(get_latest_version plugins-api)" == "abcdef1234567890abcdef1234567890abcdef12" ]] || exit 1
+    [[ "$(get_latest_version ui)" == "abcdef1234567890abcdef1234567890abcdef12" ]] || exit 1
+  )
 }
 
 test_setup_cloudflare() {
@@ -1035,10 +1100,34 @@ test_configure_rf_help() {
   assert_file_contains "$ws/configure-help.out" '--set KEY=VALUE'
 }
 
+test_secret_input_displays_masked_progress() {
+  local ws result
+  ws="$(make_workspace)"
+  awk '/^read_masked_input\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/input-functions.sh"
+  awk '/^get_input\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/input-functions.sh"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/input-functions.sh"
+    NON_INTERACTIVE=false
+    DEBUG_INPUT=false
+    result=$(printf 'secret-token\n' | get_input TUNNEL_TOKEN 'Token:' '' 2> "$ws/masked-input.out")
+    [[ "$result" == "secret-token" ]] || exit 1
+    grep -Eq '\*{12}' "$ws/masked-input.out" || exit 1
+    ! grep -Fq 'secret-token' "$ws/masked-input.out" || exit 1
+  )
+}
+
 test_configure_rf_has_no_archived_updater() {
   assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'git clone "https://\$\{GITHUB_PAT\}'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh'
   assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/refs/heads/main/(shared_functions|update_containers)'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '^ensure_legacy_github_cli\(\)'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'REPO.*username/repo.*GITHUB_PAT'
+  assert_file_not_contains "$ROOT_DIR/README.md" 'Docker Compose 5\.5\.1|September 18, 2026'
+  assert_file_not_contains "$ROOT_DIR/README.md" '2\. \[GitHub\]'
+  assert_file_not_contains "$ROOT_DIR/README.md" '\.gif\)'
+  assert_file_not_contains "$ROOT_DIR/docs/about/scripts.md" '\.gif\)'
 }
 
 test_fresh_install_checks_each_deployed_service() {
@@ -1061,6 +1150,36 @@ test_noninteractive_mongo_upgrade_stays_on_current_major() {
   assert_file_contains "$ROOT_DIR/update_containers.sh" 'replace_compose_tag "\$service_name" "\$LATEST_SAME_MAJOR"'
 }
 
+test_non_avx_mongo_is_pinned_before_start() {
+  local ws
+  ws="$(make_workspace)"
+  sed '/^# ========== Main update logic ==========/,$d' "$ws/update_containers.sh" > "$ws/update-functions.sh"
+
+  (
+    cd "$ws" || exit 1
+    source "$ws/update-functions.sh"
+    uname() { printf 'x86_64\n'; }
+    RF_CPU_FLAGS_OVERRIDE="sse sse2"
+    prepare_mongo_cpu_compatibility
+    [[ "$MONGO_NO_AVX_PIN_ACTIVE" == true ]] || exit 1
+    [[ "$(get_current_compose_tag mongo)" == "4.4.29" ]] || exit 1
+
+    replace_compose_tag mongo 4.0.28
+    if prepare_mongo_cpu_compatibility; then exit 1; fi
+    [[ "$(get_current_compose_tag mongo)" == "4.0.28" ]] || exit 1
+
+    replace_compose_tag mongo 7.0.43
+    if prepare_mongo_cpu_compatibility; then exit 1; fi
+    [[ "$(get_current_compose_tag mongo)" == "7.0.43" ]] || exit 1
+  ) > "$ws/mongo-pin.out" 2>&1 || return 1
+
+  assert_file_contains "$ws/mongo-pin.out" 'does not expose AVX instructions' || return 1
+  assert_file_contains "$ws/mongo-pin.out" 'pinned at 4\.4\.29' || return 1
+  assert_file_contains "$ws/mongo-pin.out" 'direct automatic jump could make the database unusable' || return 1
+  assert_file_contains "$ws/mongo-pin.out" 'automatic downgrade.*could make newer database files unusable' || return 1
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'newer MongoDB releases will not be offered' || return 1
+}
+
 test_current_platform_runtime_configuration() {
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}:\$\{MONGO_INITDB_ROOT_PASSWORD\}@mongo:27017/remote-falcon\?authSource=admin'
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'SPRING_DATA_MONGODB_URI=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}:\$\{MONGO_INITDB_ROOT_PASSWORD\}@mongo:27017/remote-falcon\?authSource=admin'
@@ -1068,12 +1187,34 @@ test_current_platform_runtime_configuration() {
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Configuration completed with failed health checks.'
 }
 
-test_infrastructure_images_are_version_pinned() {
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: nginx:1\.31\.6'
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: cloudflare/cloudflared:2026\.9\.1'
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: mongo:7\.0\.43'
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: versity/versitygw:v1\.8\.0'
-  assert_file_not_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: (nginx|cloudflare/cloudflared|mongo|versity/versitygw):latest'
+test_fresh_infrastructure_images_are_resolved_and_pinned() {
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: nginx:latest'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: cloudflare/cloudflared:latest'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: mongo:latest'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: versity/versitygw:latest'
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'replace_compose_tag "\$service_name" "\$LATEST_VERSION"'
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'replace_compose_tag "\$service_name" "\$LATEST_SAME_MAJOR"'
+}
+
+test_infrastructure_latest_tags_can_be_pinned() {
+  local ws
+  ws="$(make_workspace)"
+
+  (
+    cd "$ws" || exit 1
+    source ./shared_functions.sh
+
+    replace_compose_tag nginx 1.31.6
+    replace_compose_tag cloudflared 2026.9.1
+    replace_compose_tag mongo 7.0.43
+    replace_compose_tag versitygw v1.8.0
+
+    grep -Eq '^[[:space:]]*image: nginx:1\.31\.6$' "$COMPOSE_FILE" || exit 1
+    grep -Eq '^[[:space:]]*image: cloudflare/cloudflared:2026\.9\.1$' "$COMPOSE_FILE" || exit 1
+    grep -Eq '^[[:space:]]*image: mongo:7\.0\.43$' "$COMPOSE_FILE" || exit 1
+    grep -Eq '^[[:space:]]*image: versity/versitygw:v1\.8\.0$' "$COMPOSE_FILE" || exit 1
+    ! grep -Eq '^[[:space:]]*image: (nginx|cloudflare/cloudflared|mongo|versity/versitygw):latest$' "$COMPOSE_FILE"
+  )
 }
 
 test_ci_has_pinned_static_validation() {
@@ -1087,6 +1228,47 @@ test_ci_has_pinned_static_validation() {
   assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-material==[0-9]'
   assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-glightbox==[0-9]'
   assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mkdocs-git-revision-date-localized-plugin==[0-9]'
+  assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mike==[0-9]'
+  assert_file_contains "$ROOT_DIR/mkdocs.yml" '^site_url: https://ne0n09\.github\.io/cloudflared-remotefalcon/$'
+  assert_file_contains "$ROOT_DIR/mkdocs.yml" '^[[:space:]]+provider: mike$'
+  assert_file_not_contains "$ROOT_DIR/mkdocs.yml" "^[[:space:]]+- 'GitHub': install/github\.md$"
+  assert_file_contains "$ROOT_DIR/.github/workflows/ci.yml" 'mkdocs build --strict'
+  assert_file_not_contains "$ROOT_DIR/.github/workflows/ci.yml" 'mkdocs gh-deploy'
+  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'mike deploy --push --update-aliases'
+  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'mike set-default --push latest'
+  assert_file_contains "$ROOT_DIR/.github/workflows/docs-historical.yml" 'default: v2026\.9\.27\.6'
+  assert_file_contains "$ROOT_DIR/.github/workflows/docs-historical.yml" 'default: legacy-private-builder'
+}
+
+test_public_backend_workflow_is_multiarch_and_coordinated() {
+  local workflow="$ROOT_DIR/.github/workflows/build-public-images.yml"
+
+  assert_file_contains "$workflow" '^  packages: write$'
+  assert_file_contains "$workflow" '^          context: \.$'
+  assert_file_contains "$workflow" '^    runs-on: \$\{\{ matrix\.runner \}\}$'
+  assert_file_contains "$workflow" '^            runner: ubuntu-24\.04$'
+  assert_file_contains "$workflow" '^            runner: ubuntu-24\.04-arm$'
+  assert_file_not_contains "$workflow" 'ubuntu-latest'
+  assert_file_contains "$workflow" '^          platforms: \$\{\{ matrix\.platform \}\}$'
+  assert_file_contains "$workflow" 'short_sha \}\}-\$\{\{ matrix\.architecture'
+  assert_file_contains "$workflow" 'index\("amd64"\) != null'
+  assert_file_contains "$workflow" 'index\("arm64"\) != null'
+  assert_file_contains "$workflow" '^      - name: Smoke test native architecture image$'
+  assert_file_contains "$workflow" 'mongo:7\.0\.43'
+  assert_file_contains "$workflow" "docker image inspect --format '\{\{\.Architecture\}\}'"
+  assert_file_contains "$workflow" "docker inspect --format '\{\{\.State\.Running\}\}'"
+  assert_file_contains "$workflow" 'remained running on \$ARCHITECTURE with MongoDB available'
+  assert_file_contains "$workflow" 'file: apps/\$\{\{ matrix\.service \}\}/Dockerfile'
+  assert_file_contains "$workflow" '^  promote:$'
+  assert_file_contains "$workflow" '^      - build$'
+  assert_file_contains "$workflow" 'docker manifest inspect'
+  assert_file_contains "$workflow" "if: github.event_name == 'workflow_dispatch' \|\| steps.check.outputs.exists == 'false'"
+  assert_file_contains "$workflow" "if: github.event_name == 'workflow_dispatch' \|\| needs.prepare.outputs.release_exists == 'false'"
+  assert_file_contains "$workflow" 'docker buildx imagetools create'
+  assert_file_contains "$workflow" '--tag "\$\{IMAGE\}:\$\{SHA_TAG\}"'
+  assert_file_not_contains "$workflow" 'apps/ui'
+  assert_file_not_contains "$workflow" 'build-args:'
+  [[ $(grep -Ec '^          - (plugins-api|control-panel|viewer|external-api)$' "$workflow") == 8 ]] || return 1
 }
 
 test_fresh_deployment_harness_safety() {
@@ -1095,7 +1277,8 @@ test_fresh_deployment_harness_safety() {
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'Refusing unsafe cleanup path'
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" './configure-rf.sh -y --docker-mode manual'
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'update_scripts.sh --version "\$VERSION"'
-  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'ghcr.io/\$\{repo\}/\$\{service\}'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'ghcr.io/\$\{public_repo\}/\$\{service\}'
+  assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'UI was not built locally'
   assert_file_contains "$ROOT_DIR/tests/fresh-deployment-test.sh" 'remove_local_app_images'
 }
 
@@ -1113,7 +1296,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+Added a one-command upgrade path'
+  assert_file_contains "$output" "^-[[:space:]]+Pinned the public backend workflow's x64 GitHub-hosted runners to Ubuntu 24.04" || return 1
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
@@ -1136,6 +1319,73 @@ test_install_manifest_is_authoritative() {
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired revert\.sh$'
   assert_file_contains "$ROOT_DIR/update_scripts.sh" 'mapfile -t scripts.*install-manifest'
   assert_file_not_contains "$ROOT_DIR/update_scripts.sh" '^scripts=\('
+}
+
+test_upgrade_installer_discovers_installation() {
+  local ws home_dir install_root run_dir installer
+  ws="$(mktemp -d "$TEST_TMP/installer-discovery.XXXXXX")"
+  home_dir="$ws/home"
+  install_root="$home_dir/cloudflared-remotefalcon"
+  run_dir="$ws/unrelated"
+  installer="$ws/install.sh"
+  mkdir -p "$install_root/remotefalcon" "$run_dir"
+  touch "$install_root/configure-rf.sh" \
+    "$install_root/shared_functions.sh" \
+    "$install_root/update_containers.sh" \
+    "$install_root/remotefalcon/compose.yaml" \
+    "$install_root/remotefalcon/.env"
+  cp "$ROOT_DIR/install.sh" "$installer"
+  sed -i '/^resolve_update_target$/a printf '\''%s\\n%s\\n'\'' "$TARGET_DIR" "$PWD" > "$MOCK_DISCOVERY_LOG"; exit 0' "$installer"
+
+  (
+    cd "$run_dir" || exit 1
+    HOME="$home_dir" MOCK_DISCOVERY_LOG="$ws/discovery.log" \
+      bash "$installer" --update --no-configure
+  ) || return 1
+
+  [[ "$(sed -n '1p' "$ws/discovery.log")" == "$install_root" ]] || return 1
+  [[ "$(sed -n '2p' "$ws/discovery.log")" == "$install_root" ]] || return 1
+}
+
+test_upgrade_installs_required_jq() {
+  local ws bin upgrade
+  ws="$(mktemp -d "$TEST_TMP/upgrade-jq.XXXXXX")"
+  bin="$ws/bin"
+  upgrade="$ws/upgrade_installation.sh"
+  mkdir -p "$bin"
+  cp "$ROOT_DIR/upgrade_installation.sh" "$upgrade"
+  sed -i '/^ensure_jq_installed$/a exit 0' "$upgrade"
+  ln -s "$(command -v dirname)" "$bin/dirname"
+
+  cat > "$bin/sudo" <<'MOCK'
+#!/bin/bash
+exec "$@"
+MOCK
+  cat > "$bin/apt-get" <<'MOCK'
+#!/bin/bash
+if [[ "$1" == update ]]; then
+  exit 0
+fi
+if [[ "$1" == install && "$*" == *" jq"* ]]; then
+  printf '#!/bin/bash\nexit 0\n' > "$MOCK_JQ_BIN/jq"
+  /bin/chmod +x "$MOCK_JQ_BIN/jq"
+  exit 0
+fi
+exit 1
+MOCK
+  chmod +x "$bin/sudo" "$bin/apt-get"
+
+  PATH="$bin" MOCK_JQ_BIN="$bin" /bin/bash "$upgrade" > "$ws/success.out" || return 1
+  [[ -x "$bin/jq" ]] || return 1
+  assert_file_contains "$ws/success.out" '^jq installation complete\.$' || return 1
+
+  rm -f "$bin/jq"
+  printf '#!/bin/bash\nexit 1\n' > "$bin/apt-get"
+  chmod +x "$bin/apt-get"
+  if PATH="$bin" MOCK_JQ_BIN="$bin" /bin/bash "$upgrade" > "$ws/failure.out" 2>&1; then
+    return 1
+  fi
+  assert_file_contains "$ws/failure.out" '^jq installation failed\. Install jq and rerun the upgrade\.$'
 }
 
 test_legacy_upgrade_is_orchestrated() {
@@ -1240,7 +1490,12 @@ test_upgrade_handles_missing_docker_group_access() {
   bin="$ws/bin"
   installer="$ws/install.sh"
   current_user="$(id -un)"
-  mkdir -p "$bin"
+  mkdir -p "$bin" "$ws/target/remotefalcon"
+  touch "$ws/target/configure-rf.sh" \
+    "$ws/target/shared_functions.sh" \
+    "$ws/target/update_containers.sh" \
+    "$ws/target/remotefalcon/compose.yaml" \
+    "$ws/target/remotefalcon/.env"
   cp "$ROOT_DIR/install.sh" "$installer"
   # Stop immediately after the access preflight so this test never downloads or
   # modifies an installation. The re-executed installer must reach this point.
@@ -1248,7 +1503,13 @@ test_upgrade_handles_missing_docker_group_access() {
 
   cat > "$bin/docker" <<'MOCK'
 #!/usr/bin/env bash
-[[ "$1" == "info" && "${MOCK_DOCKER_ACCESS:-false}" == "true" ]]
+if [[ "$1" == "info" && "${MOCK_DOCKER_ACCESS:-false}" == "true" ]]; then
+  exit 0
+fi
+if [[ "$1" == "compose" && "$2" == "version" && "${MOCK_DOCKER_ACCESS:-false}" == "true" ]]; then
+  exit 0
+fi
+exit 1
 MOCK
   cat > "$bin/sudo" <<'MOCK'
 #!/usr/bin/env bash
@@ -1289,9 +1550,12 @@ MOCK
   fi
 }
 
-test_fresh_remote_install_rebuilds_latest_tags() {
+test_fresh_public_install_uses_hybrid_images() {
   assert_file_contains "$ROOT_DIR/configure-rf.sh" '\[ "\$pending_changes" = false \] && \[ "\$pending_arg_changes" = false \]'
-  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Remote Falcon.*latest.*assuming new install.*run_workflow.sh'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Public AMD64/ARM64 backend images will be pulled anonymously'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'rf_compose build ui'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: ghcr.io/\$\{RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon\}/plugins-api:latest'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: ui:latest'
 }
 
 test_remote_deploy_checks_built_services_before_full_stack() {
@@ -1398,11 +1662,13 @@ run_test "run_workflow.sh restores a failed deployment" test_run_workflow_rolls_
 run_test "shared_functions.sh hides secrets in output" test_print_env_redacts_secrets
 run_test "health_check.sh fails without .env" test_health_check_missing_env_fails
 run_test "health_check.sh ignores stale log errors" test_health_check_uses_recent_logs
+run_test "health_check.sh diagnoses an unknown VersityGW access key" test_health_check_detects_unknown_s3_access_key
 run_test "targeted health checks isolate the selected service" test_targeted_health_check
 run_test "Quarkus runtime migration is targeted and idempotent" test_quarkus_environment_migration
 run_test "control-panel runtime migration is targeted and idempotent" test_control_panel_environment_migration
 run_test "image upgrades check only their service and roll back on HTTP failure" test_update_targeted_health_and_rollback
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
+run_test "public images use the platform SHA before env migration" test_public_images_use_platform_sha_without_migrated_env
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
 run_test "versitygw_init.sh fails when bucket creation fails" test_versitygw_init_fails_when_bucket_creation_fails
@@ -1412,14 +1678,18 @@ run_test "MinIO migration preserves its volume when the temporary server fails" 
 run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
 run_test "health_check.sh fails when the S3 bucket is missing" test_health_check_requires_s3_bucket
 run_test "configure-rf.sh exposes expected CLI help" test_configure_rf_help
+run_test "secret prompts display masked input progress" test_secret_input_displays_masked_progress
 run_test "configure-rf.sh has no archived updater" test_configure_rf_has_no_archived_updater
 run_test "fresh installs validate deployed services individually" test_fresh_install_checks_each_deployed_service
 run_test "fresh storage is initialized and required by health checks" test_fresh_storage_is_initialized_and_required
 run_test "noninteractive MongoDB updates stay on the current major" test_noninteractive_mongo_upgrade_stays_on_current_major
+run_test "non-AVX x86-64 hosts pin MongoDB before startup" test_non_avx_mongo_is_pinned_before_start
 run_test "compose supplies current platform runtime configuration" test_current_platform_runtime_configuration
-run_test "infrastructure images use tested version tags" test_infrastructure_images_are_version_pinned
+run_test "fresh infrastructure images resolve latest and become pinned" test_fresh_infrastructure_images_are_resolved_and_pinned
+run_test "infrastructure latest tags can be pinned to detected versions" test_infrastructure_latest_tags_can_be_pinned
 if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
   run_test "CI uses pinned actions and static validators" test_ci_has_pinned_static_validation
+  run_test "public backend workflow publishes one coordinated multi-platform release" test_public_backend_workflow_is_multiarch_and_coordinated
 fi
 run_test "fresh deployment harness has guarded update and build modes" test_fresh_deployment_harness_safety
 if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
@@ -1427,10 +1697,12 @@ if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
   run_test "GitHub releases use the documented version notes" test_github_release_uses_documented_notes
 fi
 run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
+run_test "upgrade installer discovers an existing installation" test_upgrade_installer_discovers_installation
+run_test "upgrade installs jq and reports installation failure" test_upgrade_installs_required_jq
 run_test "legacy upgrades run the safe transition in order" test_legacy_upgrade_is_orchestrated
 run_test "legacy upgrades rebuild all platform images in one workflow" test_legacy_upgrade_rebuilds_platform_images_as_one_workflow
 run_test "legacy upgrades handle missing Docker group access" test_upgrade_handles_missing_docker_group_access
-run_test "fresh remote installs rebuild latest application tags" test_fresh_remote_install_rebuilds_latest_tags
+run_test "fresh AMD64 and ARM64 installs use public backends and a local UI" test_fresh_public_install_uses_hybrid_images
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
 run_test "release updater merges live values into current configuration" test_release_updater_merges_live_config
 run_test "release updater leaves live configuration unchanged after validation failure" test_release_updater_rejects_invalid_config

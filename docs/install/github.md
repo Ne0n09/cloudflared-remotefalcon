@@ -1,61 +1,11 @@
-Configure GitHub to remotely build Remote Falcon Images via GitHub Actions workflows.
+# Deprecated GitHub image-builder setup
 
-- This is recommended if you have less than 16 GB of RAM since the plugins-api and viewer images require a lot of RAM to initially build. 
+!!! warning "Deprecated compatibility documentation"
 
-- GitHub will do the heavy lifting of building images while allowing you to run the containers with less RAM.
+    New installations must not create a private image-builder repository or Personal Access Token. This page remains only as a pointer for installations that already use the legacy workflow.
 
-- The [configure-rf](../about/scripts.md#configure-rfsh) script offers to configure GitHub and create a new private repository to run the [GitHub Actions](https://docs.github.com/en/actions/get-started/understand-github-actions) workflow to build the Remote Falcon Images and push them to [GitHub Container Registry(GHCR)](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). 
+AMD64 and ARM64 installations pull `plugins-api`, `control-panel`, `viewer`, and `external-api` anonymously from this project's public GitHub Container Registry packages. The deployment-specific `ui` image is built locally. No GitHub account is required.
 
-- The configurator can create a private repository from the public image-builder template. Script releases also include the current [build.yml](../../image-builder/.github/workflows/build.yml) for review or synchronization with an existing private builder repository.
+Existing installations with both `REPO` and `GITHUB_PAT` configured can continue using the deprecated private image-builder compatibility path until they migrate. Refer to the matching historical documentation version in the version selector for its original setup instructions.
 
-- The repository is private so your images that are built with your custom arguments remain private as well.
-
-- This makes use of the [sync_repo_secrets](../about/scripts.md#sync_repo_secretssh) and [run_workflow](../about/scripts.md#run_workflowsh) scripts.
-
-- [sync_repo_secrets](../about/scripts.md#sync_repo_secretssh) syncs build arguments from the [.env](../about/files.md#env) to your private repos as secrets that are used in the workflow to build the images.
-
-- [run_workflow](../about/scripts.md#run_workflowsh) syncs secrets to your repo and runs the [build.yml](https://github.com/Ne0n09/remote-falcon-image-builder/blob/main/.github/workflows/build.yml) workflow.
-
-- The unified build.yml workflow builds app images from the Remote Falcon platform commit.
-
-- This allows you pull the images when new updates are available, provided your build arguments have remained the same.
-
-## Create GitHub account or sign in to existing account
-
-- Create a new account [here](https://github.com/signup).
-
-!!! note
-
-    The GitHub account is free along with GitHub Actions up to a certain [amount](https://docs.github.com/en/billing/concepts/product-billing/github-actions). 
-
-## Create Personal Access Token
-
-1. Click [this](https://github.com/settings/tokens) link or go to your profile icon on the top right
-
-    - Click :octicons-gear-16: Settings
-    - Click :octicons-code-16: Developer settings
-    - Click :octicons-key-16: Personal access tokens -> Tokens (classic)
-
-2. Click Generate new token -> [Generate new token (classic)](https://github.com/settings/tokens/new)
-
-3. Enter Note: ```RF Image Builder or similar```
-
-4. Click :octicons-calendar-16: Expiration: Select an expiration date or no expiration
-
-5. Check the following boxes:
-
-    :fontawesome-regular-square-check: **repo**
-
-    :fontawesome-regular-square-check: **workflow**
-
-    :fontawesome-regular-square-check: **read:packages**
-
-    :fontawesome-regular-square-check: **read:org**
-
-6. Click Generate token
-
-7. Click the :material-content-copy: to copy your token and paste it in a notepad
-
-8. Move onto the [Remote Falcon installation](remotefalcon.md) and enter `Y` at the question to update GitHub configuration after running the [configure-rf](../about/scripts.md#configure-rfsh) script.
-
-![github_pat_settings_v2.png](../images/github_pat_settings_v2.png)
+To use the current public-image path, leave `REPO=username/repo` and `GITHUB_PAT` empty, then follow the current [Remote Falcon installation](remotefalcon.md) documentation.

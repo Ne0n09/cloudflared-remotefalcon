@@ -8,25 +8,25 @@ You will need your own domain name and server capable of running Docker and Mong
 
 - 2 CPUs/cores, minimum.
 
-- 4 GB RAM, minimum if you configure [GitHub](github.md) to remotely build Remote Falcon images.
+- 4 GB RAM minimum for the default AMD64 or ARM64 deployment. The four backend images are pulled from the public registry and only the UI is built locally.
 
     !!! warning
-        16 GB or more RAM is required to locally build the Remote Falcon [viewer](http://127.0.0.1:8000/cloudflared-remotefalcon/docs/architecture/containers/#viewer) or [plugins-api](http://127.0.0.1:8000/cloudflared-remotefalcon/docs/architecture/containers/#plugins-api) images.
+        Public backend images target 64-bit AMD64 and ARM64. Other architectures fall back to local JVM builds and may require substantially more memory.
 
 - 80 GB disk storage, although you may be able to get away with less.
 
 ## Server OS
 
-- 64-bit [Debian](https://www.debian.org/distrib/)
+- 64-bit AMD64 or ARM64 [Debian](https://www.debian.org/distrib/) for the default public-image path.
 
-- 64-bit [Ubuntu](https://ubuntu.com/download/server)
+- 64-bit AMD64 or ARM64 [Ubuntu](https://ubuntu.com/download/server) for the default public-image path.
 
 - Other 64-bit operating systems that can run Docker will require Docker to be manually installed if it is not already.
 
-- MongoDB requires a [64-bit OS](https://www.mongodb.com/docs/manual/installation/#supported-platforms) and a CPU that supports [AVX instructions](https://www.mongodb.com/community/forums/t/mongodb-5-0-cpu-intel-g4650-compatibility/116610).
+- MongoDB requires a [64-bit OS](https://www.mongodb.com/docs/manual/installation/#supported-platforms). MongoDB 5.0+ requires [AVX instructions on x86-64](https://www.mongodb.com/docs/manual/administration/production-notes/#x86-64) and ARMv8.2-A or later on ARM64.
 
     !!! note
-        If running in a VM ensure the VM's CPU type supports AVX.
+        On an x86-64 VM, ensure the VM CPU type exposes AVX. If AVX is unavailable, the scripts pin MongoDB to `4.4.29` and do not offer newer MongoDB releases.
 
 ## Root or sudo access
 

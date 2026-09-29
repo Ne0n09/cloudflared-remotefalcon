@@ -24,7 +24,7 @@ env:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       full_sha: ${{ steps.version.outputs.full_sha }}
       short_sha: ${{ steps.version.outputs.short_sha }}
@@ -108,7 +108,7 @@ jobs:
         include:
           - architecture: amd64
             platform: linux/amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - architecture: arm64
             platform: linux/arm64
             runner: ubuntu-24.04-arm
@@ -259,7 +259,7 @@ jobs:
       - prepare
       - build
     if: github.event_name == 'workflow_dispatch' || needs.prepare.outputs.release_exists == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         service:

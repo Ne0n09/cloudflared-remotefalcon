@@ -105,6 +105,7 @@ celerybeat.pid
 .env
 remotefalcon/.env.backup-*
 remotefalcon-backups/
+PROJECT_CONTEXT.md
 rf-review-tests.tar.gz
 vm-staging/
 rf-compat-check.tar.gz

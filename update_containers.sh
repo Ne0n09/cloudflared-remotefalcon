@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.24.2
+# VERSION=2026.9.29.1
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -32,6 +32,7 @@ HEALTH_CHECK="${3:-}" # Options: health or empty
 # CONTAINERS defines the order that the containers will be updated in if no name is provided
 CONTAINERS=("mongo" "versitygw" "plugins-api" "control-panel" "viewer" "ui" "external-api" "nginx" "cloudflared" )
 BACKED_UP=false # Flag to track if a backup was made
+MONGO_NO_AVX_PIN_ACTIVE=false
 REMOTE_FALCON_REPO="$REMOTE_FALCON_PLATFORM_REPO" # Main repo to compare sha
 
 if [[ -z "$SERVICE_NAME" ]]; then
@@ -50,17 +51,24 @@ fi
 # Get a registry access token for GHCR
 get_token() {
   local image=$1
+  local repository=$2
   local credentials_file
-  # Request token using GitHub username and PAT
-  local response
+  local response curl_status
 
-  credentials_file=$(mktemp) || return 1
-  chmod 600 "$credentials_file"
-  printf 'machine ghcr.io login user password %s\n' "$GITHUB_PAT" > "$credentials_file"
-  response=$(curl -s --netrc-file "$credentials_file" \
-  "https://ghcr.io/token?scope=repository:${REPO}/${image}:pull" -w "%{http_code}")
-  local curl_status=$?
-  rm -f "$credentials_file"
+  if github_workflow_builds_configured && [[ "$repository" == "$REPO" ]]; then
+    credentials_file=$(mktemp) || return 1
+    chmod 600 "$credentials_file"
+    printf 'machine ghcr.io login user password %s\n' "$GITHUB_PAT" > "$credentials_file"
+    response=$(curl -s --netrc-file "$credentials_file" \
+      "https://ghcr.io/token?scope=repository:${repository}/${image}:pull" -w "%{http_code}")
+    curl_status=$?
+    rm -f "$credentials_file"
+  else
+    # Public GHCR packages issue anonymous pull tokens.
+    response=$(curl -s \
+      "https://ghcr.io/token?scope=repository:${repository}/${image}:pull" -w "%{http_code}")
+    curl_status=$?
+  fi
   [[ $curl_status -eq 0 ]] || return "$curl_status"
 
   # Extract HTTP code (last 3 chars) and body
@@ -81,23 +89,30 @@ get_token() {
 check_image_exists() {
   local image=$1
   local tag=$2
+  local repository
+
+  repository=$(image_repository_for_service "$image")
+  if [[ -z "$repository" ]]; then
+    echo -e "${YELLOW}⚠️ $image is configured as a local build.${NC}"
+    return 1
+  fi
 
   # Get a short-lived token for this image
   local token
-  token=$(get_token "$image") || return 1
+  token=$(get_token "$image" "$repository") || return 1
 
   # Query the manifest for the specific tag
   local status
   status=$(curl -s -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer $token" \
-  -H "Accept: application/vnd.oci.image.manifest.v1+json" \
-  "https://ghcr.io/v2/${REPO}/${image}/manifests/$tag")
+  -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+  "https://ghcr.io/v2/${repository}/${image}/manifests/$tag")
 
   if [[ "$status" == "200" ]]; then
-    echo -e "🐳 Image ghcr.io/${REPO}/$image:${GREEN}$tag${NC} exists in the GitHub Container Registry(GHCR)."
+    echo -e "🐳 Image ghcr.io/${repository}/$image:${GREEN}$tag${NC} exists in GitHub Container Registry."
     return 0
   elif [[ "$status" == "404" ]]; then
-    echo -e "${RED}❌ Image ghcr.io/${REPO}/$image:$tag does not exist in GitHub Container Registry(GHCR).${NC}"
+    echo -e "${RED}❌ Image ghcr.io/${repository}/$image:$tag does not exist in GitHub Container Registry.${NC}"
     return 1
   else
     echo -e "${YELLOW}⚠️ Unexpected response checking $image:$tag – HTTP $status${NC}"
@@ -124,7 +139,8 @@ get_latest_version() {
       ;;
     plugins-api|control-panel|viewer|ui|external-api)
       local full_sha
-      if [[ "${RF_IMAGE_TAG_MODE:-app}" == "platform" ]]; then
+      if [[ "${RF_IMAGE_TAG_MODE:-app}" == "platform" ]] ||
+         { ! github_workflow_builds_configured && public_backend_images_supported; }; then
         # New builder images include shared libraries and use the full platform
         # commit as their tag. Enable this after installing the new workflow.
         full_sha=$(curl -fsSL "https://api.github.com/repos/${REMOTE_FALCON_REPO}/commits/main" | jq -r '.sha // empty')
@@ -137,6 +153,38 @@ get_latest_version() {
     *)
       echo -e "${RED}❌ Failed to fetch latest version. Unsupported container: $service_name${NC}" >&2
       exit 1
+      ;;
+  esac
+}
+
+prepare_mongo_cpu_compatibility() {
+  local compose_tag
+
+  MONGO_NO_AVX_PIN_ACTIVE=false
+  mongo_requires_no_avx_pin || return 0
+  MONGO_NO_AVX_PIN_ACTIVE=true
+  compose_tag=$(get_current_compose_tag mongo)
+
+  echo -e "${YELLOW}⚠️ This x86-64 CPU does not expose AVX instructions. MongoDB 5.0+ cannot run on this host.${NC}"
+  echo -e "${YELLOW}⚠️ MongoDB is pinned at ${MONGO_NO_AVX_VERSION}; newer MongoDB releases will not be offered.${NC}"
+  echo -e "${BLUE}🔗 https://www.mongodb.com/docs/manual/administration/production-notes/#x86-64${NC}"
+
+  case "$compose_tag" in
+    latest|undetermined)
+      replace_compose_tag mongo "$MONGO_NO_AVX_VERSION"
+      echo -e "${BLUE}📌 Updated $COMPOSE_FILE to mongo:${MONGO_NO_AVX_VERSION} before starting MongoDB.${NC}"
+      ;;
+    4.4.*)
+      ;;
+    4.*)
+      echo -e "${RED}❌ The configured MongoDB tag is '$compose_tag'. MongoDB must be upgraded through each supported release series before reaching ${MONGO_NO_AVX_VERSION}.${NC}" >&2
+      echo -e "${RED}❌ Leaving the MongoDB tag unchanged; a direct automatic jump could make the database unusable.${NC}" >&2
+      return 1
+      ;;
+    *)
+      echo -e "${RED}❌ The configured MongoDB tag is '$compose_tag'. An automatic downgrade to ${MONGO_NO_AVX_VERSION} could make newer database files unusable.${NC}" >&2
+      echo -e "${RED}❌ Leaving the MongoDB tag unchanged. Restore a compatible backup or move the installation to an AVX-capable CPU.${NC}" >&2
+      return 1
       ;;
   esac
 }
@@ -179,6 +227,40 @@ wait_for_service_deployment() {
 
   echo -e "${RED}❌ $service_name did not become ready within the deployment timeout.${NC}" >&2
   return 1
+}
+
+prepare_service_image() {
+  local service_name="$1"
+
+  if service_uses_registry_image "$service_name"; then
+    echo -e "${BLUE}⬇️ Pulling the published $service_name image...${NC}"
+    rf_compose pull "$service_name"
+  else
+    echo -e "${BLUE}🔨 Building $service_name locally...${NC}"
+    rf_compose build "$service_name"
+  fi
+}
+
+preflight_public_backend_release() {
+  local platform_sha short_sha service
+
+  github_workflow_builds_configured && return 0
+  public_backend_images_supported || return 0
+
+  platform_sha=$(curl -fsSL "https://api.github.com/repos/${REMOTE_FALCON_REPO}/commits/main" | jq -r '.sha // empty')
+  [[ "$platform_sha" =~ ^[0-9a-f]{40}$ ]] || {
+    echo -e "${RED}❌ Could not resolve the current Remote Falcon platform commit.${NC}" >&2
+    return 1
+  }
+  short_sha=${platform_sha:0:7}
+
+  echo -e "${BLUE}🔍 Verifying the coordinated public backend release $short_sha...${NC}"
+  for service in "${RF_BACKEND_SERVICES[@]}"; do
+    if ! check_image_exists "$service" "$short_sha"; then
+      echo -e "${RED}❌ Public backend release $short_sha is incomplete. No application containers were updated.${NC}" >&2
+      return 1
+    fi
+  done
 }
 
 perform_update() {
@@ -228,6 +310,7 @@ perform_update() {
   echo -e "✔ Updated $service_name image tag to version $latest_version in $COMPOSE_FILE..."
   echo -e "${BLUE}🔄 Restarting $service_name with the $latest_version image...${NC}"
   if rf_compose config -q &&
+     prepare_service_image "$service_name" &&
      rf_compose up -d --no-deps "$service_name" &&
      wait_for_service_deployment "$service_name" "${previous_image:+health}"; then
     rm -f "$previous_compose"
@@ -307,9 +390,14 @@ fi
 check_for_update() {
   local service_name="$1"
   CURRENT_VERSION=""
+  LATEST_VERSION=""
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${BLUE}📦 Container: $service_name${NC}"
+
+  if [[ "$service_name" == "mongo" ]] && ! prepare_mongo_cpu_compatibility; then
+    exit 1
+  fi
 
   # Check if the container is NOT running, for non-RF containers start if not started to get version directly, for RF containers check compose.yaml for tag
   if ! is_container_running "$service_name"; then
@@ -381,14 +469,20 @@ check_for_update() {
       ;;
   esac
 
-  # Fetch the release notes for the service from $RELEASE_NOTES_URL and store them in release_notes
-  local release_notes
-  release_notes=$(curl -s "$RELEASE_NOTES_URL" || true)
-  if [[ -z "$release_notes" ]]; then
-    echo -e "${RED}❌ Failed to fetch release notes for $service_name from $RELEASE_NOTES_URL${NC}"
+  # A non-AVX x86-64 host has a fixed MongoDB ceiling. Do not fetch or offer a
+  # newer release for that host.
+  if [[ "$service_name" == "mongo" && "$MONGO_NO_AVX_PIN_ACTIVE" == true ]]; then
+    LATEST_VERSION="$MONGO_NO_AVX_VERSION"
   else
-    # Fetch latest version(s) from the release notes
-    LATEST_VERSION=$(echo "$release_notes" | get_latest_version "$service_name" || true)
+    # Fetch the release notes for the service from $RELEASE_NOTES_URL and store them in release_notes
+    local release_notes
+    release_notes=$(curl -s "$RELEASE_NOTES_URL" || true)
+    if [[ -z "$release_notes" ]]; then
+      echo -e "${RED}❌ Failed to fetch release notes for $service_name from $RELEASE_NOTES_URL${NC}"
+    else
+      # Fetch latest version(s) from the release notes
+      LATEST_VERSION=$(echo "$release_notes" | get_latest_version "$service_name" || true)
+    fi
   fi
 
   if [[ "$LATEST_VERSION" == "null" || -z "$LATEST_VERSION" ]]; then
@@ -400,14 +494,13 @@ check_for_update() {
   case "$service_name" in
       "cloudflared")
         sed_command="s|cloudflare/$service_name:[^[:space:]]+|cloudflare/$service_name:$LATEST_VERSION|"
-        format="^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$"
         # Check if the current version is in the valid XXXX.XX.X XXXX.X.X format
         check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
@@ -419,13 +512,12 @@ check_for_update() {
         ;;
       "nginx")
         sed_command="/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_VERSION|"
-        format="^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,2}$"
         check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
@@ -437,6 +529,20 @@ check_for_update() {
         ;;
       "mongo")
         check_tag_format "$service_name" "$CURRENT_VERSION"
+        if [[ "$MONGO_NO_AVX_PIN_ACTIVE" == true ]]; then
+          echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
+          echo -e "📌 CPU-compatible pinned version: ${GREEN}$MONGO_NO_AVX_VERSION${NC}"
+          if [[ "$CURRENT_VERSION" == "$MONGO_NO_AVX_VERSION" ]]; then
+            echo -e "${GREEN}✅ MongoDB is pinned at $MONGO_NO_AVX_VERSION because this CPU does not support AVX.${NC}"
+            if [[ "$(get_current_compose_tag "$service_name")" != "$MONGO_NO_AVX_VERSION" ]]; then
+              replace_compose_tag "$service_name" "$MONGO_NO_AVX_VERSION"
+            fi
+          else
+            echo -e "${YELLOW}⚠️ MongoDB releases newer than $MONGO_NO_AVX_VERSION require AVX and will not be offered.${NC}"
+            prompt_to_update "$service_name" "$MONGO_NO_AVX_VERSION" "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$MONGO_NO_AVX_VERSION|"
+          fi
+          return 0
+        fi
         # Function to extract the major version from a version string
         get_major_version() {
           echo "$1" | cut -d'.' -f1
@@ -452,7 +558,7 @@ check_for_update() {
           echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
           echo -e "🔹 Latest version: ${GREEN}$LATEST_SAME_MAJOR${NC}"
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_SAME_MAJOR"
           fi
@@ -484,13 +590,12 @@ check_for_update() {
         ;;
       "versitygw")
         sed_command="s|versity/versitygw:[^[:space:]]+|versity/versitygw:$LATEST_VERSION|"
-        format="^v?[0-9]+\.[0-9]+\.[0-9]+$"
         check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
@@ -504,7 +609,6 @@ check_for_update() {
         short_sha=${LATEST_VERSION:0:7}
         # This isn't used in perform_update since I had issues getting this to work correctly, so there is a case statement just for the RF images in perform_update
         sed_command="s|(^[[:space:]]*image:[[:space:]]*\"?)([^\"[:space:]]*${service_name}):[^\"[:space:]]+(\"?)|\1\2:${latest_version}\3|"
-        format="\b[0-9a-f]{7}\b"
         check_tag_format "$service_name" "$CURRENT_VERSION"
         correct_format=$? # Capture the return value of check_tag_format
 
@@ -519,7 +623,7 @@ check_for_update() {
 
         if [[ "$CURRENT_VERSION" == "$short_sha" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
@@ -529,49 +633,48 @@ check_for_update() {
 
           case "$MODE" in
             "dry-run")
-              if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then # No REPO configured = local build
-                if (( correct_format == 0 )); then # No REPO configured and format is valid.
+              if ! service_uses_registry_image "$service_name"; then
+                if (( correct_format == 0 )); then
                   echo -e "🧪 ${YELLOW}Dry-run:${NC} would locally build and update $service_name to $short_sha"
-                else # No REPO configured and format is NOT valid
+                else
                   echo -e "🧪 ${YELLOW}Dry-run:${NC} would re-tag $service_name and locally build and update $service_name to $short_sha"
                 fi
-              else # REPO configured
-                if check_image_exists "$service_name" "$short_sha"; then # REPO configured and image exists
-                  if (( correct_format == 0 )); then # REPO configured, image exists, and format is valid
+              else
+                if check_image_exists "$service_name" "$short_sha"; then
+                  if (( correct_format == 0 )); then
                     echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $short_sha"
-                  else # REPO configured, image exists, and format is NOT valid
+                  else
                     echo -e "🧪 ${YELLOW}Dry-run:${NC} would re-tag $service_name and update $service_name to $short_sha"
                   fi
-                else # REPO configured and image does not exist
-                  if (( correct_format == 0 )); then # REPO configured, image does NOT exist, and format is valid
-                    echo -e "🧪 ${YELLOW}Dry-run:${NC} would perform run_workflow.sh to build and push $service_name:$short_sha to $REPO"
-                    echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $short_sha"
-                  else # REPO configured, image does NOT exist, and format is NOT valid
-                    echo -e "🧪 ${YELLOW}Dry-run:${NC} would perform run_workflow.sh to build and push $service_name:$short_sha to $REPO"
-                    echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $short_sha"
-                  fi
+                elif github_workflow_builds_configured; then
+                  echo -e "🧪 ${YELLOW}Dry-run:${NC} would perform run_workflow.sh to build and push $service_name:$short_sha to $REPO"
+                  echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $short_sha"
+                else
+                  echo -e "🧪 ${YELLOW}Dry-run:${NC} would wait for the public AMD64/ARM64 $service_name:$short_sha image to be published"
                 fi
               fi
               ;;
             "auto-apply")
-              if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then # No REPO configured = local build
+              if ! service_uses_registry_image "$service_name"; then
                 update_rf_version # From shared_functions.sh
                 perform_update "$service_name" "$LATEST_VERSION" "$sed_command" 
-              else # REPO configured
-                if check_image_exists "$service_name" "$short_sha"; then # REPO configured and image exists
+              else
+                if check_image_exists "$service_name" "$short_sha"; then
                   perform_update "$service_name" "$LATEST_VERSION" "$sed_command" # $LATEST_VERSION will get converted to short sha in perform_update
-                else # REPO configured and image does not exist
+                elif github_workflow_builds_configured; then
                   if bash "$SCRIPT_DIR/run_workflow.sh" "$service_name=$LATEST_VERSION"; then
                     perform_update "$service_name" "$LATEST_VERSION" "$sed_command"
                   else
                     echo -e "${RED}❌ GitHub workflow did not complete successfully for $service_name.${NC}"
                   fi
+                else
+                  echo -e "${RED}❌ Public AMD64/ARM64 image $service_name:$short_sha has not been published yet; leaving the current container unchanged.${NC}" >&2
+                  exit 1
                 fi
               fi
               ;;
             *)
-              # Interactive mode - prompt to locally build if $REPO is not configured, else prompt to run the workflow to build on GitHub
-              if [[ -z "$REPO" || "$REPO" == "username/repo" || ! "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ ]]; then
+              if ! service_uses_registry_image "$service_name"; then
                 read -rp "❓ Would you like to build $service_name:$short_sha? (y/n) [n]: " confirm
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
                   perform_update "$service_name" "$LATEST_VERSION" "$sed_command"
@@ -579,13 +682,12 @@ check_for_update() {
                   echo -e "⏭️ Skipped building $service_name."
                 fi
               else
-                # Interactive mode - prompt to run workflow and prompt to update compose.yaml if workflow completes successfully
-                if check_image_exists "$service_name" "$short_sha"; then # REPO configured and image exists
+                if check_image_exists "$service_name" "$short_sha"; then
                   read -rp "❓ Update $service_name to ${short_sha}? (y/n) [n]: " confirm
                   if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     perform_update "$service_name" "$LATEST_VERSION" "$sed_command" # $LATEST_VERSION will get converted to short sha in perform_update
                   fi
-                else # REPO configured and image does not exist
+                elif github_workflow_builds_configured; then
                   read -rp "❓ Would you like to build and push $service_name:$short_sha to repository $REPO with run_workflow.sh? (y/n) [n]: " confirm
                   if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     if bash "$SCRIPT_DIR/run_workflow.sh" "$service_name=$LATEST_VERSION"; then
@@ -596,6 +698,8 @@ check_for_update() {
                   else
                     echo -e "⏭️ Skipped building $service_name."
                   fi
+                else
+                  echo -e "${YELLOW}⚠️ Public AMD64/ARM64 image $service_name:$short_sha has not been published yet; skipping it.${NC}"
                 fi
               fi
               ;;
@@ -621,6 +725,7 @@ check_compose_exists
 # If script is run with 'all', loop through all containers by calling the check_for_update function otherwise just check the specified container
 if [ "$SERVICE_NAME" == "all" ]; then
   echo -e "${BLUE}⚙️ Checking for container updates...${NC}"
+  preflight_public_backend_release || exit 1
   for container in "${CONTAINERS[@]}"; do
     check_for_update "$container"
   done

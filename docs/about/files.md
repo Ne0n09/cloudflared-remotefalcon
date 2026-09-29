@@ -19,9 +19,7 @@ The exceptions are plugins-api(8083:8083) which allows for direct LAN access.
         build:
         context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
         dockerfile: apps/plugins-api/Dockerfile
-        args:
-            - OTEL_OPTS=${OTEL_OPTS}
-        image: plugins-api:latest
+        image: ghcr.io/${RF_BACKEND_IMAGE_REPO}/plugins-api:latest
         container_name: plugins-api
         restart: always
         ports:
@@ -38,9 +36,13 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
 ???+ info ".env variables"
 
+    `RF_BACKEND_IMAGE_REPO`
+
+    :   Public GHCR repository containing the four AMD64/ARM64 backend images. Anonymous pulls do not require a GitHub account. The default is `ne0n09/cloudflared-remotefalcon`.
+
     `REPO`
 
-    :   The configure-rf script guides on setting this. This lets you run a [GitHub Actions workflow](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows) to build Remote Falcon images and store them on the GitHub Container Registry. Also required the GITHUB_PAT to be configured.
+    :   Deprecated compatibility override for an existing private image-builder repository. It is active only when a `GITHUB_PAT` is also configured. New installations leave the default unchanged.
 
     `TUNNEL_TOKEN`
 
@@ -100,7 +102,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `POSTHOG_CLI_API_KEY`
 
-    :   Optional PostHog personal API key used only while building UI source maps. It is stored as a GitHub Actions secret when remote image building is configured.
+    :   Optional PostHog personal API key used only while building UI source maps. Existing deprecated private-builder installations store it as a GitHub Actions secret; public-image installations use it only for the local UI build.
 
     `PUBLIC_POSTHOG_HOST`
 
@@ -124,7 +126,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `GITHUB_PAT`
 
-    :   [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens). This is required if you would like to build Remote Falcon images via a [GitHub Actions workflow](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows).
+    :   Optional [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) used only with the deprecated private image-builder compatibility override. Normal public-image installations leave it empty.
 
     `SOCIAL_META`
 
@@ -160,7 +162,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `S3_ROOT_PASSWORD`
 
-    :   Specifies the root password for Versity Gateway. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
+    :   Specifies the root password for Versity Gateway. The [versitygw_init](scripts.md#versitygw_initsh) script will automatically update the default value to a random value.
 
     `S3_ENDPOINT`
 
@@ -168,11 +170,11 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `S3_ACCESS_KEY`
 
-    :   Specifies the S3 access key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
+    :   Specifies the S3 access key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh) script will automatically update the default value to a random value.
 
     `S3_SECRET_KEY`
 
-    :   Specifies the S3 seceret key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh_initsh) script will automatically update the default value to a random value.
+    :   Specifies the S3 seceret key for Versity Gateway 'remote-falcon-images' bucket. The [versitygw_init](scripts.md#versitygw_initsh) script will automatically update the default value to a random value.
 
     `IMAGES_S3_BUCKET`
 

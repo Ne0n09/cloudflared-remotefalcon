@@ -1,6 +1,6 @@
 # cloudflared-remotefalcon
 
-> This repository tracks the current Remote Falcon platform monorepo. Public, checksummed releases support installation and script updates without a GitHub account. The stack was validated on Debian 13 with Docker Compose 5.5.1 on September 18, 2026.
+> This repository tracks the current Remote Falcon platform monorepo. Public, checksummed releases support installation and script updates without a GitHub account.
 
 ## Install
 
@@ -14,20 +14,15 @@ The prior standalone `configure-rf.sh` installation command remains compatible a
 
 [cloudflared-remotefalcon](https://github.com/Ne0n09/cloudflared-remotefalcon/tree/main) helps you self host [Remote Falcon](https://remotefalcon.com/) through guided setup and configuration using [Cloudflare Tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) and your own server capable of running [Docker](https://www.docker.com/) through the use of various helper [scripts](https://ne0n09.github.io/cloudflared-remotefalcon/about/scripts/).
 
-For full details check the [cloudflared-remotefalcon documentation](https://ne0n09.github.io/cloudflared-remotefalcon/)!
+For full details, check the [cloudflared-remotefalcon documentation](https://ne0n09.github.io/cloudflared-remotefalcon/).
 
-To learn more about [Remote Falcon](https://remotefalcon.com/) check out the documentation [here](https://docs.remotefalcon.com/).
+To learn more about Remote Falcon, see the [Remote Falcon documentation](https://docs.remotefalcon.com/).
 
-Installation is a three-step process, although step 2 is optional:
+Installation is a two-step process. There is no separate GitHub account, repository, or image-builder setup step:
 
-1. [Cloudflare](https://ne0n09.github.io/cloudflared-remotefalcon/install/cloudflare/)
+1. [Configure Cloudflare](https://ne0n09.github.io/cloudflared-remotefalcon/install/cloudflare/).
+2. [Install Remote Falcon](https://ne0n09.github.io/cloudflared-remotefalcon/install/remotefalcon/).
 
-2. [GitHub](https://ne0n09.github.io/cloudflared-remotefalcon/install/github/)
+AMD64 and ARM64 installations pull the four public backend images anonymously and build the deployment-specific UI locally. End users do not need a GitHub account or private image-builder repository.
 
-3. [Remote Falcon](https://ne0n09.github.io/cloudflared-remotefalcon/install/remotefalcon/)
-
-You may refer to the [release notes](https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/) for any updates to the scripts and files.
-
-## configure-rf demo
-
-![Example configure-rf demo](docs/images/slide_show_9_8_25.gif)
+You may refer to the [release notes](https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/) for updates to the scripts and files.
