@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.28.2
+# VERSION=2026.9.28.3
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -450,14 +450,13 @@ check_for_update() {
   case "$service_name" in
       "cloudflared")
         sed_command="s|cloudflare/$service_name:[^[:space:]]+|cloudflare/$service_name:$LATEST_VERSION|"
-        format="^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$"
         # Check if the current version is in the valid XXXX.XX.X XXXX.X.X format
         check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
@@ -469,13 +468,12 @@ check_for_update() {
         ;;
       "nginx")
         sed_command="/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$LATEST_VERSION|"
-        format="^[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,2}$"
         check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
@@ -502,7 +500,7 @@ check_for_update() {
           echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
           echo -e "🔹 Latest version: ${GREEN}$LATEST_SAME_MAJOR${NC}"
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "^[0-9]{1,2}\.[0-9]+\.[0-9]{1,2}$" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_SAME_MAJOR"
           fi
@@ -534,13 +532,12 @@ check_for_update() {
         ;;
       "versitygw")
         sed_command="s|versity/versitygw:[^[:space:]]+|versity/versitygw:$LATEST_VERSION|"
-        format="^v?[0-9]+\.[0-9]+\.[0-9]+$"
         check_tag_format "$service_name" "$CURRENT_VERSION"
         echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
         echo -e "🔹 Latest version: ${GREEN}$LATEST_VERSION${NC}"
         if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi
@@ -554,7 +551,6 @@ check_for_update() {
         short_sha=${LATEST_VERSION:0:7}
         # This isn't used in perform_update since I had issues getting this to work correctly, so there is a case statement just for the RF images in perform_update
         sed_command="s|(^[[:space:]]*image:[[:space:]]*\"?)([^\"[:space:]]*${service_name}):[^\"[:space:]]+(\"?)|\1\2:${latest_version}\3|"
-        format="\b[0-9a-f]{7}\b"
         check_tag_format "$service_name" "$CURRENT_VERSION"
         correct_format=$? # Capture the return value of check_tag_format
 
@@ -569,7 +565,7 @@ check_for_update() {
 
         if [[ "$CURRENT_VERSION" == "$short_sha" ]]; then
           echo -e "${GREEN}✅ $service_name is up-to-date.${NC}"
-          if [[ "$(get_current_compose_tag "$service_name")" != "$format" ]]; then
+          if ! check_tag_format "$service_name" "$(get_current_compose_tag "$service_name")"; then
             # Update the tag in compose.yaml if it is not in the valid format
             replace_compose_tag "$service_name" "$LATEST_VERSION"
           fi

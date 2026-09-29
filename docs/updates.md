@@ -70,7 +70,7 @@ Running `update_scripts.sh` by itself changes configuration files but does not r
 
 The repository's public workflow builds the four AMD64 backends without deployment secrets. The legacy private image builder still uses `build.yml`; `run_workflow.sh` deploys only built Remote Falcon app services and restores prior images and Compose configuration after a failed deployment check.
 
-Infrastructure images use tested version tags in `compose.yaml`. Run `update_containers.sh` to check and apply newer versions with backup, deployment validation, and rollback instead of changing those tags to `latest`.
+Fresh Compose templates start NGINX, Cloudflared, MongoDB, and Versity Gateway at `latest`. During configuration, `update_containers.sh` starts each image, detects its concrete version, and replaces `latest` with that explicit tag for repeatable restarts and rollback. Existing installations preserve their current image references during script and template updates.
 
 ## Upgrading an installation without `update_scripts.sh`
 

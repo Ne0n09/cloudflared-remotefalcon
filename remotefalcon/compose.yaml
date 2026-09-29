@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2026.9.28.2
+# COMPOSE_VERSION=2026.9.28.3
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -10,7 +10,7 @@
 
 services:
   nginx:
-    image: nginx:1.31.6
+    image: nginx:latest
     container_name: nginx
     restart: unless-stopped
     volumes:
@@ -21,14 +21,14 @@ services:
       - YOUR_DOMAIN=${DOMAIN}
       - YOUR_IMAGES_S3_BUCKET=${IMAGES_S3_BUCKET}
   cloudflared:
-    image: cloudflare/cloudflared:2026.9.1
+    image: cloudflare/cloudflared:latest
     container_name: cloudflared
     restart: unless-stopped
     command: tunnel run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
   mongo:
-    image: mongo:7.0.43
+    image: mongo:latest
     container_name: mongo
     restart: always
     healthcheck:
@@ -43,7 +43,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
   versitygw:
-    image: versity/versitygw:v1.8.0
+    image: versity/versitygw:latest
     container_name: versitygw
     restart: always
     volumes:

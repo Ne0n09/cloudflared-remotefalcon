@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.9.28.3
+
+- Fresh Compose templates now start NGINX, Cloudflared, MongoDB, and Versity Gateway at `latest`. The configuration update pass detects each concrete release and rewrites `compose.yaml` with explicit version tags.
+
+- Corrected infrastructure tag validation so the updater tests the actual Compose tag format before replacing `latest`. Existing installations continue to preserve their current image references during script updates.
+
 ## 2026.9.28.2
 
 - Fixed existing `.env` files missing `RF_BACKEND_IMAGE_REPO` so Compose uses the public repository default without repeated warnings, and the configurator now writes both public-image migration settings.

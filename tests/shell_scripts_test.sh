@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.28.2
+# VERSION=2026.9.28.3
 
 set -u
 
@@ -1139,12 +1139,34 @@ test_current_platform_runtime_configuration() {
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Configuration completed with failed health checks.'
 }
 
-test_infrastructure_images_are_version_pinned() {
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: nginx:1\.31\.6'
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: cloudflare/cloudflared:2026\.9\.1'
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: mongo:7\.0\.43'
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: versity/versitygw:v1\.8\.0'
-  assert_file_not_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: (nginx|cloudflare/cloudflared|mongo|versity/versitygw):latest'
+test_fresh_infrastructure_images_are_resolved_and_pinned() {
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: nginx:latest'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: cloudflare/cloudflared:latest'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: mongo:latest'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: versity/versitygw:latest'
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'replace_compose_tag "\$service_name" "\$LATEST_VERSION"'
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'replace_compose_tag "\$service_name" "\$LATEST_SAME_MAJOR"'
+}
+
+test_infrastructure_latest_tags_can_be_pinned() {
+  local ws
+  ws="$(make_workspace)"
+
+  (
+    cd "$ws" || exit 1
+    source ./shared_functions.sh
+
+    replace_compose_tag nginx 1.31.6
+    replace_compose_tag cloudflared 2026.9.1
+    replace_compose_tag mongo 7.0.43
+    replace_compose_tag versitygw v1.8.0
+
+    grep -Eq '^[[:space:]]*image: nginx:1\.31\.6$' "$COMPOSE_FILE" || exit 1
+    grep -Eq '^[[:space:]]*image: cloudflare/cloudflared:2026\.9\.1$' "$COMPOSE_FILE" || exit 1
+    grep -Eq '^[[:space:]]*image: mongo:7\.0\.43$' "$COMPOSE_FILE" || exit 1
+    grep -Eq '^[[:space:]]*image: versity/versitygw:v1\.8\.0$' "$COMPOSE_FILE" || exit 1
+    ! grep -Eq '^[[:space:]]*image: (nginx|cloudflare/cloudflared|mongo|versity/versitygw):latest$' "$COMPOSE_FILE"
+  )
 }
 
 test_ci_has_pinned_static_validation() {
@@ -1203,7 +1225,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+Fixed existing `\.env` files missing `RF_BACKEND_IMAGE_REPO`'
+  assert_file_contains "$output" '^-[[:space:]]+Fresh Compose templates now start NGINX, Cloudflared, MongoDB, and Versity Gateway at `latest`' || return 1
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
@@ -1513,7 +1535,8 @@ run_test "fresh installs validate deployed services individually" test_fresh_ins
 run_test "fresh storage is initialized and required by health checks" test_fresh_storage_is_initialized_and_required
 run_test "noninteractive MongoDB updates stay on the current major" test_noninteractive_mongo_upgrade_stays_on_current_major
 run_test "compose supplies current platform runtime configuration" test_current_platform_runtime_configuration
-run_test "infrastructure images use tested version tags" test_infrastructure_images_are_version_pinned
+run_test "fresh infrastructure images resolve latest and become pinned" test_fresh_infrastructure_images_are_resolved_and_pinned
+run_test "infrastructure latest tags can be pinned to detected versions" test_infrastructure_latest_tags_can_be_pinned
 if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
   run_test "CI uses pinned actions and static validators" test_ci_has_pinned_static_validation
   run_test "public backend workflow publishes one coordinated AMD64 release" test_public_backend_workflow_is_amd64_and_coordinated
