@@ -175,6 +175,85 @@ jobs:
             org.opencontainers.image.version=${{ needs.prepare.outputs.short_sha }}
             org.opencontainers.image.licenses=GPL-3.0
 
+      - name: Smoke test native architecture image
+        if: github.event_name == 'workflow_dispatch' || steps.check.outputs.exists == 'false'
+        env:
+          ARCHITECTURE: ${{ matrix.architecture }}
+          IMAGE: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_repository }}/${{ matrix.service }}:${{ needs.prepare.outputs.short_sha }}-${{ matrix.architecture }}
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+          suffix="${SERVICE}-${ARCHITECTURE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          network="rf-smoke-${suffix}"
+          mongo_container="rf-smoke-mongo-${suffix}"
+          app_container="rf-smoke-app-${suffix}"
+
+          cleanup() {
+            docker rm -f "$app_container" "$mongo_container" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker pull "$IMAGE"
+          image_architecture=$(docker image inspect --format '{{.Architecture}}' "$IMAGE")
+          if [[ "$image_architecture" != "$ARCHITECTURE" ]]; then
+            echo "Expected $ARCHITECTURE image, received $image_architecture" >&2
+            exit 1
+          fi
+
+          docker network create "$network" >/dev/null
+          docker run -d --name "$mongo_container" --network "$network" --network-alias mongo \
+            -e MONGO_INITDB_ROOT_USERNAME=smoke \
+            -e MONGO_INITDB_ROOT_PASSWORD=smoke-password \
+            mongo:7.0.43 >/dev/null
+
+          mongo_ready=false
+          for _ in {1..30}; do
+            if docker exec "$mongo_container" mongosh --quiet \
+              --username smoke --password smoke-password \
+              --authenticationDatabase admin \
+              --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)' >/dev/null 2>&1; then
+              mongo_ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$mongo_ready" != true ]]; then
+            docker logs "$mongo_container" >&2
+            exit 1
+          fi
+
+          mongo_uri='mongodb://smoke:smoke-password@mongo:27017/remote-falcon?authSource=admin'
+          docker run -d --name "$app_container" --network "$network" \
+            -e MONGO_URI="$mongo_uri" \
+            -e QUARKUS_MONGODB_CONNECTION_STRING="$mongo_uri" \
+            -e SPRING_DATA_MONGODB_URI="$mongo_uri" \
+            -e QUARKUS_OTEL_SDK_DISABLED=true \
+            -e SERVER_PORT=8080 \
+            -e SEQUENCE_LIMIT=100 \
+            -e WEB_URL=https://example.com \
+            -e AUTO_VALIDATE_EMAIL=true \
+            -e JWT_USER=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= \
+            -e DOMAIN=example.com \
+            -e CLIENT_HEADER=x-forwarded-for \
+            -e S3_ENDPOINT=http://127.0.0.1:7070 \
+            -e S3_ACCESSKEY=smoke-access-key \
+            -e S3_SECRETKEY=smoke-secret-key \
+            -e IMAGES_S3_BUCKET=remote-falcon-images \
+            -e IMAGES_CDN_ENDPOINT=https://example.com/remote-falcon-images \
+            -e VIEWER_API_URL=http://viewer:8080 \
+            "$IMAGE" >/dev/null
+
+          for _ in {1..20}; do
+            if [[ "$(docker inspect --format '{{.State.Running}}' "$app_container" 2>/dev/null || true)" != true ]]; then
+              echo "$SERVICE exited during its $ARCHITECTURE smoke test." >&2
+              docker logs "$app_container" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "$SERVICE remained running on $ARCHITECTURE with MongoDB available."
+
   promote:
     needs:
       - prepare
