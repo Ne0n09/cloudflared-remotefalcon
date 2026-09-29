@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.28.5
+# VERSION=2026.9.29.1
 
 set -u
 
@@ -572,13 +572,25 @@ test_shared_functions() {
 
     uname() { printf 'aarch64\n'; }
     is_arm_cpu || exit 1
+    is_arm64_cpu || exit 1
+    public_backend_images_supported || exit 1
     uname() { printf 'x86_64\n'; }
     ! is_arm_cpu || exit 1
+    ! is_arm64_cpu || exit 1
     is_amd64_cpu || exit 1
     public_backend_images_supported || exit 1
+    RF_CPU_FLAGS_OVERRIDE="sse sse2 avx avx2"
+    cpu_supports_avx || exit 1
+    ! mongo_requires_no_avx_pin || exit 1
+    RF_CPU_FLAGS_OVERRIDE="sse sse2"
+    ! cpu_supports_avx || exit 1
+    mongo_requires_no_avx_pin || exit 1
+    uname() { printf 'aarch64\n'; }
+    ! mongo_requires_no_avx_pin || exit 1
     uname() { printf 'i686\n'; }
     ! is_amd64_cpu || exit 1
     ! public_backend_images_supported || exit 1
+    unset RF_CPU_FLAGS_OVERRIDE
 
     memory_check() { return 1; }
     REPO="username/repo"
@@ -1138,6 +1150,36 @@ test_noninteractive_mongo_upgrade_stays_on_current_major() {
   assert_file_contains "$ROOT_DIR/update_containers.sh" 'replace_compose_tag "\$service_name" "\$LATEST_SAME_MAJOR"'
 }
 
+test_non_avx_mongo_is_pinned_before_start() {
+  local ws
+  ws="$(make_workspace)"
+  sed '/^# ========== Main update logic ==========/,$d' "$ws/update_containers.sh" > "$ws/update-functions.sh"
+
+  (
+    cd "$ws" || exit 1
+    source "$ws/update-functions.sh"
+    uname() { printf 'x86_64\n'; }
+    RF_CPU_FLAGS_OVERRIDE="sse sse2"
+    prepare_mongo_cpu_compatibility
+    [[ "$MONGO_NO_AVX_PIN_ACTIVE" == true ]] || exit 1
+    [[ "$(get_current_compose_tag mongo)" == "4.4.29" ]] || exit 1
+
+    replace_compose_tag mongo 4.0.28
+    if prepare_mongo_cpu_compatibility; then exit 1; fi
+    [[ "$(get_current_compose_tag mongo)" == "4.0.28" ]] || exit 1
+
+    replace_compose_tag mongo 7.0.43
+    if prepare_mongo_cpu_compatibility; then exit 1; fi
+    [[ "$(get_current_compose_tag mongo)" == "7.0.43" ]] || exit 1
+  ) > "$ws/mongo-pin.out" 2>&1 || return 1
+
+  assert_file_contains "$ws/mongo-pin.out" 'does not expose AVX instructions' || return 1
+  assert_file_contains "$ws/mongo-pin.out" 'pinned at 4\.4\.29' || return 1
+  assert_file_contains "$ws/mongo-pin.out" 'direct automatic jump could make the database unusable' || return 1
+  assert_file_contains "$ws/mongo-pin.out" 'automatic downgrade.*could make newer database files unusable' || return 1
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'newer MongoDB releases will not be offered' || return 1
+}
+
 test_current_platform_runtime_configuration() {
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}:\$\{MONGO_INITDB_ROOT_PASSWORD\}@mongo:27017/remote-falcon\?authSource=admin'
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'SPRING_DATA_MONGODB_URI=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}:\$\{MONGO_INITDB_ROOT_PASSWORD\}@mongo:27017/remote-falcon\?authSource=admin'
@@ -1198,12 +1240,17 @@ test_ci_has_pinned_static_validation() {
   assert_file_contains "$ROOT_DIR/.github/workflows/docs-historical.yml" 'default: legacy-private-builder'
 }
 
-test_public_backend_workflow_is_amd64_and_coordinated() {
+test_public_backend_workflow_is_multiarch_and_coordinated() {
   local workflow="$ROOT_DIR/.github/workflows/build-public-images.yml"
 
   assert_file_contains "$workflow" '^  packages: write$'
   assert_file_contains "$workflow" '^          context: \.$'
-  assert_file_contains "$workflow" '^          platforms: linux/amd64$'
+  assert_file_contains "$workflow" '^    runs-on: \$\{\{ matrix\.runner \}\}$'
+  assert_file_contains "$workflow" '^            runner: ubuntu-24\.04-arm$'
+  assert_file_contains "$workflow" '^          platforms: \$\{\{ matrix\.platform \}\}$'
+  assert_file_contains "$workflow" 'short_sha \}\}-\$\{\{ matrix\.architecture'
+  assert_file_contains "$workflow" 'index\("amd64"\) != null'
+  assert_file_contains "$workflow" 'index\("arm64"\) != null'
   assert_file_contains "$workflow" 'file: apps/\$\{\{ matrix\.service \}\}/Dockerfile'
   assert_file_contains "$workflow" '^  promote:$'
   assert_file_contains "$workflow" '^      - build$'
@@ -1211,6 +1258,7 @@ test_public_backend_workflow_is_amd64_and_coordinated() {
   assert_file_contains "$workflow" "if: github.event_name == 'workflow_dispatch' \|\| steps.check.outputs.exists == 'false'"
   assert_file_contains "$workflow" "if: github.event_name == 'workflow_dispatch' \|\| needs.prepare.outputs.release_exists == 'false'"
   assert_file_contains "$workflow" 'docker buildx imagetools create'
+  assert_file_contains "$workflow" '--tag "\$\{IMAGE\}:\$\{SHA_TAG\}"'
   assert_file_not_contains "$workflow" 'apps/ui'
   assert_file_not_contains "$workflow" 'build-args:'
   [[ $(grep -Ec '^          - (plugins-api|control-panel|viewer|external-api)$' "$workflow") == 8 ]] || return 1
@@ -1241,7 +1289,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+Removed the obsolete GitHub setup step and outdated GIFs from current installation guidance' || return 1
+  assert_file_contains "$output" '^-[[:space:]]+Public backend images now build on native AMD64 and ARM64 GitHub-hosted runners' || return 1
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
@@ -1497,7 +1545,7 @@ MOCK
 
 test_fresh_public_install_uses_hybrid_images() {
   assert_file_contains "$ROOT_DIR/configure-rf.sh" '\[ "\$pending_changes" = false \] && \[ "\$pending_arg_changes" = false \]'
-  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Public AMD64 backend images will be pulled anonymously'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Public AMD64/ARM64 backend images will be pulled anonymously'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'rf_compose build ui'
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: ghcr.io/\$\{RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon\}/plugins-api:latest'
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: ui:latest'
@@ -1628,12 +1676,13 @@ run_test "configure-rf.sh has no archived updater" test_configure_rf_has_no_arch
 run_test "fresh installs validate deployed services individually" test_fresh_install_checks_each_deployed_service
 run_test "fresh storage is initialized and required by health checks" test_fresh_storage_is_initialized_and_required
 run_test "noninteractive MongoDB updates stay on the current major" test_noninteractive_mongo_upgrade_stays_on_current_major
+run_test "non-AVX x86-64 hosts pin MongoDB before startup" test_non_avx_mongo_is_pinned_before_start
 run_test "compose supplies current platform runtime configuration" test_current_platform_runtime_configuration
 run_test "fresh infrastructure images resolve latest and become pinned" test_fresh_infrastructure_images_are_resolved_and_pinned
 run_test "infrastructure latest tags can be pinned to detected versions" test_infrastructure_latest_tags_can_be_pinned
 if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
   run_test "CI uses pinned actions and static validators" test_ci_has_pinned_static_validation
-  run_test "public backend workflow publishes one coordinated AMD64 release" test_public_backend_workflow_is_amd64_and_coordinated
+  run_test "public backend workflow publishes one coordinated multi-platform release" test_public_backend_workflow_is_multiarch_and_coordinated
 fi
 run_test "fresh deployment harness has guarded update and build modes" test_fresh_deployment_harness_safety
 if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
@@ -1646,7 +1695,7 @@ run_test "upgrade installs jq and reports installation failure" test_upgrade_ins
 run_test "legacy upgrades run the safe transition in order" test_legacy_upgrade_is_orchestrated
 run_test "legacy upgrades rebuild all platform images in one workflow" test_legacy_upgrade_rebuilds_platform_images_as_one_workflow
 run_test "legacy upgrades handle missing Docker group access" test_upgrade_handles_missing_docker_group_access
-run_test "fresh AMD64 installs use public backends and a local UI" test_fresh_public_install_uses_hybrid_images
+run_test "fresh AMD64 and ARM64 installs use public backends and a local UI" test_fresh_public_install_uses_hybrid_images
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
 run_test "release updater merges live values into current configuration" test_release_updater_merges_live_config
 run_test "release updater leaves live configuration unchanged after validation failure" test_release_updater_rejects_invalid_config

@@ -23,6 +23,6 @@ Installation is a two-step process. There is no separate GitHub account, reposit
 1. [Configure Cloudflare](https://ne0n09.github.io/cloudflared-remotefalcon/install/cloudflare/).
 2. [Install Remote Falcon](https://ne0n09.github.io/cloudflared-remotefalcon/install/remotefalcon/).
 
-AMD64 installations pull the four public backend images anonymously and build the deployment-specific UI locally. End users do not need a GitHub account or private image-builder repository.
+AMD64 and ARM64 installations pull the four public backend images anonymously and build the deployment-specific UI locally. End users do not need a GitHub account or private image-builder repository.
 
 You may refer to the [release notes](https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/) for updates to the scripts and files.

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.28.1
+# VERSION=2026.9.29.1
 
 set -euo pipefail
 
@@ -32,7 +32,7 @@ Options:
   --keep                  Keep the final deployment and test data
   -h, --help              Show this help
 
-The public mode pulls four AMD64 backends anonymously and builds UI locally.
+The public mode pulls four AMD64/ARM64 backends anonymously and builds UI locally.
 The private mode verifies the legacy private image-builder compatibility path
 and requires valid GITHUB_PAT and REPO values in the source .env.
 Secrets are copied into private test files and are not accepted as arguments.

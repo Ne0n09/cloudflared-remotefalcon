@@ -1,12 +1,14 @@
 # Image workflows
 
-## Public AMD64 backend workflow
+## Public AMD64 and ARM64 backend workflow
 
 `build-public-images.yml` checks out one immutable Remote Falcon platform
 commit and builds `plugins-api`, `control-panel`, `viewer`, and `external-api`
 from the monorepo root. The production Dockerfiles require no deployment build
-arguments. Each image is published for `linux/amd64` with the same seven-digit
-platform commit tag.
+arguments. Each image is published as a multi-platform manifest for
+`linux/amd64` and `linux/arm64` with the same seven-digit platform commit tag.
+Each architecture builds on a native GitHub-hosted runner before the workflow
+combines both outputs into the coordinated manifest.
 
 The date and `latest` tags are promoted only after all four matrix builds
 succeed. The updater also verifies that all four immutable tags exist before an
@@ -14,9 +16,10 @@ all-service update, preventing a partially published backend release from
 changing the running application stack.
 
 Daily scheduled runs resolve the current upstream platform SHA and inspect all
-four immutable image tags. Services whose SHA tag already exists are skipped.
-If all four exist, the workflow performs no builds or tag promotion. Manual
-dispatches intentionally rebuild all four services.
+four immutable image tags. A service is skipped only when its SHA tag contains
+both required architectures. If all four multi-platform images exist, the
+workflow performs no builds or tag promotion. Manual dispatches intentionally
+rebuild all four services.
 
 The UI is intentionally excluded because its public URLs and site settings are
 build-time values. It is built locally from `apps/ui` during configuration and

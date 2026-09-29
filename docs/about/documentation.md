@@ -8,7 +8,7 @@ The `latest` alias always points to the newest tagged release. Publishing a new 
 
 The last documentation release that describes the retired GitHub account and private image-builder setup is designated as `2026.9.27.6` with the `legacy-private-builder` alias. Run the historical-docs workflow before the first versioned release to publish that snapshot for older installations.
 
-New AMD64 installations should use the current documentation. They pull the four public backend images anonymously and build only the deployment-specific UI locally.
+New AMD64 and ARM64 installations should use the current documentation. They pull the four public backend images anonymously and build only the deployment-specific UI locally.
 
 ## Maintainer deployment
 

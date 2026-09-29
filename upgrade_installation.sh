@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.28.4
+# VERSION=2026.9.29.1
 
 set -euo pipefail
 
@@ -87,9 +87,9 @@ rebuild_all_application_images() {
   fi
 
   if public_backend_images_supported; then
-    echo -e "${CYAN}Pulling the coordinated public AMD64 backends and building the deployment-specific UI...${NC}"
+    echo -e "${CYAN}Pulling the coordinated public AMD64/ARM64 backends and building the deployment-specific UI...${NC}"
   else
-    echo -e "${CYAN}Building all application images locally because public images target AMD64 only...${NC}"
+    echo -e "${CYAN}Building all application images locally because public images target AMD64 and ARM64 only...${NC}"
   fi
   snapshot=$(mktemp) || return 1
   cp "$COMPOSE_FILE" "$snapshot" || { rm -f "$snapshot"; return 1; }

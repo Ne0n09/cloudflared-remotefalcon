@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.9.29.1
+
+- Public backend images now build on native AMD64 and ARM64 GitHub-hosted runners and publish one coordinated multi-platform manifest. Scheduled builds consider an upstream SHA complete only when every backend tag contains both architectures.
+
+- On x86-64 CPUs without AVX, fresh MongoDB configurations are pinned to `4.4.29` before startup. Container updates report the compatibility pin and do not offer MongoDB 5.0 or newer; explicit versions that would require a sequential upgrade or unsafe downgrade are left unchanged.
+
 ## 2026.9.28.5
 
 - Removed the obsolete GitHub setup step and outdated GIFs from current installation guidance, marked private image-builder material as deprecated compatibility documentation, and stopped public-image configuration from installing GitHub CLI.

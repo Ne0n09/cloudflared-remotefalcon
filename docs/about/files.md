@@ -38,7 +38,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `RF_BACKEND_IMAGE_REPO`
 
-    :   Public GHCR repository containing the four AMD64 backend images. Anonymous pulls do not require a GitHub account. The default is `ne0n09/cloudflared-remotefalcon`.
+    :   Public GHCR repository containing the four AMD64/ARM64 backend images. Anonymous pulls do not require a GitHub account. The default is `ne0n09/cloudflared-remotefalcon`.
 
     `REPO`
 
@@ -126,7 +126,7 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `GITHUB_PAT`
 
-    :   Optional [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) used only with the deprecated private image-builder compatibility override. Normal AMD64 installations leave it empty.
+    :   Optional [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) used only with the deprecated private image-builder compatibility override. Normal public-image installations leave it empty.
 
     `SOCIAL_META`
 

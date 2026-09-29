@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.28.3
+# VERSION=2026.9.29.1
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -32,6 +32,7 @@ HEALTH_CHECK="${3:-}" # Options: health or empty
 # CONTAINERS defines the order that the containers will be updated in if no name is provided
 CONTAINERS=("mongo" "versitygw" "plugins-api" "control-panel" "viewer" "ui" "external-api" "nginx" "cloudflared" )
 BACKED_UP=false # Flag to track if a backup was made
+MONGO_NO_AVX_PIN_ACTIVE=false
 REMOTE_FALCON_REPO="$REMOTE_FALCON_PLATFORM_REPO" # Main repo to compare sha
 
 if [[ -z "$SERVICE_NAME" ]]; then
@@ -152,6 +153,38 @@ get_latest_version() {
     *)
       echo -e "${RED}❌ Failed to fetch latest version. Unsupported container: $service_name${NC}" >&2
       exit 1
+      ;;
+  esac
+}
+
+prepare_mongo_cpu_compatibility() {
+  local compose_tag
+
+  MONGO_NO_AVX_PIN_ACTIVE=false
+  mongo_requires_no_avx_pin || return 0
+  MONGO_NO_AVX_PIN_ACTIVE=true
+  compose_tag=$(get_current_compose_tag mongo)
+
+  echo -e "${YELLOW}⚠️ This x86-64 CPU does not expose AVX instructions. MongoDB 5.0+ cannot run on this host.${NC}"
+  echo -e "${YELLOW}⚠️ MongoDB is pinned at ${MONGO_NO_AVX_VERSION}; newer MongoDB releases will not be offered.${NC}"
+  echo -e "${BLUE}🔗 https://www.mongodb.com/docs/manual/administration/production-notes/#x86-64${NC}"
+
+  case "$compose_tag" in
+    latest|undetermined)
+      replace_compose_tag mongo "$MONGO_NO_AVX_VERSION"
+      echo -e "${BLUE}📌 Updated $COMPOSE_FILE to mongo:${MONGO_NO_AVX_VERSION} before starting MongoDB.${NC}"
+      ;;
+    4.4.*)
+      ;;
+    4.*)
+      echo -e "${RED}❌ The configured MongoDB tag is '$compose_tag'. MongoDB must be upgraded through each supported release series before reaching ${MONGO_NO_AVX_VERSION}.${NC}" >&2
+      echo -e "${RED}❌ Leaving the MongoDB tag unchanged; a direct automatic jump could make the database unusable.${NC}" >&2
+      return 1
+      ;;
+    *)
+      echo -e "${RED}❌ The configured MongoDB tag is '$compose_tag'. An automatic downgrade to ${MONGO_NO_AVX_VERSION} could make newer database files unusable.${NC}" >&2
+      echo -e "${RED}❌ Leaving the MongoDB tag unchanged. Restore a compatible backup or move the installation to an AVX-capable CPU.${NC}" >&2
+      return 1
       ;;
   esac
 }
@@ -357,9 +390,14 @@ fi
 check_for_update() {
   local service_name="$1"
   CURRENT_VERSION=""
+  LATEST_VERSION=""
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${BLUE}📦 Container: $service_name${NC}"
+
+  if [[ "$service_name" == "mongo" ]] && ! prepare_mongo_cpu_compatibility; then
+    exit 1
+  fi
 
   # Check if the container is NOT running, for non-RF containers start if not started to get version directly, for RF containers check compose.yaml for tag
   if ! is_container_running "$service_name"; then
@@ -431,14 +469,20 @@ check_for_update() {
       ;;
   esac
 
-  # Fetch the release notes for the service from $RELEASE_NOTES_URL and store them in release_notes
-  local release_notes
-  release_notes=$(curl -s "$RELEASE_NOTES_URL" || true)
-  if [[ -z "$release_notes" ]]; then
-    echo -e "${RED}❌ Failed to fetch release notes for $service_name from $RELEASE_NOTES_URL${NC}"
+  # A non-AVX x86-64 host has a fixed MongoDB ceiling. Do not fetch or offer a
+  # newer release for that host.
+  if [[ "$service_name" == "mongo" && "$MONGO_NO_AVX_PIN_ACTIVE" == true ]]; then
+    LATEST_VERSION="$MONGO_NO_AVX_VERSION"
   else
-    # Fetch latest version(s) from the release notes
-    LATEST_VERSION=$(echo "$release_notes" | get_latest_version "$service_name" || true)
+    # Fetch the release notes for the service from $RELEASE_NOTES_URL and store them in release_notes
+    local release_notes
+    release_notes=$(curl -s "$RELEASE_NOTES_URL" || true)
+    if [[ -z "$release_notes" ]]; then
+      echo -e "${RED}❌ Failed to fetch release notes for $service_name from $RELEASE_NOTES_URL${NC}"
+    else
+      # Fetch latest version(s) from the release notes
+      LATEST_VERSION=$(echo "$release_notes" | get_latest_version "$service_name" || true)
+    fi
   fi
 
   if [[ "$LATEST_VERSION" == "null" || -z "$LATEST_VERSION" ]]; then
@@ -485,6 +529,20 @@ check_for_update() {
         ;;
       "mongo")
         check_tag_format "$service_name" "$CURRENT_VERSION"
+        if [[ "$MONGO_NO_AVX_PIN_ACTIVE" == true ]]; then
+          echo -e "🔸 Current version: ${YELLOW}$CURRENT_VERSION${NC}"
+          echo -e "📌 CPU-compatible pinned version: ${GREEN}$MONGO_NO_AVX_VERSION${NC}"
+          if [[ "$CURRENT_VERSION" == "$MONGO_NO_AVX_VERSION" ]]; then
+            echo -e "${GREEN}✅ MongoDB is pinned at $MONGO_NO_AVX_VERSION because this CPU does not support AVX.${NC}"
+            if [[ "$(get_current_compose_tag "$service_name")" != "$MONGO_NO_AVX_VERSION" ]]; then
+              replace_compose_tag "$service_name" "$MONGO_NO_AVX_VERSION"
+            fi
+          else
+            echo -e "${YELLOW}⚠️ MongoDB releases newer than $MONGO_NO_AVX_VERSION require AVX and will not be offered.${NC}"
+            prompt_to_update "$service_name" "$MONGO_NO_AVX_VERSION" "/^\s*image:\s*$service_name:[^[:space:]]+/s|$service_name:[^[:space:]]+|$service_name:$MONGO_NO_AVX_VERSION|"
+          fi
+          return 0
+        fi
         # Function to extract the major version from a version string
         get_major_version() {
           echo "$1" | cut -d'.' -f1
@@ -592,7 +650,7 @@ check_for_update() {
                   echo -e "🧪 ${YELLOW}Dry-run:${NC} would perform run_workflow.sh to build and push $service_name:$short_sha to $REPO"
                   echo -e "🧪 ${YELLOW}Dry-run:${NC} would update $service_name to $short_sha"
                 else
-                  echo -e "🧪 ${YELLOW}Dry-run:${NC} would wait for the public AMD64 $service_name:$short_sha image to be published"
+                  echo -e "🧪 ${YELLOW}Dry-run:${NC} would wait for the public AMD64/ARM64 $service_name:$short_sha image to be published"
                 fi
               fi
               ;;
@@ -610,7 +668,7 @@ check_for_update() {
                     echo -e "${RED}❌ GitHub workflow did not complete successfully for $service_name.${NC}"
                   fi
                 else
-                  echo -e "${RED}❌ Public AMD64 image $service_name:$short_sha has not been published yet; leaving the current container unchanged.${NC}" >&2
+                  echo -e "${RED}❌ Public AMD64/ARM64 image $service_name:$short_sha has not been published yet; leaving the current container unchanged.${NC}" >&2
                   exit 1
                 fi
               fi
@@ -641,7 +699,7 @@ check_for_update() {
                     echo -e "⏭️ Skipped building $service_name."
                   fi
                 else
-                  echo -e "${YELLOW}⚠️ Public AMD64 image $service_name:$short_sha has not been published yet; skipping it.${NC}"
+                  echo -e "${YELLOW}⚠️ Public AMD64/ARM64 image $service_name:$short_sha has not been published yet; skipping it.${NC}"
                 fi
               fi
               ;;

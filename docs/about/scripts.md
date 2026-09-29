@@ -58,7 +58,9 @@ Click the name of the script to expand the section to display details about the 
 
     - A backup of the compose.yaml is created when any of the containers are updated.
 
-    - On AMD64, verifies and pulls coordinated public images for the four backend services without GitHub credentials. The UI remains a local build because its deployment settings are compiled into the bundle.
+    - On AMD64 and ARM64, verifies and pulls coordinated public images for the four backend services without GitHub credentials. The UI remains a local build because its deployment settings are compiled into the bundle.
+
+    - On x86-64 systems without AVX, pins MongoDB to `4.4.29` and does not offer MongoDB 5.0 or newer.
 
     - The image tag for the Remote Falcon container is updated in the compose.yaml to the short-hash:
     ```yaml linenums="50" hl_lines="3 6"
@@ -148,7 +150,7 @@ Click the name of the script to expand the section to display details about the 
 
     !!! warning "Deprecated private-builder compatibility"
 
-        New installations use the public AMD64 backend images and build the UI locally. This script remains available only for installations that already use a private image-builder repository.
+        New installations use the public AMD64/ARM64 backend images and build the UI locally. This script remains available only for installations that already use a private image-builder repository.
 
     - If [REPO](files.md#env) and [GITHUB_PAT](files.md#env) are configured in the .env file this script will run a GitHub Actions workflow to build new Remote Falcon Images.
     

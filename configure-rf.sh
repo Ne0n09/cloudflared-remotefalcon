@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.28.5
+# VERSION=2026.9.29.1
 
 #set -euo pipefail
 
@@ -836,7 +836,7 @@ configure_github() {
 
 configure_build_strategy() {
   if ! public_backend_images_supported; then
-    echo -e "${YELLOW}⚠️ This host is not AMD64. Public Remote Falcon backend images currently target AMD64, so this host will use local JVM builds.${NC}"
+    echo -e "${YELLOW}⚠️ This host is not AMD64 or ARM64. Public Remote Falcon backend images do not target this architecture, so this host will use local JVM builds.${NC}"
     REPO="username/repo"
     GITHUB_PAT=""
     DOCKERFILE="Dockerfile.dev"
@@ -854,7 +854,7 @@ configure_build_strategy() {
   GITHUB_PAT=""
   DOCKERFILE="Dockerfile.dev"
   RF_IMAGE_TAG_MODE="platform"
-  echo -e "${CYAN}ℹ️ Public AMD64 backend images will be pulled anonymously; only the deployment-specific UI will be built locally.${NC}"
+  echo -e "${CYAN}ℹ️ Public AMD64/ARM64 backend images will be pulled anonymously; only the deployment-specific UI will be built locally.${NC}"
 }
 
 # Ask to configure .env values

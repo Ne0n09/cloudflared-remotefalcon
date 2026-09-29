@@ -77,10 +77,15 @@ jobs:
           exists=true
           for service in plugins-api control-panel viewer external-api; do
             image="${REGISTRY}/${IMAGE_REPOSITORY}/${service}:${TAG}"
-            if docker manifest inspect "$image" >/dev/null 2>&1; then
-              echo "Image already exists: $image"
+            manifest=$(docker manifest inspect --verbose "$image" 2>/dev/null || true)
+            if jq -e '
+              [.[].Descriptor.platform? | select(.os == "linux") | .architecture] as $architectures |
+              ($architectures | index("amd64") != null) and
+              ($architectures | index("arm64") != null)
+            ' <<< "$manifest" >/dev/null 2>&1; then
+              echo "Multi-platform image already exists: $image"
             else
-              echo "Image needs to be built: $image"
+              echo "Image needs an AMD64 and ARM64 build: $image"
               exists=false
             fi
           done
@@ -88,7 +93,7 @@ jobs:
 
   build:
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
@@ -97,7 +102,17 @@ jobs:
           - control-panel
           - viewer
           - external-api
-    name: Build ${{ matrix.service }} (linux/amd64)
+        architecture:
+          - amd64
+          - arm64
+        include:
+          - architecture: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - architecture: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    name: Build ${{ matrix.service }} (${{ matrix.platform }})
     steps:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -113,12 +128,17 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_repository }}/${{ matrix.service }}
           TAG: ${{ needs.prepare.outputs.short_sha }}
         run: |
-          if docker manifest inspect "${IMAGE}:${TAG}" >/dev/null 2>&1; then
+          manifest=$(docker manifest inspect --verbose "${IMAGE}:${TAG}" 2>/dev/null || true)
+          if jq -e '
+            [.[].Descriptor.platform? | select(.os == "linux") | .architecture] as $architectures |
+            ($architectures | index("amd64") != null) and
+            ($architectures | index("arm64") != null)
+          ' <<< "$manifest" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Image ${IMAGE}:${TAG} already exists"
+            echo "Multi-platform image ${IMAGE}:${TAG} already exists"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Image ${IMAGE}:${TAG} does not exist"
+            echo "Image ${IMAGE}:${TAG} is missing AMD64 or ARM64"
           fi
 
       - name: Check out Remote Falcon platform
@@ -133,7 +153,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || steps.check.outputs.exists == 'false'
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
-      - name: Build and push immutable AMD64 image
+      - name: Build and push immutable architecture image
         if: github.event_name == 'workflow_dispatch' || steps.check.outputs.exists == 'false'
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         env:
@@ -141,14 +161,14 @@ jobs:
         with:
           context: .
           file: apps/${{ matrix.service }}/Dockerfile
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: true
           provenance: true
           sbom: true
-          cache-from: type=gha,scope=${{ matrix.service }}-amd64
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}-amd64
+          cache-from: type=gha,scope=${{ matrix.service }}-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}-${{ matrix.architecture }}
           tags: |
-            ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_repository }}/${{ matrix.service }}:${{ needs.prepare.outputs.short_sha }}
+            ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_repository }}/${{ matrix.service }}:${{ needs.prepare.outputs.short_sha }}-${{ matrix.architecture }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.prepare.outputs.full_sha }}
@@ -182,12 +202,24 @@ jobs:
 
       - name: Promote coordinated release tags
         env:
+          EVENT_NAME: ${{ github.event_name }}
           IMAGE: ${{ env.REGISTRY }}/${{ needs.prepare.outputs.image_repository }}/${{ matrix.service }}
           SHA_TAG: ${{ needs.prepare.outputs.short_sha }}
           DATE_TAG: ${{ needs.prepare.outputs.commit_date }}
         run: |
           set -euo pipefail
+          manifest=$(docker manifest inspect --verbose "${IMAGE}:${SHA_TAG}" 2>/dev/null || true)
+          if [[ "$EVENT_NAME" != "workflow_dispatch" ]] && jq -e '
+            [.[].Descriptor.platform? | select(.os == "linux") | .architecture] as $architectures |
+            ($architectures | index("amd64") != null) and
+            ($architectures | index("arm64") != null)
+          ' <<< "$manifest" >/dev/null 2>&1; then
+            sources=("${IMAGE}:${SHA_TAG}")
+          else
+            sources=("${IMAGE}:${SHA_TAG}-amd64" "${IMAGE}:${SHA_TAG}-arm64")
+          fi
           docker buildx imagetools create \
+            --tag "${IMAGE}:${SHA_TAG}" \
             --tag "${IMAGE}:${DATE_TAG}" \
             --tag "${IMAGE}:latest" \
-            "${IMAGE}:${SHA_TAG}"
+            "${sources[@]}"

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.9.28.2
+# SHARED_FUNCTIONS_VERSION=2026.9.29.1
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -19,6 +19,7 @@ DEFAULT_RF_BACKEND_IMAGE_REPO="ne0n09/cloudflared-remotefalcon"
 RF_BACKEND_IMAGE_REPO="${RF_BACKEND_IMAGE_REPO:-$DEFAULT_RF_BACKEND_IMAGE_REPO}"
 RF_IMAGE_TAG_MODE="${RF_IMAGE_TAG_MODE:-app}"
 RF_BACKEND_SERVICES=(plugins-api control-panel viewer external-api)
+MONGO_NO_AVX_VERSION="4.4.29"
 
 # Used to store .env variables
 declare -gA existing_env_vars
@@ -339,9 +340,9 @@ is_rf_backend_service() {
   [[ " ${RF_BACKEND_SERVICES[*]} " == *" ${service_name} "* ]]
 }
 
-# The public image workflow currently publishes only linux/amd64 images.
+# The public image workflow publishes linux/amd64 and linux/arm64 images.
 public_backend_images_supported() {
-  is_amd64_cpu
+  is_amd64_cpu || is_arm64_cpu
 }
 
 # Print the GHCR repository used by a service, or print nothing for local builds.
@@ -387,9 +388,9 @@ update_compose_image_path() {
     if github_workflow_builds_configured; then
       echo -e "${BLUE}🐙 REPO is configured, 'ghcr.io/\${REPO}/' image: prefixes updated in $COMPOSE_FILE.${NC}"
     elif public_backend_images_supported; then
-      echo -e "${BLUE}🐳 Public AMD64 backend image paths were applied; the UI remains a local build.${NC}"
+      echo -e "${BLUE}🐳 Public AMD64/ARM64 backend image paths were applied; the UI remains a local build.${NC}"
     else
-      echo -e "${BLUE}🐳 Public AMD64 images are unavailable on this architecture; local image paths were applied.${NC}"
+      echo -e "${BLUE}🐳 Public backend images are unavailable on this architecture; local image paths were applied.${NC}"
     fi
   fi
 }
@@ -399,7 +400,7 @@ github_workflow_builds_configured() {
   [[ -n "${REPO:-}" && "$REPO" != "username/repo" && "$REPO" =~ ^[a-z0-9._-]+/[a-z0-9._-]+$ && -n "${GITHUB_PAT:-}" ]]
 }
 
-# Function to detect ARM CPUs. Public project images currently target AMD64 only.
+# Function to detect ARM CPUs, including unsupported 32-bit variants.
 is_arm_cpu() {
   local arch=""
 
@@ -413,6 +414,22 @@ is_arm_cpu() {
 
   arch="${arch,,}"
   [[ "$arch" =~ ^(arm|armv[0-9].*|aarch64|arm64)$ ]]
+}
+
+# Return success only for the 64-bit ARM architecture published by the public workflow.
+is_arm64_cpu() {
+  local arch=""
+
+  if command -v uname >/dev/null 2>&1; then
+    arch="$(uname -m 2>/dev/null || true)"
+  fi
+
+  if [[ -z "$arch" ]] && command -v lscpu >/dev/null 2>&1; then
+    arch="$(lscpu 2>/dev/null | awk -F: '/Architecture/ {gsub(/[[:space:]]/, "", $2); print $2; exit}')"
+  fi
+
+  arch="${arch,,}"
+  [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]
 }
 
 # Return success only on the architecture published by the public workflow.
@@ -429,6 +446,29 @@ is_amd64_cpu() {
 
   arch="${arch,,}"
   [[ "$arch" == "x86_64" || "$arch" == "amd64" ]]
+}
+
+# Return success when an x86-64 host exposes the AVX CPU flag. The override is
+# intended for deterministic tests and diagnostics; an explicitly empty value
+# represents a CPU without AVX support.
+cpu_supports_avx() {
+  local flags=""
+
+  if [[ -n "${RF_CPU_FLAGS_OVERRIDE+x}" ]]; then
+    flags="$RF_CPU_FLAGS_OVERRIDE"
+  elif [[ -r /proc/cpuinfo ]]; then
+    flags="$(awk -F: 'tolower($1) ~ /^[[:space:]]*flags[[:space:]]*$/ {print tolower($2); exit}' /proc/cpuinfo)"
+  elif command -v lscpu >/dev/null 2>&1; then
+    flags="$(lscpu 2>/dev/null | awk -F: 'tolower($1) ~ /^[[:space:]]*flags[[:space:]]*$/ {print tolower($2); exit}')"
+  fi
+
+  [[ " $flags " == *" avx "* ]]
+}
+
+# MongoDB 5.0+ requires AVX on x86-64. ARM64 has separate microarchitecture
+# requirements and must not be classified by this x86-specific check.
+mongo_requires_no_avx_pin() {
+  is_amd64_cpu && ! cpu_supports_avx
 }
 
 # Function to check system memory and if less than 16GB display a warning message about building locally
