@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.9.28.2
+
+- Fixed existing `.env` files missing `RF_BACKEND_IMAGE_REPO` so Compose uses the public repository default without repeated warnings, and the configurator now writes both public-image migration settings.
+
+- Fixed public-image updates to consistently use the platform commit SHA instead of older per-app commit SHAs. Secret prompts now display masked `*` characters as input is typed or pasted.
+
 ## 2026.9.28.1
 
 - Added a public GitHub Actions workflow that builds coordinated `linux/amd64` images for plugins-api, control-panel, viewer, and external-api from one Remote Falcon platform commit. Scheduled runs skip SHA-tagged images that already exist, while date and `latest` tags are promoted only after every required backend succeeds.

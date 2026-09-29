@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2026.9.28.1
+# COMPOSE_VERSION=2026.9.28.2
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -64,7 +64,7 @@ services:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
       dockerfile: apps/plugins-api/${DOCKERFILE}
-    image: ghcr.io/${RF_BACKEND_IMAGE_REPO}/plugins-api:latest
+    image: ghcr.io/${RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon}/plugins-api:latest
     container_name: plugins-api
     restart: always
     ports:
@@ -81,7 +81,7 @@ services:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
       dockerfile: apps/control-panel/${DOCKERFILE}
-    image: ghcr.io/${RF_BACKEND_IMAGE_REPO}/control-panel:latest
+    image: ghcr.io/${RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon}/control-panel:latest
     container_name: control-panel
     restart: always
     environment:
@@ -108,7 +108,7 @@ services:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
       dockerfile: apps/viewer/${DOCKERFILE}
-    image: ghcr.io/${RF_BACKEND_IMAGE_REPO}/viewer:latest
+    image: ghcr.io/${RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon}/viewer:latest
     container_name: viewer
     restart: always
     environment:
@@ -150,7 +150,7 @@ services:
     build:
       context: https://github.com/Remote-Falcon/remote-falcon-platform.git#main
       dockerfile: apps/external-api/${DOCKERFILE}
-    image: ghcr.io/${RF_BACKEND_IMAGE_REPO}/external-api:latest
+    image: ghcr.io/${RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon}/external-api:latest
     container_name: external-api
     restart: always
     environment:

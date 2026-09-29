@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.27.7
+# VERSION=2026.9.28.2
 
 set -u
 
@@ -557,7 +557,7 @@ test_shared_functions() {
     GITHUB_PAT=""
     update_compose_image_path
     ! grep -Fq 'ghcr.io/${REPO}/external-api:' "$COMPOSE_FILE" || exit 1
-    grep -Fq 'ghcr.io/${RF_BACKEND_IMAGE_REPO}/external-api:' "$COMPOSE_FILE" || exit 1
+    grep -Fq 'ghcr.io/${RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon}/external-api:' "$COMPOSE_FILE" || exit 1
     grep -Eq '^[[:space:]]*image: ui:' "$COMPOSE_FILE" || exit 1
 
     replace_compose_tag external-api 1234567890abcdef1234567890abcdef12345678
@@ -873,6 +873,23 @@ test_update_containers_dry_run() {
   [[ "$output" == *"external-api"* ]] || return 1
 }
 
+test_public_images_use_platform_sha_without_migrated_env() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  sed '/^# ========== Main update logic ==========/,$d' "$ws/update_containers.sh" > "$ws/update-functions.sh"
+
+  (
+    cd "$ws" || exit 1
+    source "$ws/update-functions.sh"
+    RF_IMAGE_TAG_MODE=app
+    REPO="username/repo"
+    GITHUB_PAT=""
+    [[ "$(get_latest_version plugins-api)" == "abcdef1234567890abcdef1234567890abcdef12" ]] || exit 1
+    [[ "$(get_latest_version ui)" == "abcdef1234567890abcdef1234567890abcdef12" ]] || exit 1
+  )
+}
+
 test_setup_cloudflare() {
   local ws
   ws="$(make_workspace)"
@@ -1071,6 +1088,24 @@ test_configure_rf_help() {
   assert_file_contains "$ws/configure-help.out" '--set KEY=VALUE'
 }
 
+test_secret_input_displays_masked_progress() {
+  local ws result
+  ws="$(make_workspace)"
+  awk '/^read_masked_input\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/input-functions.sh"
+  awk '/^get_input\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/input-functions.sh"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/input-functions.sh"
+    NON_INTERACTIVE=false
+    DEBUG_INPUT=false
+    result=$(printf 'secret-token\n' | get_input TUNNEL_TOKEN 'Token:' '' 2> "$ws/masked-input.out")
+    [[ "$result" == "secret-token" ]] || exit 1
+    grep -Eq '\*{12}' "$ws/masked-input.out" || exit 1
+    ! grep -Fq 'secret-token' "$ws/masked-input.out" || exit 1
+  )
+}
+
 test_configure_rf_has_no_archived_updater() {
   assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'git clone "https://\$\{GITHUB_PAT\}'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'raw.githubusercontent.com/Ne0n09/cloudflared-remotefalcon/main/install.sh'
@@ -1168,7 +1203,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+Added a public GitHub Actions workflow'
+  assert_file_contains "$output" '^-[[:space:]]+Fixed existing `\.env` files missing `RF_BACKEND_IMAGE_REPO`'
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
@@ -1348,7 +1383,7 @@ test_fresh_public_install_uses_hybrid_images() {
   assert_file_contains "$ROOT_DIR/configure-rf.sh" '\[ "\$pending_changes" = false \] && \[ "\$pending_arg_changes" = false \]'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Public AMD64 backend images will be pulled anonymously'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'rf_compose build ui'
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: ghcr.io/\$\{RF_BACKEND_IMAGE_REPO\}/plugins-api:latest'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: ghcr.io/\$\{RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon\}/plugins-api:latest'
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'image: ui:latest'
 }
 
@@ -1462,6 +1497,7 @@ run_test "Quarkus runtime migration is targeted and idempotent" test_quarkus_env
 run_test "control-panel runtime migration is targeted and idempotent" test_control_panel_environment_migration
 run_test "image upgrades check only their service and roll back on HTTP failure" test_update_targeted_health_and_rollback
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
+run_test "public images use the platform SHA before env migration" test_public_images_use_platform_sha_without_migrated_env
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
 run_test "versitygw_init.sh fails when bucket creation fails" test_versitygw_init_fails_when_bucket_creation_fails
@@ -1471,6 +1507,7 @@ run_test "MinIO migration preserves its volume when the temporary server fails" 
 run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
 run_test "health_check.sh fails when the S3 bucket is missing" test_health_check_requires_s3_bucket
 run_test "configure-rf.sh exposes expected CLI help" test_configure_rf_help
+run_test "secret prompts display masked input progress" test_secret_input_displays_masked_progress
 run_test "configure-rf.sh has no archived updater" test_configure_rf_has_no_archived_updater
 run_test "fresh installs validate deployed services individually" test_fresh_install_checks_each_deployed_service
 run_test "fresh storage is initialized and required by health checks" test_fresh_storage_is_initialized_and_required

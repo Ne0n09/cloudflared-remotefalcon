@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.28.1
+# VERSION=2026.9.28.2
 
 #set -euo pipefail
 
@@ -141,6 +141,34 @@ download_file "run_workflow.sh"
 download_file "sync_repo_secrets.sh"
 chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "versitygw_init.sh" "setup_cloudflare.sh" "run_workflow.sh" "sync_repo_secrets.sh"
 
+# Read a secret while showing visible progress without revealing its value.
+read_masked_input() {
+  local prompt="$1"
+  local input=""
+  local character=""
+
+  printf '%s' "$prompt" >&2
+  while IFS= read -r -s -n 1 character; do
+    if [[ -z "$character" ]]; then
+      break
+    fi
+    case "$character" in
+      $'\177'|$'\b')
+        if [[ -n "$input" ]]; then
+          input="${input%?}"
+          printf '\b \b' >&2
+        fi
+        ;;
+      *)
+        input+="$character"
+        printf '*' >&2
+        ;;
+    esac
+  done
+  printf '\n' >&2
+  printf '%s' "$input"
+}
+
 # Function to get user input for configuration questions in the format of get_input KEY PROMPT DEFAULT
 get_input() {
   local key=""
@@ -184,8 +212,7 @@ get_input() {
   # Interactive mode: prompt the user, keep any prompt output on stdout
   case "$key" in
     *TOKEN*|*PAT*|*PASSWORD*|*SECRET*|*PRIVATE*|*JWT*|*KEY*)
-      read -rsp "$prompt [configured value hidden]: " input
-      echo >&2 ;;
+      input=$(read_masked_input "$prompt [configured value hidden]: ") ;;
     *) read -rp "$prompt [$default]: " input ;;
   esac
   printf '%s' "${input:-$default}"
@@ -200,6 +227,7 @@ update_env() {
   # Declare NEW variables to check against existing .env values to detect if anything changed
   declare -A new_env_vars=(
     ["RF_BACKEND_IMAGE_REPO"]="$RF_BACKEND_IMAGE_REPO"
+    ["RF_IMAGE_TAG_MODE"]="$RF_IMAGE_TAG_MODE"
     ["REPO"]="$REPO"
     ["TUNNEL_TOKEN"]="$TUNNEL_TOKEN"
     ["DOMAIN"]="$DOMAIN"
@@ -806,6 +834,7 @@ configure_build_strategy() {
     REPO="username/repo"
     GITHUB_PAT=""
     DOCKERFILE="Dockerfile.dev"
+    RF_IMAGE_TAG_MODE="app"
     return
   fi
 
@@ -818,6 +847,7 @@ configure_build_strategy() {
   REPO="username/repo"
   GITHUB_PAT=""
   DOCKERFILE="Dockerfile.dev"
+  RF_IMAGE_TAG_MODE="platform"
   echo -e "${CYAN}ℹ️ Public AMD64 backend images will be pulled anonymously; only the deployment-specific UI will be built locally.${NC}"
 }
 
@@ -1065,7 +1095,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
         fi
       else # No ARGs changed, just run 'docker compose up -d' to pick up any environment variable changes
           echo -e "${YELLOW}⚠️ Containers are running. No build ARG changes detected. Running 'docker compose up -d' to apply any environmental variable changes...${NC}"
-          docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+          rf_compose up -d --force-recreate
       fi
 
       # Prompt to check updates after applying new .env values to existing containers
@@ -1103,7 +1133,7 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
               ui=$(get_current_compose_tag "ui") \
               external-api=$(get_current_compose_tag "external-api"); then
                 echo -e "${GREEN}🚀 Bringing up containers...${NC}"
-                docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+                rf_compose up -d --force-recreate
             else
               echo -e "${RED}❌ Workflow failed. Aborting.${NC}"
               exit 1

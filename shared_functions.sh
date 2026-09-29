@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.9.28.1
+# SHARED_FUNCTIONS_VERSION=2026.9.28.2
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -17,6 +17,7 @@ REMOTE_FALCON_PLATFORM_GIT_URL="https://github.com/${REMOTE_FALCON_PLATFORM_REPO
 REMOTE_FALCON_APPS_DIR="apps"
 DEFAULT_RF_BACKEND_IMAGE_REPO="ne0n09/cloudflared-remotefalcon"
 RF_BACKEND_IMAGE_REPO="${RF_BACKEND_IMAGE_REPO:-$DEFAULT_RF_BACKEND_IMAGE_REPO}"
+RF_IMAGE_TAG_MODE="${RF_IMAGE_TAG_MODE:-app}"
 RF_BACKEND_SERVICES=(plugins-api control-panel viewer external-api)
 
 # Used to store .env variables
@@ -371,7 +372,7 @@ update_compose_image_path() {
     if github_workflow_builds_configured; then
       prefix='ghcr.io/${REPO}/'
     elif is_rf_backend_service "$service" && public_backend_images_supported; then
-      prefix='ghcr.io/${RF_BACKEND_IMAGE_REPO}/'
+      prefix='ghcr.io/${RF_BACKEND_IMAGE_REPO:-ne0n09/cloudflared-remotefalcon}/'
     fi
 
     # Normalize unprefixed, public, and legacy private image references.
@@ -736,7 +737,7 @@ check_tag_format() {
 is_container_running() {
   local service_name="$1"
 
-  docker compose -f "$COMPOSE_FILE" ps --services --filter "status=running" | grep -q "^${service_name}$"
+  rf_compose ps --services --filter "status=running" | grep -q "^${service_name}$"
 }
 
 get_container_network() {

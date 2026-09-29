@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.28.1
+# VERSION=2026.9.28.2
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -138,7 +138,8 @@ get_latest_version() {
       ;;
     plugins-api|control-panel|viewer|ui|external-api)
       local full_sha
-      if [[ "${RF_IMAGE_TAG_MODE:-app}" == "platform" ]]; then
+      if [[ "${RF_IMAGE_TAG_MODE:-app}" == "platform" ]] ||
+         { ! github_workflow_builds_configured && public_backend_images_supported; }; then
         # New builder images include shared libraries and use the full platform
         # commit as their tag. Enable this after installing the new workflow.
         full_sha=$(curl -fsSL "https://api.github.com/repos/${REMOTE_FALCON_REPO}/commits/main" | jq -r '.sha // empty')
