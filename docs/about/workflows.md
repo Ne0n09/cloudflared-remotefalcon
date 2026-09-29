@@ -27,6 +27,19 @@ both required architectures. If all four multi-platform images exist, the
 workflow performs no builds or tag promotion. Manual dispatches intentionally
 rebuild all four services.
 
+Before any public image build, the workflow compares the production Dockerfile
+`ARG` declarations with the reviewed contract in
+`.github/upstream-build-args.json`. Unexpected additions, removals, or default
+changes stop publication so an upstream build-time requirement cannot silently
+produce an incomplete image.
+
+`monitor-upstream-build-args.yml` performs the same check every day before the
+image schedule. When drift is found, it opens one GitHub issue containing the
+affected service, argument, risk, and upstream commit. Later upstream changes
+update that issue, and the workflow closes it after a reviewed baseline update.
+Manual dispatch supports checking an upstream branch, tag, or commit before it
+reaches `main`.
+
 The UI is intentionally excluded because its public URLs and site settings are
 build-time values. It is built locally from `apps/ui` during configuration and
 upgrades.

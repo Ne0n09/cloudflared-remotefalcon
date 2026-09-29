@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "approved_upstream_commit": "88b7a2a550065592ce7c84ebb7d20d4cd4780e62",
+  "services": {
+    "plugins-api": {
+      "dockerfile": "apps/plugins-api/Dockerfile",
+      "provided_args": [],
+      "args": {}
+    },
+    "control-panel": {
+      "dockerfile": "apps/control-panel/Dockerfile",
+      "provided_args": [],
+      "args": {}
+    },
+    "viewer": {
+      "dockerfile": "apps/viewer/Dockerfile",
+      "provided_args": [],
+      "args": {}
+    },
+    "external-api": {
+      "dockerfile": "apps/external-api/Dockerfile",
+      "provided_args": [],
+      "args": {}
+    },
+    "ui": {
+      "dockerfile": "apps/ui/Dockerfile",
+      "provided_args": [
+        "HOST_ENV",
+        "VERSION",
+        "CONTROL_PANEL_API",
+        "VIEWER_API",
+        "PROTOMAPS_API_KEY",
+        "MAP_STYLE_LIGHT",
+        "MAP_STYLE_DARK",
+        "PUBLIC_POSTHOG_KEY",
+        "POSTHOG_CLI_API_KEY",
+        "HOSTNAME_PARTS",
+        "SOCIAL_META",
+        "SWAP_CP",
+        "VIEWER_PAGE_SUBDOMAIN",
+        "CONTROL_PANEL_SUBDOMAIN",
+        "CONTROL_HOST",
+        "VIEWER_HOST"
+      ],
+      "args": {
+        "HOST_ENV": null,
+        "VERSION": null,
+        "CONTROL_PANEL_API": null,
+        "VIEWER_API": null,
+        "PROTOMAPS_API_KEY": null,
+        "MAP_STYLE_LIGHT": null,
+        "MAP_STYLE_DARK": null,
+        "PUBLIC_POSTHOG_KEY": null,
+        "HOSTNAME_PARTS": null,
+        "SWAP_CP": null,
+        "VIEWER_PAGE_SUBDOMAIN": null,
+        "CONTROL_PANEL_SUBDOMAIN": null,
+        "CONTROL_HOST": null,
+        "VIEWER_HOST": null,
+        "GITHUB_JS_PATH": null,
+        "CDN_JS_PATH": null,
+        "SOCIAL_META": null,
+        "POSTHOG_CLI_API_KEY": null,
+        "VITE_SOCIAL_META": "$SOCIAL_META"
+      }
+    }
+  }
+}

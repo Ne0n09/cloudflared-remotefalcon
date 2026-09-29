@@ -23,7 +23,36 @@ env:
   PLATFORM_REPOSITORY: Remote-Falcon/remote-falcon-platform
 
 jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out cloudflared-remotefalcon monitor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: downstream
+
+      - name: Check out Remote Falcon platform
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.PLATFORM_REPOSITORY }}
+          ref: ${{ github.event.inputs.ref || 'main' }}
+          fetch-depth: 1
+          path: upstream
+
+      - name: Guard public images against upstream Docker ARG drift
+        run: |
+          python3 downstream/.github/scripts/check_upstream_build_args.py \
+            --baseline downstream/.github/upstream-build-args.json \
+            --upstream-root upstream \
+            --report "$RUNNER_TEMP/upstream-arg-report.md" \
+            --services plugins-api control-panel viewer external-api
+
+      - name: Publish contract summary
+        if: always()
+        run: cat "$RUNNER_TEMP/upstream-arg-report.md" >> "$GITHUB_STEP_SUMMARY"
+
   prepare:
+    needs: contract
     runs-on: ubuntu-24.04
     outputs:
       full_sha: ${{ steps.version.outputs.full_sha }}

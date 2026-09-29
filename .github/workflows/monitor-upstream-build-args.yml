@@ -1,0 +1,94 @@
+name: monitor-upstream-build-args
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Remote Falcon platform branch, tag, or commit
+        required: false
+        default: main
+  schedule:
+    - cron: '30 3 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: monitor-upstream-build-args
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out cloudflared-remotefalcon monitor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: downstream
+
+      - name: Check out Remote Falcon platform
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Remote-Falcon/remote-falcon-platform
+          ref: ${{ github.event.inputs.ref || 'main' }}
+          fetch-depth: 1
+          path: upstream
+
+      - name: Compare upstream Docker ARG contract
+        id: contract
+        continue-on-error: true
+        run: |
+          python3 downstream/.github/scripts/check_upstream_build_args.py \
+            --baseline downstream/.github/upstream-build-args.json \
+            --upstream-root upstream \
+            --report "$RUNNER_TEMP/upstream-arg-report.md"
+
+      - name: Publish monitor summary
+        if: always()
+        run: cat "$RUNNER_TEMP/upstream-arg-report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update drift issue
+        if: steps.contract.outputs.status == 'drift'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: '[upstream ARG drift] Review Remote Falcon Docker build arguments'
+          UPSTREAM_SHA: ${{ steps.contract.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          issues=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number,title)
+          number=$(jq -r --arg title "$TITLE" '.[] | select(.title == $title) | .number' <<< "$issues" | head -n 1)
+          if [[ -z "$number" ]]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" \
+              --body-file "$RUNNER_TEMP/upstream-arg-report.md"
+          else
+            current_body=$(gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
+            if ! grep -Fq "$UPSTREAM_SHA" <<< "$current_body"; then
+              gh issue edit "$number" --repo "$GITHUB_REPOSITORY" \
+                --body-file "$RUNNER_TEMP/upstream-arg-report.md"
+              gh issue comment "$number" --repo "$GITHUB_REPOSITORY" \
+                --body "Upstream changed again; the report now covers commit \`$UPSTREAM_SHA\`."
+            fi
+          fi
+
+      - name: Close resolved drift issue
+        if: steps.contract.outputs.status == 'ok'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: '[upstream ARG drift] Review Remote Falcon Docker build arguments'
+        run: |
+          set -euo pipefail
+          issues=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json number,title)
+          number=$(jq -r --arg title "$TITLE" '.[] | select(.title == $title) | .number' <<< "$issues" | head -n 1)
+          if [[ -n "$number" ]]; then
+            gh issue close "$number" --repo "$GITHUB_REPOSITORY" \
+              --comment "The approved build-argument baseline now matches upstream."
+          fi
+
+      - name: Fail when drift or monitor errors are present
+        if: steps.contract.outputs.status != 'ok'
+        env:
+          STATUS: ${{ steps.contract.outputs.status }}
+        run: |
+          echo "Upstream ARG monitor status: ${STATUS:-error}" >&2
+          exit 1

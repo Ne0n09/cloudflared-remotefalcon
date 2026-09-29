@@ -1275,7 +1275,49 @@ test_public_backend_workflow_is_multiarch_and_coordinated() {
   assert_file_contains "$workflow" '--tag "\$\{IMAGE\}:\$\{SHA_TAG\}"'
   assert_file_not_contains "$workflow" 'apps/ui'
   assert_file_not_contains "$workflow" 'build-args:'
+  assert_file_contains "$workflow" '^  contract:$'
+  assert_file_contains "$workflow" '^    needs: contract$'
+  assert_file_contains "$workflow" 'check_upstream_build_args\.py'
   [[ $(grep -Ec '^          - (plugins-api|control-panel|viewer|external-api)$' "$workflow") == 8 ]] || return 1
+}
+
+test_upstream_arg_monitor_detects_contract_drift() {
+  local fixture="$TEST_TMP/arg-monitor"
+  local checker="$ROOT_DIR/.github/scripts/check_upstream_build_args.py"
+  local monitor="$ROOT_DIR/.github/workflows/monitor-upstream-build-args.yml"
+  mkdir -p "$fixture/upstream/apps/example"
+  git -C "$fixture/upstream" init -q
+  git -C "$fixture/upstream" config user.name test
+  git -C "$fixture/upstream" config user.email test@example.com
+  printf 'FROM scratch\nARG EXISTING=ok\n' > "$fixture/upstream/apps/example/Dockerfile"
+  git -C "$fixture/upstream" add apps/example/Dockerfile
+  git -C "$fixture/upstream" commit -qm baseline
+  cat > "$fixture/baseline.json" <<'JSON'
+{
+  "services": {
+    "example": {
+      "dockerfile": "apps/example/Dockerfile",
+      "provided_args": [],
+      "args": {"EXISTING": "ok"}
+    }
+  }
+}
+JSON
+
+  python3 "$checker" --baseline "$fixture/baseline.json" \
+    --upstream-root "$fixture/upstream" --report "$fixture/ok.md" || return 1
+  assert_file_contains "$fixture/ok.md" 'No Dockerfile `ARG` drift was detected'
+
+  printf 'ARG REQUIRED_VALUE\n' >> "$fixture/upstream/apps/example/Dockerfile"
+  if python3 "$checker" --baseline "$fixture/baseline.json" \
+    --upstream-root "$fixture/upstream" --report "$fixture/drift.md"; then
+    return 1
+  fi
+  assert_file_contains "$fixture/drift.md" 'added `REQUIRED_VALUE`'
+  assert_file_contains "$fixture/drift.md" 'HIGH RISK: no default and not supplied'
+  assert_file_contains "$monitor" '^  issues: write$'
+  assert_file_contains "$monitor" 'gh issue create'
+  assert_file_contains "$monitor" 'gh issue close'
 }
 
 test_fresh_deployment_harness_safety() {
@@ -1697,6 +1739,7 @@ run_test "infrastructure latest tags can be pinned to detected versions" test_in
 if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
   run_test "CI uses pinned actions and static validators" test_ci_has_pinned_static_validation
   run_test "public backend workflow publishes one coordinated multi-platform release" test_public_backend_workflow_is_multiarch_and_coordinated
+  run_test "upstream Docker ARG monitor detects build-contract drift" test_upstream_arg_monitor_detects_contract_drift
 fi
 run_test "fresh deployment harness has guarded update and build modes" test_fresh_deployment_harness_safety
 if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
