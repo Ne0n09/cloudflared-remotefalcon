@@ -1317,6 +1317,7 @@ JSON
   assert_file_contains "$fixture/drift.md" 'HIGH RISK: no default and not supplied'
   assert_file_contains "$monitor" '^  issues: write$'
   assert_file_contains "$monitor" 'gh issue create'
+  assert_file_contains "$monitor" '--assignee "\$GITHUB_REPOSITORY_OWNER"'
   assert_file_contains "$monitor" 'gh issue close'
 }
 

@@ -60,6 +60,7 @@ jobs:
           number=$(jq -r --arg title "$TITLE" '.[] | select(.title == $title) | .number' <<< "$issues" | head -n 1)
           if [[ -z "$number" ]]; then
             gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" \
+              --assignee "$GITHUB_REPOSITORY_OWNER" \
               --body-file "$RUNNER_TEMP/upstream-arg-report.md"
           else
             current_body=$(gh issue view "$number" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
