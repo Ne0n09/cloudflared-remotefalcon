@@ -1,6 +1,6 @@
 # Release Notes
 
-## 2026.9.29.5
+## 2026.10.5
 
 - MongoDB now receives a random root password when the shipped default is detected. Existing databases are updated through MongoDB instead of only changing `.env`, and interrupted rotations retain a private recovery marker.
 

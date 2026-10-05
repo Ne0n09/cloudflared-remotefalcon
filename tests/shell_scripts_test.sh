@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.29.5
+# VERSION=2026.10.5
 
 set -u
 

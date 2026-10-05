@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.29.5
+# VERSION=2026.10.5
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all

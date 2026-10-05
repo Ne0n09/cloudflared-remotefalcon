@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.29.5
+# VERSION=2026.10.5
 
 # This script will sync your build ARG secrets from the .env to the REPO defined in the .env file.
 # These secrets are used during the build workflows.

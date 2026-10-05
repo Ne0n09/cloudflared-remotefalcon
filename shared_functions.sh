@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.9.29.5
+# SHARED_FUNCTIONS_VERSION=2026.10.5
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
