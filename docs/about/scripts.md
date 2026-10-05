@@ -200,6 +200,18 @@ Click the name of the script to expand the section to display details about the 
     ./make_admin.sh
     ```
 
+??? example "mongo_init.sh"
+
+    #### mongo_init.sh
+
+    - Generates a random MongoDB root password when the configured password is still the default.
+
+    - Creates or updates a dedicated `remotefalcon` user with `readWrite` access limited to the `remote-falcon` database.
+
+    - Migrates running application containers to the database-scoped user before rotating an existing default root password.
+
+    - Preserves custom root credentials and keeps a private recovery marker if root password rotation is interrupted.
+
 ??? example "versitygw_init.sh"
 
     #### versitygw_init.sh

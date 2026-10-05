@@ -142,15 +142,23 @@ The .env file can be edited manually with `nano remotefalcon/.env`.
 
     `MONGO_INITDB_ROOT_USERNAME`
 
-    :   Specifies the root username for MongoDB. The configure-rf script currently does NOT modify this.
+    :   Specifies the administrative username for MongoDB. Custom values are preserved.
 
     `MONGO_INITDB_ROOT_PASSWORD`
 
-    :   Specifies the root password for MongoDB. The configure-rf script currently does NOT modify this.
+    :   Specifies the administrative password for MongoDB. The [mongo_init](scripts.md#mongo_initsh) script replaces the default value with a random password. Existing databases are updated through MongoDB before the application configuration changes.
+
+    `MONGO_APP_USERNAME`
+
+    :   Specifies the database-scoped user used by Remote Falcon application containers. The default username is `remotefalcon`.
+
+    `MONGO_APP_PASSWORD`
+
+    :   Specifies the password for the database-scoped Remote Falcon user. The [mongo_init](scripts.md#mongo_initsh) script replaces the default value with a random password.
 
     `MONGO_URI`
 
-    :   Combines the MongoDB root username and password together into the URI path. There is no need to modify this.
+    :   Combines the MongoDB application username and password into the URI path. There is no need to modify this.
 
     `VERSITYGW_PATH`
 

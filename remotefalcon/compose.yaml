@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2026.9.28.3
+# COMPOSE_VERSION=2026.9.29.5
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -70,8 +70,8 @@ services:
     ports:
       - "8083:8080"
     environment:
-      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
-      - QUARKUS_MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
+      - MONGO_URI=mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/remote-falcon?authSource=remote-falcon
+      - QUARKUS_MONGODB_CONNECTION_STRING=mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/remote-falcon?authSource=remote-falcon
       - SEQUENCE_LIMIT=${SEQUENCE_LIMIT}
       - QUARKUS_OTEL_SDK_DISABLED=true
     depends_on:
@@ -89,7 +89,7 @@ services:
       - WEB_URL=https://${DOMAIN}
       - AUTO_VALIDATE_EMAIL=${AUTO_VALIDATE_EMAIL}
       - JWT_USER=${USER_JWT_KEY}
-      - SPRING_DATA_MONGODB_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
+      - SPRING_DATA_MONGODB_URI=mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/remote-falcon?authSource=remote-falcon
       - DOMAIN=${DOMAIN}
       - GITHUB_PAT=
       - SENDGRID_KEY=${SENDGRID_KEY}
@@ -112,8 +112,8 @@ services:
     container_name: viewer
     restart: always
     environment:
-      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
-      - QUARKUS_MONGODB_CONNECTION_STRING=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
+      - MONGO_URI=mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/remote-falcon?authSource=remote-falcon
+      - QUARKUS_MONGODB_CONNECTION_STRING=mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/remote-falcon?authSource=remote-falcon
       - CLIENT_HEADER=${CLIENT_HEADER}
       - QUARKUS_OTEL_SDK_DISABLED=true
     depends_on:
@@ -155,7 +155,7 @@ services:
     restart: always
     environment:
       - SERVER_PORT=8080
-      - SPRING_DATA_MONGODB_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
+      - SPRING_DATA_MONGODB_URI=mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/remote-falcon?authSource=remote-falcon
       - VIEWER_API_URL=https://${DOMAIN}/remote-falcon-viewer
     depends_on:
       mongo:

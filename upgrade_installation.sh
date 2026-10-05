@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.29.1
+# VERSION=2026.9.29.5
 
 set -euo pipefail
 
@@ -120,10 +120,13 @@ rebuild_all_application_images() {
   return 1
 }
 
-echo -e "${CYAN}1/7 Validating the merged Remote Falcon configuration...${NC}"
+echo -e "${CYAN}1/8 Validating the merged Remote Falcon configuration...${NC}"
 rf_compose config -q
 
-echo -e "${CYAN}2/7 Checking whether the legacy application images require a coordinated rebuild...${NC}"
+echo -e "${CYAN}2/8 Migrating MongoDB credentials before application containers are rebuilt...${NC}"
+mongo_init
+
+echo -e "${CYAN}3/8 Checking whether the legacy application images require a coordinated rebuild...${NC}"
 if [[ -f "$PLATFORM_REBUILD_MARKER" ]]; then
   platform_sha=$(get_platform_sha)
   [[ "$platform_sha" =~ ^[0-9a-f]{40}$ ]] || {
@@ -136,24 +139,24 @@ else
   echo -e "${GREEN}✔ Platform image migration has already been completed.${NC}"
 fi
 
-echo -e "${CYAN}3/7 Starting Versity Gateway alongside legacy object storage...${NC}"
+echo -e "${CYAN}4/8 Starting Versity Gateway alongside legacy object storage...${NC}"
 rf_compose up -d versitygw
 
 running_services="$(rf_compose ps --services --filter status=running)"
 if grep -Fxq nginx <<< "$running_services"; then
-  echo -e "${CYAN}4/7 Restarting NGINX to refresh service discovery...${NC}"
+  echo -e "${CYAN}5/8 Restarting NGINX to refresh service discovery...${NC}"
   rf_compose restart nginx
 else
-  echo -e "${CYAN}4/7 NGINX is not running; it will be started with the upgraded stack.${NC}"
+  echo -e "${CYAN}5/8 NGINX is not running; it will be started with the upgraded stack.${NC}"
 fi
 
-echo -e "${CYAN}5/7 Updating infrastructure containers and any remaining application changes...${NC}"
+echo -e "${CYAN}6/8 Updating infrastructure containers and any remaining application changes...${NC}"
 "$SCRIPT_DIR/update_containers.sh" all auto-apply
 
-echo -e "${CYAN}6/7 Initializing and verifying object storage, then migrating legacy MinIO data...${NC}"
+echo -e "${CYAN}7/8 Initializing and verifying object storage, then migrating legacy MinIO data...${NC}"
 "$SCRIPT_DIR/versitygw_init.sh"
 
-echo -e "${CYAN}7/7 Applying the current stack and running the complete health check...${NC}"
+echo -e "${CYAN}8/8 Applying the current stack and running the complete health check...${NC}"
 rf_compose up -d --remove-orphans
 "$SCRIPT_DIR/health_check.sh" 0s
 

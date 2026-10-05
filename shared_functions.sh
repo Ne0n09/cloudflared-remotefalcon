@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.9.29.1
+# SHARED_FUNCTIONS_VERSION=2026.9.29.5
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -109,6 +109,18 @@ print_env() {
     echo -e "${BLUE}🔹 $key${NC}=$(display_env_value "$key" "${existing_env_vars[$key]}")"
   done
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+select_mongo_query_credentials() {
+  if [[ -n "${MONGO_APP_USERNAME:-}" && -n "${MONGO_APP_PASSWORD:-}" && "$MONGO_APP_PASSWORD" != "change-me" ]]; then
+    MONGO_QUERY_USERNAME="$MONGO_APP_USERNAME"
+    MONGO_QUERY_PASSWORD="$MONGO_APP_PASSWORD"
+    MONGO_QUERY_AUTH_DATABASE="remote-falcon"
+  else
+    MONGO_QUERY_USERNAME="$MONGO_INITDB_ROOT_USERNAME"
+    MONGO_QUERY_PASSWORD="$MONGO_INITDB_ROOT_PASSWORD"
+    MONGO_QUERY_AUTH_DATABASE="admin"
+  fi
 }
 
 # Backup the existing .env/compose.yaml file in case roll-back is needed
@@ -471,6 +483,38 @@ mongo_requires_no_avx_pin() {
   is_amd64_cpu && ! cpu_supports_avx
 }
 
+prepare_mongo_cpu_compatibility() {
+  local compose_tag
+
+  MONGO_NO_AVX_PIN_ACTIVE=false
+  mongo_requires_no_avx_pin || return 0
+  MONGO_NO_AVX_PIN_ACTIVE=true
+  compose_tag=$(get_current_compose_tag mongo)
+
+  echo -e "${YELLOW}⚠️ This x86-64 CPU does not expose AVX instructions. MongoDB 5.0+ cannot run on this host.${NC}"
+  echo -e "${YELLOW}⚠️ MongoDB is pinned at ${MONGO_NO_AVX_VERSION}; newer MongoDB releases will not be offered.${NC}"
+  echo -e "${BLUE}🔗 https://www.mongodb.com/docs/manual/administration/production-notes/#x86-64${NC}"
+
+  case "$compose_tag" in
+    latest|undetermined)
+      replace_compose_tag mongo "$MONGO_NO_AVX_VERSION"
+      echo -e "${BLUE}📌 Updated $COMPOSE_FILE to mongo:${MONGO_NO_AVX_VERSION} before starting MongoDB.${NC}"
+      ;;
+    4.4.*)
+      ;;
+    4.*)
+      echo -e "${RED}❌ The configured MongoDB tag is '$compose_tag'. MongoDB must be upgraded through each supported release series before reaching ${MONGO_NO_AVX_VERSION}.${NC}" >&2
+      echo -e "${RED}❌ Leaving the MongoDB tag unchanged; a direct automatic jump could make the database unusable.${NC}" >&2
+      return 1
+      ;;
+    *)
+      echo -e "${RED}❌ The configured MongoDB tag is '$compose_tag'. An automatic downgrade to ${MONGO_NO_AVX_VERSION} could make newer database files unusable.${NC}" >&2
+      echo -e "${RED}❌ Leaving the MongoDB tag unchanged. Restore a compatible backup or move the installation to an AVX-capable CPU.${NC}" >&2
+      return 1
+      ;;
+  esac
+}
+
 # Function to check system memory and if less than 16GB display a warning message about building locally
 memory_check() {
   # Required memory in kB (15 GB = 16 * 1024 * 1024) - Slightly less than 16GB as it will likely report 15.xGB
@@ -829,6 +873,15 @@ versitygw_init() {
     bash "$SCRIPT_DIR/versitygw_init.sh"
   else
     echo -e "${RED}❌ versitygw_init.sh script not found.${NC}" >&2
+    return 1
+  fi
+}
+
+mongo_init() {
+  if [ -f "$SCRIPT_DIR/mongo_init.sh" ]; then
+    bash "$SCRIPT_DIR/mongo_init.sh"
+  else
+    echo -e "${RED}❌ mongo_init.sh script not found.${NC}" >&2
     return 1
   fi
 }

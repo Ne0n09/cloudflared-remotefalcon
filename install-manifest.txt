@@ -7,6 +7,7 @@ executable generate_jwt.sh
 executable health_check.sh
 executable install.sh
 executable make_admin.sh
+executable mongo_init.sh
 executable run_workflow.sh
 executable setup_cloudflare.sh
 executable shared_functions.sh

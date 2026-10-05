@@ -1,5 +1,17 @@
 # Release Notes
 
+## 2026.9.29.5
+
+- MongoDB now receives a random root password when the shipped default is detected. Existing databases are updated through MongoDB instead of only changing `.env`, and interrupted rotations retain a private recovery marker.
+
+- Remote Falcon application containers now use a dedicated `remotefalcon` MongoDB user with a random password and `readWrite` access limited to the `remote-falcon` database. Custom MongoDB root credentials and existing data paths are preserved.
+
+- MongoDB health, administrator, and JWT helper queries now use the configured credentials instead of the former hard-coded `root:root` login.
+
+- Script updates now display the installed and available release versions. Matching versions leave files unchanged unless `./update_scripts.sh --force` is used to deliberately restore the release's managed files.
+
+- Fixed installed updaters replacing `install.sh` while that same file was still being read, which could leave the successful update followed by a malformed command such as `ET_DIR && pwd): command not found`.
+
 ## 2026.9.29.4
 
 ### Public multi-platform backend images

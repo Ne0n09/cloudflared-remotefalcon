@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.7
+# VERSION=2026.9.29.5
 
 #set -euo pipefail
 #set -x
@@ -174,6 +174,7 @@ done
 # Then run various health checks
 if [[ -f $ENV_FILE ]]; then
   parse_env "$ENV_FILE"
+  select_mongo_query_credentials
 
   # Check if DOMAIN is set
   if [[ -z "$DOMAIN" || "$DOMAIN" == "your_domain.com" ]]; then
@@ -405,9 +406,13 @@ check_endpoint() {
   if is_container_running $container_name; then
     echo -e "${CYAN}🔄 $container_name is running. 🔍 Finding any shows in MongoDB container '$container_name'...${NC}"
 
-    subdomains=$(docker exec mongo bash -c "
-    mongosh --quiet 'mongodb://root:root@localhost:27017' --eval '
-        db = db.getSiblingDB(\"remote-falcon\");
+    subdomains=$(docker exec mongo mongosh \
+      --quiet \
+      --username "$MONGO_QUERY_USERNAME" \
+      --password "$MONGO_QUERY_PASSWORD" \
+      --authenticationDatabase "$MONGO_QUERY_AUTH_DATABASE" \
+      --eval '
+        db = db.getSiblingDB("remote-falcon");
         const subdomains = db.show.find({}, { showSubdomain: 1, _id: 0 }).toArray();
         let found = false;
         subdomains.forEach(doc => {
@@ -417,9 +422,9 @@ check_endpoint() {
             }
         });
         if (!found) {
-            print(\"No subdomains found\");
+            print("No subdomains found");
         }
-    '")
+      ')
 
     if [[ "$subdomains" == *"No subdomains found"* ]]; then
       if [[ $SWAP_CP == true ]]; then

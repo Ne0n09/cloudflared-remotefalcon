@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.29.1
+# VERSION=2026.9.29.5
 
 #set -euo pipefail
 
@@ -135,11 +135,12 @@ source "$SCRIPT_DIR/shared_functions.sh"
 # Download extra helper scripts if they do not exist and make them executable
 download_file "update_containers.sh"
 download_file "health_check.sh"
+download_file "mongo_init.sh"
 download_file "versitygw_init.sh"
 download_file "setup_cloudflare.sh"
 download_file "run_workflow.sh"
 download_file "sync_repo_secrets.sh"
-chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "versitygw_init.sh" "setup_cloudflare.sh" "run_workflow.sh" "sync_repo_secrets.sh"
+chmod +x "shared_functions.sh" "update_containers.sh" "health_check.sh" "mongo_init.sh" "versitygw_init.sh" "setup_cloudflare.sh" "run_workflow.sh" "sync_repo_secrets.sh"
 
 # Read a secret while showing visible progress without revealing its value.
 read_masked_input() {
@@ -1067,6 +1068,10 @@ if [[ "$(get_input "❓ Change the .env file variables? (y/n)" "n" )" =~ ^[Yy]$ 
   done
 
   # ====== END Existing configuration ======
+
+  # Ensure applications use a database-scoped account before any image build or
+  # container recreation. This also safely rotates the shipped root password.
+  mongo_init || exit 1
 
   # Run the container update scripts if .env variables were 'changed' and 'accepted'
   if update_env; then

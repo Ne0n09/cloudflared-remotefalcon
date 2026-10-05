@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.9.29.4
+# VERSION=2026.9.29.5
 
 set -u
 
@@ -66,11 +66,12 @@ run_test() {
 make_workspace() {
   local ws
   ws="$(mktemp -d "$TEST_TMP/ws.XXXXXX")"
-  mkdir -p "$ws/remotefalcon" "$ws/.github/workflows" "$ws/image-builder/.github/workflows"
+  mkdir -p "$ws/remotefalcon" "$ws/remotefalcon-backups" "$ws/.github/workflows" "$ws/image-builder/.github/workflows"
 
   cp "$ROOT_DIR/configure-rf.sh" "$ws/"
   cp "$ROOT_DIR/health_check.sh" "$ws/"
   cp "$ROOT_DIR/install.sh" "$ws/"
+  cp "$ROOT_DIR/mongo_init.sh" "$ws/"
   cp "$ROOT_DIR/run_workflow.sh" "$ws/"
   cp "$ROOT_DIR/setup_cloudflare.sh" "$ws/"
   cp "$ROOT_DIR/shared_functions.sh" "$ws/"
@@ -110,7 +111,9 @@ OTEL_OPTS=
 OTEL_URI=
 MONGO_INITDB_ROOT_USERNAME=rfuser
 MONGO_INITDB_ROOT_PASSWORD=rfpass
-MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin
+MONGO_APP_USERNAME=rfapp
+MONGO_APP_PASSWORD=rfapppass
+MONGO_URI=mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/remote-falcon?authSource=remote-falcon
 IMAGES_S3_BUCKET=remote-falcon-images
 IMAGES_CDN_ENDPOINT=https://images.example.com
 S3_ENDPOINT=http://versitygw:7070
@@ -475,8 +478,8 @@ elif [[ "$1" == "exec" && "$*" == *"change-bucket-owner"* ]]; then
   done
   printf '%s\n' "$owner" > "${MOCK_LOG_DIR}/bucket-owner"
   exit 0
-elif [[ "$1" == "exec" && "$2" == "mongo" && "$*" == *"mongosh"* ]]; then
-  printf 'No subdomains found\n'
+elif [[ "$1" == "exec" && "$*" == *"mongosh"* ]]; then
+  printf '1\n'
 elif [[ "$1" == "run" && "$*" == *"get-bucket-policy"* ]]; then
   if [[ "${MOCK_BUCKET_POLICY_EXISTS:-}" == "true" || -f "${MOCK_LOG_DIR}/bucket-policy" ]]; then
     printf '%s\n' '{"success":true,"Policy":"{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"PublicRead\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::remote-falcon-images/*\"]},{\"Sid\":\"AppAccessUserOnly\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"123456\"},\"Action\":[\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::remote-falcon-images\",\"arn:aws:s3:::remote-falcon-images/*\"]}]}"}'
@@ -520,6 +523,7 @@ test_bash_syntax() {
     configure-rf.sh
     health_check.sh
     install.sh
+    mongo_init.sh
     run_workflow.sh
     setup_cloudflare.sh
     shared_functions.sh
@@ -546,7 +550,12 @@ test_shared_functions() {
     parse_env
 
     [[ "${existing_env_vars[DOMAIN]}" == "example.com" ]] || exit 1
-    [[ "${MONGO_URI}" == 'mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin' ]] || exit 1
+    [[ "${MONGO_URI}" == 'mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/remote-falcon?authSource=remote-falcon' ]] || exit 1
+    select_mongo_query_credentials
+    [[ "$MONGO_QUERY_USERNAME" == rfapp && "$MONGO_QUERY_AUTH_DATABASE" == remote-falcon ]] || exit 1
+    MONGO_APP_PASSWORD=change-me
+    select_mongo_query_credentials
+    [[ "$MONGO_QUERY_USERNAME" == rfuser && "$MONGO_QUERY_AUTH_DATABASE" == admin ]] || exit 1
 
     REPO="owner/repo"
     GITHUB_PAT="ghp_test"
@@ -636,7 +645,7 @@ test_sync_repo_secrets() {
 
   assert_file_contains "$ws/mock-log/gh-secrets.log" '^secret CONTROL_PANEL_API=https://example.com/remote-falcon-control-panel'
   assert_file_contains "$ws/mock-log/gh-secrets.log" '^secret VIEWER_API=https://example.com/remote-falcon-viewer'
-  assert_file_contains "$ws/mock-log/gh-secrets.log" '^secret MONGO_URI=mongodb://rfuser:rfpass@mongo:27017/remote-falcon\?authSource=admin'
+  assert_file_contains "$ws/mock-log/gh-secrets.log" '^secret MONGO_URI=mongodb://rfapp:rfapppass@mongo:27017/remote-falcon\?authSource=remote-falcon'
   assert_file_contains "$ws/mock-log/gh-secrets.log" '^secret POSTHOG_CLI_API_KEY=posthog-cli-key'
 }
 
@@ -790,7 +799,7 @@ test_quarkus_environment_migration() {
     ensure_quarkus_mongo_environment plugins-api || exit 1
     cmp "$COMPOSE_FILE" "$ws/once.yaml" || exit 1
     [[ $(grep -c 'QUARKUS_MONGODB_CONNECTION_STRING=' "$COMPOSE_FILE") == 1 ]] || exit 1
-    assert_file_contains "$COMPOSE_FILE" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}' || exit 1
+    assert_file_contains "$COMPOSE_FILE" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://\$\{MONGO_APP_USERNAME\}' || exit 1
     sed -i 's|^MONGO_URI=.*|MONGO_URI=mongodb://custom-db:27018/custom|' "$ENV_FILE"
     ensure_quarkus_mongo_environment viewer || exit 1
     assert_file_contains "$COMPOSE_FILE" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://custom-db:27018/custom'
@@ -918,6 +927,58 @@ test_setup_cloudflare() {
   assert_file_contains "$ws/remotefalcon/tunnel_id.txt" '^tunnel-1$'
   assert_file_contains "$ws/remotefalcon/example.com_origin_cert.pem" 'mock certificate'
   assert_file_contains "$ws/remotefalcon/example.com_origin_key.pem" 'mock private key'
+}
+
+test_mongo_init_rotates_defaults_and_creates_app_user() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="mongo plugins-api control-panel viewer external-api"
+  sed -i 's/^MONGO_INITDB_ROOT_USERNAME=.*/MONGO_INITDB_ROOT_USERNAME=root/' "$ws/remotefalcon/.env"
+  sed -i 's/^MONGO_INITDB_ROOT_PASSWORD=.*/MONGO_INITDB_ROOT_PASSWORD=root/' "$ws/remotefalcon/.env"
+  sed -i 's/^MONGO_APP_USERNAME=.*/MONGO_APP_USERNAME=remotefalcon/' "$ws/remotefalcon/.env"
+  sed -i 's/^MONGO_APP_PASSWORD=.*/MONGO_APP_PASSWORD=change-me/' "$ws/remotefalcon/.env"
+
+  (cd "$ws" && ./mongo_init.sh) || return 1
+
+  assert_file_not_contains "$ws/remotefalcon/.env" '^MONGO_INITDB_ROOT_PASSWORD=root$' || return 1
+  assert_file_not_contains "$ws/remotefalcon/.env" '^MONGO_APP_PASSWORD=change-me$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^MONGO_APP_USERNAME=remotefalcon$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^MONGO_URI=mongodb://\$\{MONGO_APP_USERNAME\}:\$\{MONGO_APP_PASSWORD\}@mongo:27017/remote-falcon\?authSource=remote-falcon$' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'RF_MONGO_APP_USERNAME=remotefalcon' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'RF_MONGO_NEW_ROOT_PASSWORD=' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'up -d --force-recreate --no-deps plugins-api control-panel viewer external-api' || return 1
+  [[ ! -f "$ws/remotefalcon/.mongo-root-rotation-pending" ]] || return 1
+}
+
+test_mongo_init_preserves_custom_root_password() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="mongo"
+  sed -i 's/^MONGO_APP_PASSWORD=.*/MONGO_APP_PASSWORD=custom-app-password/' "$ws/remotefalcon/.env"
+
+  (cd "$ws" && ./mongo_init.sh) || return 1
+
+  assert_file_contains "$ws/remotefalcon/.env" '^MONGO_INITDB_ROOT_PASSWORD=rfpass$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^MONGO_APP_PASSWORD=custom-app-password$' || return 1
+  assert_file_not_contains "$ws/mock-log/commands.log" 'RF_MONGO_NEW_ROOT_PASSWORD=' || return 1
+}
+
+test_mongo_init_recovers_interrupted_root_rotation() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="mongo"
+  sed -i 's/^MONGO_INITDB_ROOT_USERNAME=.*/MONGO_INITDB_ROOT_USERNAME=root/' "$ws/remotefalcon/.env"
+  sed -i 's/^MONGO_INITDB_ROOT_PASSWORD=.*/MONGO_INITDB_ROOT_PASSWORD=root/' "$ws/remotefalcon/.env"
+  printf 'MONGO_INITDB_ROOT_USERNAME=root\nMONGO_INITDB_ROOT_PASSWORD=recovered-password\n' \
+    > "$ws/remotefalcon/.mongo-root-rotation-pending"
+
+  (cd "$ws" && ./mongo_init.sh) || return 1
+
+  assert_file_contains "$ws/remotefalcon/.env" '^MONGO_INITDB_ROOT_PASSWORD=recovered-password$' || return 1
+  [[ ! -f "$ws/remotefalcon/.mongo-root-rotation-pending" ]] || return 1
 }
 
 test_versitygw_init() {
@@ -1177,14 +1238,15 @@ test_non_avx_mongo_is_pinned_before_start() {
   assert_file_contains "$ws/mongo-pin.out" 'pinned at 4\.4\.29' || return 1
   assert_file_contains "$ws/mongo-pin.out" 'direct automatic jump could make the database unusable' || return 1
   assert_file_contains "$ws/mongo-pin.out" 'automatic downgrade.*could make newer database files unusable' || return 1
-  assert_file_contains "$ROOT_DIR/update_containers.sh" 'newer MongoDB releases will not be offered' || return 1
+  assert_file_contains "$ROOT_DIR/shared_functions.sh" 'newer MongoDB releases will not be offered' || return 1
 }
 
 test_current_platform_runtime_configuration() {
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}:\$\{MONGO_INITDB_ROOT_PASSWORD\}@mongo:27017/remote-falcon\?authSource=admin'
-  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'SPRING_DATA_MONGODB_URI=mongodb://\$\{MONGO_INITDB_ROOT_USERNAME\}:\$\{MONGO_INITDB_ROOT_PASSWORD\}@mongo:27017/remote-falcon\?authSource=admin'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://\$\{MONGO_APP_USERNAME\}:\$\{MONGO_APP_PASSWORD\}@mongo:27017/remote-falcon\?authSource=remote-falcon'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'SPRING_DATA_MONGODB_URI=mongodb://\$\{MONGO_APP_USERNAME\}:\$\{MONGO_APP_PASSWORD\}@mongo:27017/remote-falcon\?authSource=remote-falcon'
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'IMAGES_CDN_ENDPOINT=https://\$\{DOMAIN\}/\$\{IMAGES_S3_BUCKET\}'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Configuration completed with failed health checks.'
+  ! grep -Rqs 'mongodb://root:root' "$ROOT_DIR"/*.sh || return 1
 }
 
 test_fresh_infrastructure_images_are_resolved_and_pinned() {
@@ -1346,7 +1408,7 @@ test_github_release_uses_documented_notes() {
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+Fixed strict documentation builds by checking out complete Git history' || return 1
+  assert_file_contains "$output" '^-[[:space:]]+MongoDB now receives a random root password' || return 1
   assert_file_contains "$output" '^\[Full documentation\]'
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
@@ -1362,6 +1424,7 @@ test_github_release_uses_documented_notes() {
 
 test_install_manifest_is_authoritative() {
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable configure-rf\.sh$'
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable mongo_init\.sh$'
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable upgrade_installation\.sh$'
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^template remotefalcon/compose\.yaml$'
   assert_file_contains "$ROOT_DIR/install-manifest.txt" '^release-dir tests$'
@@ -1451,6 +1514,7 @@ NC=
 check_compose_exists() { :; }
 check_env_exists() { :; }
 parse_env() { :; }
+mongo_init() { printf 'mongo-init\n' >> "$MOCK_UPGRADE_LOG"; }
 rf_compose() {
   printf 'compose %s\n' "$*" >> "$MOCK_UPGRADE_LOG"
   if [[ "$*" == "ps --services --filter status=running" ]]; then
@@ -1478,6 +1542,7 @@ MOCK
   expected="$ws/expected.log"
   cat > "$expected" <<'EXPECTED'
 compose config -q
+mongo-init
 compose up -d versitygw
 compose ps --services --filter status=running
 compose restart nginx
@@ -1509,6 +1574,7 @@ GITHUB_PAT=ghp_test
 check_compose_exists() { :; }
 check_env_exists() { :; }
 parse_env() { :; }
+mongo_init() { :; }
 rf_compose() {
   if [[ "$*" == "ps --services --filter status=running" ]]; then printf 'nginx\n'; fi
 }
@@ -1700,6 +1766,31 @@ test_release_updater_rejects_invalid_config() {
   assert_file_contains "$target/update.out" 'Merged Compose configuration failed validation; active configuration was not replaced'
 }
 
+test_release_updater_skips_matching_version_unless_forced() {
+  local target
+  target="$(make_workspace)"
+  with_mocks "$target"
+  cp "$ROOT_DIR/VERSION" "$target/VERSION"
+  printf 'locally modified\n' > "$target/configure-rf.sh"
+
+  RF_SKIP_UPDATE_TESTS=true bash "$ROOT_DIR/update_scripts.sh" \
+    --install-from "$ROOT_DIR" --target "$target" --mode update > "$target/skip.out" || return 1
+
+  assert_file_contains "$target/skip.out" '^Current version: ' || return 1
+  assert_file_contains "$target/skip.out" '^Release version: ' || return 1
+  assert_file_contains "$target/skip.out" 'no files were changed' || return 1
+  assert_file_contains "$target/skip.out" "update_scripts\.sh --force" || return 1
+  assert_file_contains "$target/configure-rf.sh" '^locally modified$' || return 1
+  ! find "$target/remotefalcon-backups" -mindepth 1 -print -quit | grep -q . || return 1
+
+  RF_SKIP_UPDATE_TESTS=true bash "$ROOT_DIR/update_scripts.sh" \
+    --install-from "$ROOT_DIR" --target "$target" --mode update --force > "$target/force.out" || return 1
+
+  assert_file_contains "$target/force.out" 'Reinstalling release .* because --force was specified' || return 1
+  cmp "$target/configure-rf.sh" "$ROOT_DIR/configure-rf.sh" || return 1
+  find "$target/remotefalcon-backups" -type f -name configure-rf.sh -print -quit | grep -q . || return 1
+}
+
 run_test "bash syntax for managed scripts" test_bash_syntax
 run_test "shared_functions.sh parses env and edits compose safely" test_shared_functions
 run_test "shared_functions.sh reads current RF image tag" test_get_current_version
@@ -1720,6 +1811,9 @@ run_test "image upgrades check only their service and roll back on HTTP failure"
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
 run_test "public images use the platform SHA before env migration" test_public_images_use_platform_sha_without_migrated_env
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
+run_test "mongo_init.sh rotates defaults and creates a scoped application user" test_mongo_init_rotates_defaults_and_creates_app_user
+run_test "mongo_init.sh preserves a custom root password" test_mongo_init_preserves_custom_root_password
+run_test "mongo_init.sh recovers an interrupted root rotation" test_mongo_init_recovers_interrupted_root_rotation
 run_test "versitygw_init.sh initializes mocked S3 resources" test_versitygw_init
 run_test "versitygw_init.sh fails when bucket creation fails" test_versitygw_init_fails_when_bucket_creation_fails
 run_test "MinIO migration verifies objects and preserves source data" test_minio_migration_preserves_source
@@ -1757,6 +1851,7 @@ run_test "fresh AMD64 and ARM64 installs use public backends and a local UI" tes
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
 run_test "release updater merges live values into current configuration" test_release_updater_merges_live_config
 run_test "release updater leaves live configuration unchanged after validation failure" test_release_updater_rejects_invalid_config
+run_test "release updater skips matching versions unless forced" test_release_updater_skips_matching_version_unless_forced
 
 echo
 echo "Passed: $PASS_COUNT"

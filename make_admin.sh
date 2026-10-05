@@ -1,32 +1,41 @@
 #!/bin/bash
 
-# VERSION=2025.6.6.1
+# VERSION=2026.9.29.5
 
 #set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/shared_functions.sh"
+check_env_exists
+parse_env
+select_mongo_query_credentials
 
 # Function to toggle showRole
 toggle_show_role() {
   local selected_show=$1
-  local results=$(docker exec mongo bash -c "
-    mongosh --quiet 'mongodb://root:root@localhost:27017' --eval '
-      db = db.getSiblingDB(\"remote-falcon\");
-      const selectedShow = \"$selected_show\";
+  local results
+  results=$(docker exec \
+    -e RF_SELECTED_SHOW="$selected_show" \
+    mongo mongosh \
+    --quiet \
+    --username "$MONGO_QUERY_USERNAME" \
+    --password "$MONGO_QUERY_PASSWORD" \
+    --authenticationDatabase "$MONGO_QUERY_AUTH_DATABASE" \
+    --eval '
+      db = db.getSiblingDB("remote-falcon");
+      const selectedShow = process.env.RF_SELECTED_SHOW;
       const show = db.show.findOne({ showSubdomain: selectedShow });
       if (show) {
-        const newRole = show.showRole === \"ADMIN\" ? \"USER\" : \"ADMIN\";
+        const newRole = show.showRole === "ADMIN" ? "USER" : "ADMIN";
         db.show.updateOne(
           { showSubdomain: selectedShow },
-          { \$set: { showRole: newRole } }
+          { $set: { showRole: newRole } }
         );
-        print(\"Updated showRole for \" + selectedShow + \" to \" + newRole);
+        print("Updated showRole for " + selectedShow + " to " + newRole);
       } else {
-        print(\"Error: Show not found: \" + selectedShow);
+        print("Error: Show not found: " + selectedShow);
       }
-    '
-  ")
+    ')
 
   echo "$results" | while read -r line; do
     if [[ "$line" == "Updated showRole for"* ]]; then
@@ -47,13 +56,16 @@ if docker ps --filter "name=$container_name" --filter "status=running" --format 
   echo -e "${GREEN}✅ $container_name is running.${NC}"
   echo -e "${CYAN}🔍 Retrieving list of showSubdomains and current showRoles from MongoDB...${NC}"
 
-  SHOWS=$(docker exec mongo bash -c "
-    mongosh --quiet 'mongodb://root:root@localhost:27017' --eval '
-      db = db.getSiblingDB(\"remote-falcon\");
+  SHOWS=$(docker exec mongo mongosh \
+    --quiet \
+    --username "$MONGO_QUERY_USERNAME" \
+    --password "$MONGO_QUERY_PASSWORD" \
+    --authenticationDatabase "$MONGO_QUERY_AUTH_DATABASE" \
+    --eval '
+      db = db.getSiblingDB("remote-falcon");
       const shows = db.show.find({}, { showSubdomain: 1, showRole: 1 }).sort({ showSubdomain: 1 }).toArray();
-      shows.forEach(show => print(show.showSubdomain + \" | \" + show.showRole));
-    '
-  ")
+      shows.forEach(show => print(show.showSubdomain + " | " + show.showRole));
+    ')
 
   if [ -z "$SHOWS" ]; then
     echo -e "${YELLOW}⚠️ No shows found.${NC}"

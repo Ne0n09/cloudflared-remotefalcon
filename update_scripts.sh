@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.5
+# VERSION=2026.9.29.5
 
 set -euo pipefail
 
@@ -9,17 +9,19 @@ INSTALL_FROM=""
 TARGET_DIR="$SCRIPT_DIR"
 MODE="update"
 VERSION="latest"
+FORCE=false
 REPOSITORY="${RF_INSTALL_REPOSITORY:-Ne0n09/cloudflared-remotefalcon}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --check) MODE="check"; shift ;;
+    --force) FORCE=true; shift ;;
     --version) VERSION="$2"; shift 2 ;;
     --install-from) INSTALL_FROM="$2"; shift 2 ;;
     --target) TARGET_DIR="$2"; shift 2 ;;
     --mode) MODE="$2"; shift 2 ;;
     -h|--help)
-      echo "Usage: $0 [--check] [--version TAG]"
+      echo "Usage: $0 [--check] [--force] [--version TAG]"
       exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
@@ -29,7 +31,9 @@ if [[ -z "$INSTALL_FROM" ]]; then
   if [[ "$MODE" == "check" ]]; then
     exec "$SCRIPT_DIR/install.sh" --check --target "$TARGET_DIR" --version "$VERSION" --no-configure
   fi
-  exec "$SCRIPT_DIR/install.sh" --update --target "$TARGET_DIR" --version "$VERSION" --no-configure
+  installer_args=(--update --target "$TARGET_DIR" --version "$VERSION" --no-configure)
+  [[ "$FORCE" == true ]] && installer_args+=(--force)
+  exec "$SCRIPT_DIR/install.sh" "${installer_args[@]}"
 fi
 
 source_dir="$(cd "$INSTALL_FROM" && pwd)"
@@ -37,6 +41,7 @@ target_dir="$(mkdir -p "$TARGET_DIR" && cd "$TARGET_DIR" && pwd)"
 new_version=$(tr -d '\r\n' < "$source_dir/VERSION")
 current_version="none"
 [[ -f "$target_dir/VERSION" ]] && current_version=$(tr -d '\r\n' < "$target_dir/VERSION")
+printf 'Current version: %s\nRelease version: %s\n' "$current_version" "$new_version"
 platform_rebuild_required=false
 if [[ "$MODE" == "update" && -f "$target_dir/remotefalcon/.env" ]] &&
    ! grep -Eq '^RF_IMAGE_TAG_MODE=platform([[:space:]]*)$' "$target_dir/remotefalcon/.env"; then
@@ -44,9 +49,17 @@ if [[ "$MODE" == "update" && -f "$target_dir/remotefalcon/.env" ]] &&
 fi
 
 if [[ "$MODE" == "check" ]]; then
-  printf 'Installed: %s\nAvailable: %s\n' "$current_version" "$new_version"
   [[ "$current_version" == "$new_version" ]]
   exit
+fi
+
+if [[ "$MODE" == "update" && "$current_version" == "$new_version" ]]; then
+  if [[ "$FORCE" != true ]]; then
+    echo "Scripts are already at release $new_version; no files were changed."
+    echo "Run './update_scripts.sh --force' to reinstall this release and restore its managed files."
+    exit 0
+  fi
+  echo "Reinstalling release $new_version because --force was specified."
 fi
 
 manifest="$source_dir/install-manifest.txt"

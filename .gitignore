@@ -104,6 +104,7 @@ celerybeat.pid
 # Environments
 .env
 remotefalcon/.env.backup-*
+remotefalcon/.mongo-root-rotation-pending
 remotefalcon-backups/
 PROJECT_CONTEXT.md
 rf-review-tests.tar.gz

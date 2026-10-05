@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2025.6.11.1
+# VERSION=2026.9.29.5
 
 #set -euo pipefail
 
@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/shared_functions.sh"
 
 parse_env
+select_mongo_query_credentials
 
 # Name of the container to check
 container_name="mongo"
@@ -21,16 +22,19 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${container_name}$"; then
   echo
 
   # Run Mongo query to get showSubdomain, token, and secret as a flat list
-  SHOWS_RAW=$(docker exec mongo bash -c "
-    mongosh --quiet 'mongodb://root:root@localhost:27017' --eval '
-      db = db.getSiblingDB(\"remote-falcon\");
+  SHOWS_RAW=$(docker exec "$container_name" mongosh \
+    --quiet \
+    --username "$MONGO_QUERY_USERNAME" \
+    --password "$MONGO_QUERY_PASSWORD" \
+    --authenticationDatabase "$MONGO_QUERY_AUTH_DATABASE" \
+    --eval '
+      db = db.getSiblingDB("remote-falcon");
       const shows = db.show.aggregate([
-          { \$match: { \"apiAccess.apiAccessActive\": true } },
-          { \$project: { _id: 0, showSubdomain: \"\$showSubdomain\", apiAccessToken: \"\$apiAccess.apiAccessToken\", apiAccessSecret: \"\$apiAccess.apiAccessSecret\" } }
+          { $match: { "apiAccess.apiAccessActive": true } },
+          { $project: { _id: 0, showSubdomain: "$showSubdomain", apiAccessToken: "$apiAccess.apiAccessToken", apiAccessSecret: "$apiAccess.apiAccessSecret" } }
       ]).toArray();
-      shows.forEach(show => print(show.showSubdomain + \"|\" + show.apiAccessToken + \"|\" + show.apiAccessSecret));
-    '
-  ")
+      shows.forEach(show => print(show.showSubdomain + "|" + show.apiAccessToken + "|" + show.apiAccessSecret));
+    ')
 
   # Check if anything was returned
   if [ -z "$SHOWS_RAW" ]; then

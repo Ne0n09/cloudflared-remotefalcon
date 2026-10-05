@@ -8,16 +8,18 @@ TARGET_EXPLICIT=false
 MODE="install"
 RUN_CONFIGURE=true
 VERSION="latest"
+FORCE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --target) TARGET_DIR="$2"; TARGET_EXPLICIT=true; shift 2 ;;
     --update) MODE="update"; shift ;;
     --check) MODE="check"; shift ;;
+    --force) FORCE=true; shift ;;
     --version) VERSION="$2"; shift 2 ;;
     --no-configure) RUN_CONFIGURE=false; shift ;;
     -h|--help)
-      echo "Usage: $0 [--target DIR] [--update|--check] [--version TAG] [--no-configure]"
+      echo "Usage: $0 [--target DIR] [--update|--check] [--force] [--version TAG] [--no-configure]"
       exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
@@ -224,11 +226,19 @@ curl -fsSL --retry 3 -o "$temporary_dir/SHA256SUMS" "$release_url/SHA256SUMS"
   tar -xzf cloudflared-remotefalcon.tar.gz -C payload
 )
 
-bash "$temporary_dir/payload/update_scripts.sh" --install-from "$temporary_dir/payload" --target "$TARGET_DIR" --mode "$MODE"
+updater_args=(--install-from "$temporary_dir/payload" --target "$TARGET_DIR" --mode "$MODE")
+[[ "$FORCE" == true ]] && updater_args+=(--force)
 
 if [[ "$RUN_CONFIGURE" == true ]]; then
   case "$MODE" in
-    install) exec "$TARGET_DIR/configure-rf.sh" ;;
-    update) exec "$TARGET_DIR/upgrade_installation.sh" ;;
+    install) next_script="$TARGET_DIR/configure-rf.sh" ;;
+    update) next_script="$TARGET_DIR/upgrade_installation.sh" ;;
+    *) next_script="" ;;
   esac
+  if [[ -n "$next_script" ]]; then
+    exec bash -c 'updater=$1; next_script=$2; shift 2; bash "$updater" "$@"; exec "$next_script"' \
+      _ "$temporary_dir/payload/update_scripts.sh" "$next_script" "${updater_args[@]}"
+  fi
 fi
+
+exec bash "$temporary_dir/payload/update_scripts.sh" "${updater_args[@]}"

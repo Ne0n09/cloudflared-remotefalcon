@@ -60,6 +60,8 @@ Public releases can be checked and installed without a GitHub account:
 ./update_scripts.sh
 ```
 
+The updater always displays the currently installed version and the downloaded release version. If they match, it exits without changing files. To deliberately reinstall the same release and restore its managed files, run `./update_scripts.sh --force`.
+
 The updater downloads `cloudflared-remotefalcon.tar.gz` and `SHA256SUMS` from the latest GitHub Release, verifies the archive, runs shell syntax checks and the test suite, and backs up installed scripts and configuration before replacing them.
 
 An update automatically applies the current `.env`, `compose.yaml`, and `default.conf` templates. Existing `.env` values and site-specific extra keys are merged into the new example. The new Compose structure is applied while preserving every existing service image reference, including an older CPU-compatible MongoDB version and pinned Remote Falcon commits. Docker Compose validates the merged result before any active configuration is replaced. The prior files remain in the dated `remotefalcon-backups/scripts-*` directory, and any later update failure restores them automatically.

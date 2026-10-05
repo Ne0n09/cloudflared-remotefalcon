@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.29.1
+# VERSION=2026.9.29.5
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -153,38 +153,6 @@ get_latest_version() {
     *)
       echo -e "${RED}❌ Failed to fetch latest version. Unsupported container: $service_name${NC}" >&2
       exit 1
-      ;;
-  esac
-}
-
-prepare_mongo_cpu_compatibility() {
-  local compose_tag
-
-  MONGO_NO_AVX_PIN_ACTIVE=false
-  mongo_requires_no_avx_pin || return 0
-  MONGO_NO_AVX_PIN_ACTIVE=true
-  compose_tag=$(get_current_compose_tag mongo)
-
-  echo -e "${YELLOW}⚠️ This x86-64 CPU does not expose AVX instructions. MongoDB 5.0+ cannot run on this host.${NC}"
-  echo -e "${YELLOW}⚠️ MongoDB is pinned at ${MONGO_NO_AVX_VERSION}; newer MongoDB releases will not be offered.${NC}"
-  echo -e "${BLUE}🔗 https://www.mongodb.com/docs/manual/administration/production-notes/#x86-64${NC}"
-
-  case "$compose_tag" in
-    latest|undetermined)
-      replace_compose_tag mongo "$MONGO_NO_AVX_VERSION"
-      echo -e "${BLUE}📌 Updated $COMPOSE_FILE to mongo:${MONGO_NO_AVX_VERSION} before starting MongoDB.${NC}"
-      ;;
-    4.4.*)
-      ;;
-    4.*)
-      echo -e "${RED}❌ The configured MongoDB tag is '$compose_tag'. MongoDB must be upgraded through each supported release series before reaching ${MONGO_NO_AVX_VERSION}.${NC}" >&2
-      echo -e "${RED}❌ Leaving the MongoDB tag unchanged; a direct automatic jump could make the database unusable.${NC}" >&2
-      return 1
-      ;;
-    *)
-      echo -e "${RED}❌ The configured MongoDB tag is '$compose_tag'. An automatic downgrade to ${MONGO_NO_AVX_VERSION} could make newer database files unusable.${NC}" >&2
-      echo -e "${RED}❌ Leaving the MongoDB tag unchanged. Restore a compatible backup or move the installation to an AVX-capable CPU.${NC}" >&2
-      return 1
       ;;
   esac
 }
@@ -728,6 +696,9 @@ if [ "$SERVICE_NAME" == "all" ]; then
   preflight_public_backend_release || exit 1
   for container in "${CONTAINERS[@]}"; do
     check_for_update "$container"
+    if [[ "$container" == "mongo" && "$MODE" != "dry-run" ]]; then
+      mongo_init || exit 1
+    fi
   done
   echo -e "${GREEN}🚀 Done. Container update process complete.${NC}"
 else # If a specific container is provided, check for updates for that container and auto-apply or prompt for confirmation or dry-run
@@ -736,6 +707,9 @@ else # If a specific container is provided, check for updates for that container
     echo -e "${RED}❌ Error: Unknown container '$SERVICE_NAME'. Valid options are: all ${CONTAINERS[*]}${NC}"
   else
     check_for_update "$SERVICE_NAME"
+    if [[ "$SERVICE_NAME" == "mongo" && "$MODE" != "dry-run" ]]; then
+      mongo_init || exit 1
+    fi
   fi
 fi
 

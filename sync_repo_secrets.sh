@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.2
+# VERSION=2026.9.29.5
 
 # This script will sync your build ARG secrets from the .env to the REPO defined in the .env file.
 # These secrets are used during the build workflows.
@@ -73,7 +73,11 @@ sync_repo_secrets() {
     elif [[ "$key" == "VIEWER_API" ]]; then
       value="https://${DOMAIN}/remote-falcon-viewer"
     elif [[ "$key" == "MONGO_URI" ]]; then
-      value="mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/remote-falcon?authSource=admin"
+      if [[ -z "${MONGO_APP_USERNAME:-}" || -z "${MONGO_APP_PASSWORD:-}" || "$MONGO_APP_PASSWORD" == "change-me" ]]; then
+        echo -e "${RED}❌ MongoDB application credentials are not initialized. Run ./mongo_init.sh first.${NC}" >&2
+        return 1
+      fi
+      value="mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/remote-falcon?authSource=remote-falcon"
     fi
 
     if [[ -n "$value" ]]; then
