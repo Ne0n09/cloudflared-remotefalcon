@@ -28,4 +28,5 @@ if ! grep -Eq '^-[[:space:]]+[^[:space:]]' "$output_file"; then
   exit 1
 fi
 
-printf '\n[Full documentation](https://ne0n09.github.io/cloudflared-remotefalcon/release-notes/)\n' >> "$output_file"
+printf '\n[Full documentation](https://ne0n09.github.io/cloudflared-remotefalcon/%s/release-notes/)\n' \
+  "$version" >> "$output_file"

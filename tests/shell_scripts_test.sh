@@ -1409,7 +1409,7 @@ test_github_release_uses_documented_notes() {
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
   assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
   assert_file_contains "$output" '^-[[:space:]]+MongoDB now receives a random root password' || return 1
-  assert_file_contains "$output" '^\[Full documentation\]'
+  assert_file_contains "$output" "^\[Full documentation\](https://ne0n09.github.io/cloudflared-remotefalcon/$(cat "$ROOT_DIR/VERSION")/release-notes/)$"
   assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
 
   printf '1900.1.1\n' > "$missing_version"
