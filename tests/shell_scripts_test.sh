@@ -1508,10 +1508,12 @@ test_tui_validation_errors_remain_visible() {
     NON_INTERACTIVE=false
     UI_MODE=tui
     MAIN_PID="$$"
+    DEBUG_INPUT=false
     AUTO_VALIDATE_EMAIL=true
     get_input() {
       local answer
       answer=$(head -n 1 "$ws/answers")
+      [[ -n "$answer" ]] || return 1
       tail -n +2 "$ws/answers" > "$ws/answers.next"
       mv "$ws/answers.next" "$ws/answers"
       printf '%s' "$answer"
