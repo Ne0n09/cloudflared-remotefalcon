@@ -16,11 +16,13 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 - This allows for versioning of the RF containers and the ability to roll back the [compose.yaml](about/files.md#composeyaml) if an update breaks your Remote Falcon server.
 
-- On AMD64 and ARM64, four backend images are pulled anonymously from the project's public multi-platform GHCR packages. The deployment-specific UI is built locally.
+- On AMD64 and ARM64, four backend images are pulled anonymously from the project's public multi-platform GHCR packages. The deployment-specific UI is built locally from the same platform commit. After all five images are prepared, Compose recreates all five application services together.
 
 - Existing installations with `REPO` and `GITHUB_PAT` retain the deprecated private-builder compatibility override. New installations should not configure it. Other architectures currently build all application images locally.
 
-- Before an all-service public update, the updater verifies that the same platform commit tag exists for all four backends. An incomplete release leaves the application containers unchanged.
+- Before an all-service public update, the updater verifies that the same platform commit tag exists for all four backends. An incomplete release leaves the application containers unchanged. Interactive mode presents one decision for the coordinated five-service application release rather than prompting for each application separately.
+
+- MongoDB, Versity Gateway, NGINX, and Cloudflared use published upstream images. Their update output now says that those images are being pulled instead of incorrectly describing the operation as a local build.
 
 ## Updating Mongo, Versity Gateway, NGINX, and Cloudflared containers
 
@@ -31,7 +33,7 @@ Health checks can target one container, while the default remains all containers
 ./health_check.sh 0s plugins-api   # only plugins-api, without a delay
 ```
 
-Image upgrades invoke the health script once for only the service being upgraded, including its public endpoint (where available), running state, and recent logs. That invocation allows up to 25 endpoint probes within a two-minute deadline, so a service can finish starting without repeatedly launching the health script. Failed checks restore the previous image and Compose file and check that restored service once. The legacy `health` argument to `update_containers.sh` remains accepted; it does not trigger an additional full-stack check. Fresh installations run their complete health check after storage and routing are initialized.
+Infrastructure and individually requested image upgrades invoke the health script for only the service being upgraded. A coordinated public application update starts all five application services in one Compose operation and then checks each service; any failed check restores the previous images and Compose configuration for the entire five-service group. Each invocation allows up to 25 endpoint probes within a two-minute deadline, so services can finish starting without repeatedly launching the health script. The legacy `health` argument to `update_containers.sh` remains accepted; it does not trigger an additional full-stack check. Fresh installations run their complete health check after storage and routing are initialized.
 
 For older plugins-api and viewer Compose configurations, the image updater adds the missing `QUARKUS_MONGODB_CONNECTION_STRING` runtime setting. This prevents newer Quarkus images from defaulting to MongoDB at `127.0.0.1` inside the application container. Existing explicit Quarkus connection settings are preserved.
 

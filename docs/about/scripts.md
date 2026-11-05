@@ -16,14 +16,29 @@ Click the name of the script to expand the section to display details about the 
 
     - Uses local compose.yaml and default.conf; creates .env from .env.example if needed.
 
-    - Can be run interactively(defualt) or non-interactively for a more automated setup.
+    - Uses a `whiptail` terminal wizard automatically when it is available in an interactive terminal, with a dependency-free plain prompt fallback.
+
+    - The wizard uses a black-and-red Remote Falcon palette. Set `RF_TUI_COLORS` or the standard `NEWT_COLORS` environment variable before launch to supply a different terminal palette.
+
+    - The masked Cloudflare API-token prompt includes the token-creation URL, required permissions, and step-by-step documentation link, so the guidance remains visible while entering the token.
+
+    - Optional settings are summarized in the same dialog that asks whether to edit them. The final bordered review includes detected Compose-tag corrections, proposed `.env` changes, execution actions, and the apply decision on one screen. Declining displays an explicit no-changes confirmation before optional update or health-check prompts.
+
+    - Collects and validates configuration before showing one redacted change review and execution plan. Cloudflare changes, package installation, certificate editing, database initialization, file updates, builds, and restarts begin only after that plan is approved.
+
+    - Can validate or preview a configuration without changing files, services, packages, or external resources.
 
 
     ```sh title="Run configure-rf.sh"
     ./configure-rf.sh
-    ./configure-rf.sh -y|--non-interactive      Run non-interactively (no prompts)"
-    ./configure-rf.sh --set KEY=VALUE           Set configuration override for config questions(can be used multiple times)"
-    ./configure-rf.sh -h, --help                Shows usage help "
+    ./configure-rf.sh --ui plain                Use plain terminal prompts
+    ./configure-rf.sh --plan                    Review without applying changes
+    ./configure-rf.sh --validate-only           Validate the current configuration
+    ./configure-rf.sh --non-interactive         Use existing values without prompting or approving
+    ./configure-rf.sh -y                        Legacy unattended mode (non-interactive plus approval)
+    ./configure-rf.sh --rotate-jwt              Explicitly replace the control-panel JWT signing key
+    ./configure-rf.sh --set KEY=VALUE           Set an override (can be repeated)
+    ./configure-rf.sh --help                    Show all options
     ```
 
     Store credentials in the private `remotefalcon/.env` file or enter them at the interactive prompts. Avoid putting tokens in shell arguments.
@@ -33,6 +48,8 @@ Click the name of the script to expand the section to display details about the 
     # For scripted runs, fill in .env first, then use:
     ./configure-rf.sh -y --set DOMAIN=YOURDOMAIN.COM
     ```
+
+    `USER_JWT_KEY` still signs control-panel login/session tokens. Existing values are preserved; `--rotate-jwt` replaces this key and invalidates active control-panel sessions. `VIEWER_JWT_KEY` remains in `.env` only for compatibility with historical private UI builds; current upstream UI source no longer consumes it.
 
 ??? example "upgrade_installation.sh"
 
@@ -58,7 +75,7 @@ Click the name of the script to expand the section to display details about the 
 
     - A backup of the compose.yaml is created when any of the containers are updated.
 
-    - On AMD64 and ARM64, verifies and pulls coordinated public images for the four backend services without GitHub credentials. The UI remains a local build because its deployment settings are compiled into the bundle.
+    - On AMD64 and ARM64, verifies and pulls coordinated public images for the four backend services without GitHub credentials. It builds the deployment-specific UI from the same platform commit, then recreates all five Remote Falcon application services together. A failed deployment check rolls the five-service group back together.
 
     - On x86-64 systems without AVX, pins MongoDB to `4.4.29` and does not offer MongoDB 5.0 or newer.
 
@@ -84,7 +101,7 @@ Click the name of the script to expand the section to display details about the 
 
             - `auto-apply`: Automatically update all RF containers if any updates are found.
 
-            - `interactive/no argument`: Display if update is available and prompt for confirmation before updating each container.
+            - `interactive/no argument`: Displays available updates. A public Remote Falcon application release uses one prompt for all five application services; infrastructure containers retain individual prompts.
 
         3. `[health]`
 

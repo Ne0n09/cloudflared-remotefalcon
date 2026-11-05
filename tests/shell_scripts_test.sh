@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.10.5
+# VERSION=2026.11.5
 
 set -u
 
@@ -155,6 +155,16 @@ MOCK
   cat > "$bin/tput" <<'MOCK'
 #!/usr/bin/env bash
 exit 0
+MOCK
+
+  cat > "$bin/df" <<'MOCK'
+#!/usr/bin/env bash
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+if [[ "${MOCK_TMP_FULL:-false}" == "true" && "$*" == *"/tmp"* ]]; then
+  printf 'tmpfs 2097152 2097152 0 100%% /tmp\n'
+else
+  printf 'tmpfs 2097152 4 2097148 1%% /tmp\n'
+fi
 MOCK
 
   cat > "$bin/envsubst" <<'MOCK'
@@ -834,6 +844,7 @@ test_update_targeted_health_and_rollback() {
     perform_update plugins-api abcdef1 ""
   ) > "$ws/update-target.out" 2>&1 || return 1
   assert_file_contains "$ws/update-target.out" 'plugins-api health checks passed' || return 1
+  assert_file_contains "$ws/update-target.out" 'Checking plugins-api' || return 1
   [[ $(grep -c 'Running health check script' "$ws/update-target.out") == 1 ]] || return 1
   assert_file_not_contains "$ws/mock-log/commands.log" 'docker logs.* (viewer|mongo|nginx)' || return 1
   cp "$ws/remotefalcon/compose.yaml" "$ws/before-failure.yaml"
@@ -845,6 +856,29 @@ test_update_targeted_health_and_rollback() {
   cmp "$ws/before-failure.yaml" "$ws/remotefalcon/compose.yaml" || return 1
   assert_file_contains "$ws/update-failed.out" 'Restored plugins-api is still unhealthy' || return 1
   assert_file_contains "$ws/mock-log/commands.log" 'up -d --no-deps --force-recreate plugins-api'
+
+  unset MOCK_HTTP_CODE
+  export MOCK_RUNNING_SERVICES="versitygw"
+  (
+    source "$ws/update-functions.sh"
+    versitygw_init() { printf 'versitygw-initialized\n'; }
+    wait_for_service_deployment() { printf 'deployment-health-checked\n'; }
+    perform_update versitygw v1.10.0 ""
+  ) > "$ws/versity-update.out" 2>&1 || return 1
+  assert_file_contains "$ws/versity-update.out" 'Initializing VersityGW storage before its deployment check' || return 1
+  [[ $(grep -n 'versitygw-initialized' "$ws/versity-update.out" | cut -d: -f1) -lt \
+     $(grep -n 'deployment-health-checked' "$ws/versity-update.out" | cut -d: -f1) ]] || return 1
+
+  (
+    source "$ws/update-functions.sh"
+    DEFER_VERSITYGW_INIT=true
+    versitygw_init() { printf 'versitygw-initialized\n'; }
+    wait_for_service_deployment() { printf 'deployment-check-mode:%s\n' "${2-<unset>}"; }
+    perform_update versitygw v1.11.0 ""
+  ) > "$ws/versity-deferred-update.out" 2>&1 || return 1
+  assert_file_contains "$ws/versity-deferred-update.out" 'Deferring VersityGW credential and bucket initialization' || return 1
+  assert_file_not_contains "$ws/versity-deferred-update.out" 'versitygw-initialized' || return 1
+  assert_file_contains "$ws/versity-deferred-update.out" '^deployment-check-mode:$'
 }
 
 test_health_check_uses_recent_logs() {
@@ -892,6 +926,123 @@ test_update_containers_dry_run() {
     return 1
   }
   [[ "$output" == *"external-api"* ]] || return 1
+}
+
+test_update_containers_rejects_full_tmp() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+
+  if (
+    export MOCK_TMP_FULL=true
+    cd "$ws" || exit 1
+    ./update_containers.sh external-api dry-run
+  ) > "$ws/update-full-tmp.out" 2>&1; then
+    echo "Expected update_containers.sh to fail when /tmp is full"
+    return 1
+  fi
+
+  assert_file_contains "$ws/update-full-tmp.out" '/tmp is full \(100% used\)' || return 1
+  assert_file_contains "$ws/update-full-tmp.out" 'sudo du -xhd1 /tmp \| sort -h' || return 1
+  assert_file_contains "$ws/update-full-tmp.out" 'sudo lsof \+L1 /tmp' || return 1
+  assert_file_contains "$ws/update-full-tmp.out" 'df -h /tmp' || return 1
+  [[ ! -s "$ws/mock-log/commands.log" ]]
+}
+
+test_infrastructure_updates_pull_published_images() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  sed '/^# ========== Main update logic ==========/,$d' "$ws/update_containers.sh" > "$ws/update-functions.sh"
+
+  (
+    source "$ws/update-functions.sh"
+    prepare_service_image mongo
+    prepare_service_image versitygw
+  ) > "$ws/infrastructure-images.out" 2>&1 || return 1
+
+  assert_file_contains "$ws/infrastructure-images.out" 'Pulling the published mongo image' || return 1
+  assert_file_contains "$ws/infrastructure-images.out" 'Pulling the published versitygw image' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'pull mongo' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'pull versitygw' || return 1
+  assert_file_not_contains "$ws/mock-log/commands.log" 'build (mongo|versitygw)'
+}
+
+test_public_applications_deploy_as_a_coordinated_group() {
+  local ws
+  ws="$(make_workspace)"
+  with_mocks "$ws"
+  export MOCK_RUNNING_SERVICES="plugins-api control-panel viewer ui external-api"
+  export MOCK_OLD_IMAGE_ID="sha256:oldimage"
+  export MOCK_OLD_IMAGE_REF="application:oldtag"
+  sed '/^# ========== Main update logic ==========/,$d' "$ws/update_containers.sh" > "$ws/update-functions.sh"
+
+  (
+    source "$ws/update-functions.sh"
+    PUBLIC_BACKEND_RELEASE_SHA=abcdef1234567890abcdef1234567890abcdef12
+    MODE=dry-run
+    check_coordinated_public_application_update
+  ) > "$ws/coordinated-dry-run.out" 2>&1 || return 1
+  assert_file_contains "$ws/coordinated-dry-run.out" 'would pull four backends, build ui, and restart all five services together' || return 1
+
+  (
+    source "$ws/update-functions.sh"
+    perform_coordinated_public_application_update abcdef1234567890abcdef1234567890abcdef12
+  ) > "$ws/coordinated-applications.out" 2>&1 || return 1
+
+  assert_file_contains "$ws/coordinated-applications.out" 'Pulling all four coordinated public backend images' || return 1
+  assert_file_contains "$ws/coordinated-applications.out" 'Building ui locally from the same abcdef1 platform commit' || return 1
+  assert_file_contains "$ws/coordinated-applications.out" 'Restarting all five Remote Falcon application services together' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'pull plugins-api control-panel viewer external-api' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'build ui' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'up -d --no-deps plugins-api control-panel viewer ui external-api' || return 1
+  assert_file_not_contains "$ws/mock-log/commands.log" 'build (plugins-api|control-panel|viewer|external-api)' || return 1
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'check_coordinated_public_application_update \|\| exit 1' || return 1
+
+  cp "$ws/remotefalcon/compose.yaml" "$ws/before-coordinated-failure.yaml"
+  export MOCK_HTTP_CODE=503
+  if (
+    source "$ws/update-functions.sh"
+    perform_coordinated_public_application_update badbeef1234567890abcdef1234567890abcdef12
+  ) > "$ws/coordinated-failure.out" 2>&1; then
+    echo "Expected the coordinated application deployment to fail its health check"
+    return 1
+  fi
+  unset MOCK_HTTP_CODE
+  cmp "$ws/before-coordinated-failure.yaml" "$ws/remotefalcon/compose.yaml" || return 1
+  assert_file_contains "$ws/coordinated-failure.out" 'restoring all five previous images' || return 1
+  assert_file_contains "$ws/mock-log/commands.log" 'up -d --no-deps --force-recreate plugins-api control-panel viewer ui external-api'
+
+  : > "$ws/mock-log/commands.log"
+  (
+    source "$ws/update-functions.sh"
+    FRESH_INSTALL_MODE=true
+    wait_for_service_deployment() {
+      printf 'fresh-check:%s:%s\n' "$1" "${2-unset}"
+      [[ -z "${2-}" ]]
+    }
+    perform_coordinated_public_application_update feed1231234567890abcdef1234567890abcdef12
+  ) > "$ws/coordinated-fresh.out" 2>&1 || return 1
+  assert_file_contains "$ws/coordinated-fresh.out" 'fresh-check:control-panel:' || return 1
+  assert_file_not_contains "$ws/coordinated-fresh.out" 'fresh-check:control-panel:health' || return 1
+
+  cp "$ws/remotefalcon/compose.yaml" "$ws/before-fresh-failure.yaml"
+  : > "$ws/mock-log/commands.log"
+  if (
+    source "$ws/update-functions.sh"
+    FRESH_INSTALL_MODE=true
+    wait_for_service_deployment() { return 1; }
+    perform_coordinated_public_application_update fail1231234567890abcdef1234567890abcdef12
+  ) > "$ws/coordinated-fresh-failure.out" 2>&1; then
+    echo "Expected the fresh coordinated deployment to fail its container check"
+    return 1
+  fi
+  if cmp -s "$ws/before-fresh-failure.yaml" "$ws/remotefalcon/compose.yaml"; then
+    echo "Expected a failed fresh deployment to retain its selected Compose release"
+    return 1
+  fi
+  assert_file_contains "$ws/coordinated-fresh-failure.out" 'No previous application deployment exists to restore' || return 1
+  assert_file_not_contains "$ws/mock-log/commands.log" 'up -d --no-deps --force-recreate plugins-api control-panel viewer ui external-api'
 }
 
 test_public_images_use_platform_sha_without_migrated_env() {
@@ -982,7 +1133,7 @@ test_mongo_init_recovers_interrupted_root_rotation() {
 }
 
 test_versitygw_init() {
-  local ws
+  local ws existing_ws
   ws="$(make_workspace)"
   with_mocks "$ws"
   export MOCK_RUNNING_SERVICES="versitygw"
@@ -1000,8 +1151,21 @@ test_versitygw_init() {
   assert_file_contains "$ws/mock-log/commands.log" 'create-bucket'
   assert_file_contains "$ws/mock-log/commands.log" 'put-bucket-policy'
   assert_file_contains "$ws/mock-log/commands.log" 'list-buckets'
+  assert_file_not_contains "$ws/mock-log/commands.log" 'compose .* (rm|up).*control-panel'
+  assert_file_contains "$ROOT_DIR/versitygw_init.sh" 'Control Panel was not already running with a matching pinned image tag'
   assert_file_contains "$ROOT_DIR/versitygw_init.sh" 'rf_compose up -d "\$CONTAINER_NAME"'
   assert_file_not_contains "$ROOT_DIR/versitygw_init.sh" 'docker compose -f "\$COMPOSE_FILE"'
+
+  existing_ws="$(make_workspace)"
+  with_mocks "$existing_ws"
+  sed -i -E 's|(control-panel):latest|\1:abc1234|' "$existing_ws/remotefalcon/compose.yaml"
+  export MOCK_RUNNING_SERVICES="versitygw control-panel"
+  (
+    cd "$existing_ws" || exit 1
+    ./versitygw_init.sh
+  ) || return 1
+  assert_file_contains "$existing_ws/mock-log/commands.log" 'compose .* rm -f -s control-panel' || return 1
+  assert_file_contains "$existing_ws/mock-log/commands.log" 'compose .* up -d control-panel'
 }
 
 test_versitygw_init_fails_when_bucket_creation_fails() {
@@ -1158,7 +1322,390 @@ test_configure_rf_help() {
 
   assert_file_contains "$ws/configure-help.out" '^Usage: .*configure-rf.sh \[options\]'
   assert_file_contains "$ws/configure-help.out" '--non-interactive'
+  assert_file_contains "$ws/configure-help.out" '--ui MODE'
+  assert_file_contains "$ws/configure-help.out" '--plan, --dry-run'
+  assert_file_contains "$ws/configure-help.out" '--validate-only'
+  assert_file_contains "$ws/configure-help.out" '--rotate-jwt'
   assert_file_contains "$ws/configure-help.out" '--set KEY=VALUE'
+
+  if (cd "$ws" && ./configure-rf.sh --not-a-real-option) > "$ws/configure-invalid.out" 2>&1; then
+    return 1
+  fi
+  assert_file_contains "$ws/configure-invalid.out" '^Unknown option: --not-a-real-option$'
+}
+
+test_noninteractive_approval_is_explicit() {
+  local ws result
+  ws="$(make_workspace)"
+  awk '/^read_masked_input\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/input-functions.sh"
+  awk '/^get_input\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/input-functions.sh"
+  awk '/^validate_variables\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/input-functions.sh"
+  awk '/^ask_and_validate\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/input-functions.sh"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/input-functions.sh"
+    declare -A OVERRIDES=()
+    NON_INTERACTIVE=true
+    ASSUME_YES=false
+    UI_MODE=plain
+    result=$(get_input 'Apply changes? (y/n)' 'n' 2>/dev/null)
+    [[ "$result" == "n" ]] || exit 1
+    ASSUME_YES=true
+    result=$(get_input 'Apply changes? (y/n)' 'n' 2>/dev/null)
+    [[ "$result" == "y" ]] || exit 1
+    OVERRIDES[AUTO_VALIDATE_EMAIL]='not-a-boolean'
+    AUTO_VALIDATE_EMAIL=true
+    if result=$(ask_and_validate AUTO_VALIDATE_EMAIL 'Email validation:' "$AUTO_VALIDATE_EMAIL" 2>/dev/null); then
+      exit 1
+    fi
+  )
+}
+
+test_tui_yesno_dialog_remains_visible() {
+  local ws result
+  ws="$(make_workspace)"
+  awk '/^read_masked_input\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/input-functions.sh"
+  awk '/^get_input\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/input-functions.sh"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/input-functions.sh"
+    NON_INTERACTIVE=false
+    UI_MODE=tui
+    MAIN_PID="$$"
+    whiptail() {
+      printf 'visible-dialog'
+      return 0
+    }
+    result=$(get_input 'Change the .env file variables? (y/n)' 'n' 2> "$ws/tui-screen.out")
+    [[ "$result" == "y" ]] || exit 1
+    grep -Fq 'visible-dialog' "$ws/tui-screen.out" || exit 1
+  )
+}
+
+test_cloudflare_guidance_is_in_secure_token_prompt() {
+  local ws
+  ws="$(make_workspace)"
+  awk '/^cloudflare_token_guidance\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/token-input-functions.sh"
+  awk '/^is_secret_key\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/token-input-functions.sh"
+  awk '/^read_masked_input\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/token-input-functions.sh"
+  awk '/^get_input\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/token-input-functions.sh"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/token-input-functions.sh"
+    declare -A CONFIG_SECRET=([CF_API_TOKEN]=true)
+    NON_INTERACTIVE=false
+    UI_MODE=tui
+    MAIN_PID="$$"
+    whiptail() {
+      printf '%s\n' "$*" > "$ws/cloudflare-token-dialog.args"
+      printf '%s' "${MOCK_TOKEN_INPUT-secret-token}" >&2
+      return 0
+    }
+    result=$(get_input CF_API_TOKEN 'Paste your Cloudflare API token. Leave blank for manual setup:' '' 2> "$ws/cloudflare-token-screen.out")
+    [[ "$result" == "secret-token" ]] || exit 1
+    MOCK_TOKEN_INPUT=''
+    result=$(get_input CF_API_TOKEN 'Paste your Cloudflare API token. Leave blank for manual setup:' 'existing-token' 2> "$ws/cloudflare-token-blank-screen.out")
+    [[ -z "$result" ]] || exit 1
+  ) || return 1
+
+  assert_file_contains "$ws/cloudflare-token-dialog.args" '--title Cloudflare API token --passwordbox' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'https://dash.cloudflare.com/profile/api-tokens' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'Account Settings.*Read' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'Cloudflare Tunnel.*Edit' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'Zone.*Zone.*Edit' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'Zone.*DNS.*Edit' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'SSL and Certificates.*Edit' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'install/cloudflare/' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'Create Custom Token' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'Account Resources' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'Zone Resources' || return 1
+  assert_file_contains "$ws/cloudflare-token-dialog.args" 'Copy and paste the token below\. Input is hidden' || return 1
+  assert_file_not_contains "$ROOT_DIR/configure-rf.sh" '^  show_cloudflare_token_help$'
+}
+
+test_tui_combines_summary_review_and_decisions() {
+  local ws
+  ws="$(make_workspace)"
+  awk '/^configured_status\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/combined-tui-functions.sh"
+  awk '/^summary_value\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/combined-tui-functions.sh"
+  awk '/^optional_settings_summary\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/combined-tui-functions.sh"
+  awk '/^prompt_optional_settings_update\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/combined-tui-functions.sh"
+  awk '/^show_execution_plan\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/combined-tui-functions.sh"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/combined-tui-functions.sh"
+    UI_MODE=tui
+    MAIN_PID="$$"
+    PLAN_ONLY=false
+    ANY_SERVICE_RUNNING=false
+    PENDING_DOCKER_INSTALL=false
+    PENDING_DOCKER_GROUP=false
+    PENDING_JQ_INSTALL=false
+    PENDING_GH_INSTALL=false
+    PENDING_CLOUDFLARE_SETUP=false
+    PENDING_CERT_UPDATE=false
+    ROTATE_JWT=false
+    DOMAIN=example.com
+    SEQUENCE_LIMIT=500
+    SWAP_CP=false
+    VIEWER_PAGE_SUBDOMAIN=''
+    PROTOMAPS_API_KEY=''
+    MAP_STYLE_LIGHT=''
+    MAP_STYLE_DARK=''
+    SOCIAL_META='configured'
+    PUBLIC_POSTHOG_KEY=''
+    GA_TRACKING_ID=1
+    MIXPANEL_KEY=''
+    SERVICES=(plugins-api control-panel viewer ui external-api nginx cloudflared mongo versitygw)
+    declare -A PENDING_COMPOSE_TAGS=([plugins-api]=abcdef1)
+    declare -A PENDING_COMPOSE_OLD_TAGS=([plugins-api]=latest)
+    whiptail() {
+      printf '%s\n---\n' "$*" >> "$ws/combined-tui.args"
+      if [[ "$*" == *"--menu"* ]]; then
+        printf 'do-not-apply' >&2
+        return 0
+      fi
+      return 1
+    }
+
+    result=$(prompt_optional_settings_update)
+    [[ "$result" == "n" ]] || exit 1
+    if show_execution_plan false '  - Domain: old.example -> example.com' 'DOMAIN'; then
+      exit 1
+    fi
+  ) || return 1
+
+  assert_file_contains "$ws/combined-tui.args" '--title Step 2: Optional settings --defaultno --yesno' || return 1
+  assert_file_contains "$ws/combined-tui.args" 'Sequence limit.*500' || return 1
+  assert_file_contains "$ws/combined-tui.args" 'Update optional settings' || return 1
+  assert_file_contains "$ws/combined-tui.args" '--title Review changes and execution plan --notags --menu' || return 1
+  assert_file_contains "$ws/combined-tui.args" 'Choose an action with the Up/Down arrow keys, then press Enter' || return 1
+  assert_file_contains "$ws/combined-tui.args" 'Apply the reviewed execution plan' || return 1
+  assert_file_contains "$ws/combined-tui.args" 'choose Choose an action\.\.\. apply Apply the reviewed execution plan do-not-apply Do not apply changes' || return 1
+  assert_file_contains "$ws/combined-tui.args" 'Check every container version, replace any latest tags in Compose with concrete versions, pull the four coordinated backend images, build the deployment-specific UI, and start the Remote Falcon stack' || return 1
+  assert_file_contains "$ws/combined-tui.args" 'plugins-api: latest -> abcdef1' || return 1
+  assert_file_not_contains "$ws/combined-tui.args" '--scrolltext|--msgbox' || return 1
+  assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'show_tui_section "Review and apply"' || return 1
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'show_configuration_notice "Changes not applied"' || return 1
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '\[\[ "\$UI_MODE" != "tui" \]\]' || return 1
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'if \[\[ \$update_status -eq 3 \]\]'
+}
+
+test_tui_validation_errors_remain_visible() {
+  local ws
+  ws="$(make_workspace)"
+  awk '/^validate_variables\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/validation-functions.sh"
+  awk '/^ask_and_validate\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/validation-functions.sh"
+  printf 'not-a-boolean\ntrue\n' > "$ws/answers"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/validation-functions.sh"
+    NON_INTERACTIVE=false
+    UI_MODE=tui
+    MAIN_PID="$$"
+    AUTO_VALIDATE_EMAIL=true
+    get_input() {
+      local answer
+      answer=$(head -n 1 "$ws/answers")
+      tail -n +2 "$ws/answers" > "$ws/answers.next"
+      mv "$ws/answers.next" "$ws/answers"
+      printf '%s' "$answer"
+    }
+    whiptail() {
+      printf 'visible-validation-error\n%s\n' "$*"
+      return 0
+    }
+    result=$(ask_and_validate AUTO_VALIDATE_EMAIL 'Enable automatic email validation:' true 2> "$ws/validation-screen.out")
+    [[ "$result" == "true" ]] || exit 1
+    grep -Fq 'visible-validation-error' "$ws/validation-screen.out" || exit 1
+    grep -Fq 'must be' "$ws/validation-screen.out" || exit 1
+  )
+}
+
+test_execution_plan_numbers_only_present_actions() {
+  local ws
+  ws="$(make_workspace)"
+  awk '/^show_execution_plan\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/execution-plan-function.sh"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/execution-plan-function.sh"
+    UI_MODE=tui
+    MAIN_PID="$$"
+    PLAN_ONLY=false
+    ANY_SERVICE_RUNNING=false
+    PENDING_DOCKER_INSTALL=false
+    PENDING_DOCKER_GROUP=false
+    PENDING_JQ_INSTALL=false
+    PENDING_GH_INSTALL=false
+    PENDING_CLOUDFLARE_SETUP=false
+    PENDING_CERT_UPDATE=true
+    ROTATE_JWT=false
+    SERVICES=(plugins-api control-panel viewer ui external-api nginx cloudflared mongo versitygw)
+    declare -A PENDING_COMPOSE_TAGS=()
+    declare -A PENDING_COMPOSE_OLD_TAGS=()
+    whiptail() {
+      printf '%s\n' "$*" > "$ws/numbered-plan.out"
+      printf 'do-not-apply' >&2
+    }
+    if show_execution_plan true '' 'DOMAIN'; then
+      exit 1
+    fi
+  ) || return 1
+
+  assert_file_contains "$ws/numbered-plan.out" '1\. Open the configured editor for the origin certificate and private key\.' || return 1
+  assert_file_contains "$ws/numbered-plan.out" '2\. Back up, validate, and atomically replace \.env\.' || return 1
+  assert_file_contains "$ws/numbered-plan.out" '3\. Initialize or preserve MongoDB root and application credentials\.' || return 1
+  assert_file_contains "$ws/numbered-plan.out" '4\. Check every container version, replace any latest tags in Compose with concrete versions' || return 1
+  assert_file_contains "$ws/numbered-plan.out" '5\. Initialize or preserve VersityGW credentials, bucket, and public policy, then run full health checks\.'
+}
+
+test_tui_cancel_stops_validated_input() {
+  local ws
+  ws="$(make_workspace)"
+  awk '/^validate_variables\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/cancel-functions.sh"
+  awk '/^ask_and_validate\(\)/,/^}/' "$ws/configure-rf.sh" >> "$ws/cancel-functions.sh"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/cancel-functions.sh"
+    NON_INTERACTIVE=false
+    UI_MODE=tui
+    DOMAIN=your_domain.com
+    get_input() {
+      return 130
+    }
+    whiptail() {
+      printf '%s\n' "$*" >> "$ws/cancel-dialogs.out"
+      return 0
+    }
+
+    set +e
+    result=$(ask_and_validate DOMAIN 'Enter your domain:' "$DOMAIN" 2>/dev/null)
+    status=$?
+    set -e
+    [[ $status -eq 130 ]] || exit 1
+    [[ -z "$result" ]] || exit 1
+    [[ ! -e "$ws/cancel-dialogs.out" ]]
+  )
+}
+
+test_default_required_values_enter_configuration_directly() {
+  local ws
+  ws="$(make_workspace)"
+  awk '/^configuration_requires_walkthrough\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/default-functions.sh"
+
+  (
+    source "$ws/shared_functions.sh"
+    source "$ws/default-functions.sh"
+    TUNNEL_TOKEN=cloudflare_token
+    DOMAIN=your_domain.com
+    USER_JWT_KEY=123456
+    configuration_requires_walkthrough || exit 1
+
+    TUNNEL_TOKEN=configured-tunnel-token
+    DOMAIN=example.com
+    USER_JWT_KEY=abcdefghijklmnopqrstuvwxyz123456
+    if configuration_requires_walkthrough; then
+      exit 1
+    fi
+  ) || return 1
+
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'configuration_requires_walkthrough ||'
+}
+
+test_configure_tui_guidance_is_actionable() {
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Step 1: Required settings'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Step 2: Optional settings'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Cloudflare tunnel token'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'No changes will be made until approved at the end'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'cloudflared-remotefalcon/latest/'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'https://dash.cloudflare.com/profile/api-tokens'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'install/cloudflare/'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Cloudflare Tunnel.*Edit'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'SSL and Certificates.*Edit'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '^manual_origin_certificate_guidance\(\)'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'install/cloudflare/#manual-configuration'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Manual certificate entry will be added to the execution plan'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Nano will open twice'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'whiptail --title "\$TUI_PROMPT_TITLE" --msgbox'
+  assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'Add manual certificate entry to the plan\? \(y/n\)'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Paste the origin certificate\. Ctrl\+X, y, and ENTER to save\.'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Paste the origin private key\. Ctrl\+X, y, and ENTER to save\.'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'whiptail --title "Origin private key" --msgbox'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'post-install/#swap-viewer-page-subdomain'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'whiptail --title "Review changes and execution plan" --notags --menu'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Apply the reviewed execution plan'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '"choose" "Choose an action\.\.\."'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Choose an action with the Up/Down arrow keys, then press Enter'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Select Apply or Do not apply before continuing'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'yesno_args\+=\(--defaultno\)'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Public AMD64/ARM64 images for 4 of the Remote Falcon containers will be pulled anonymously'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'NEWT_COLORS='
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'border=red,black'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'actbutton=white,red'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'TUI_PROMPT_TITLE="Step 2: Optional settings"'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'prompt_optional_settings_update'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Proposed \.env changes:'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Compose tag corrections \('
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '\$old_display -> \$new_display'
+}
+
+test_configure_preserves_legacy_viewer_key_and_rotates_user_key_only() {
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '^    \["USER_JWT_KEY"\]="\$USER_JWT_KEY"$'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'ROTATE_JWT.*true.*USER_JWT_KEY'
+  assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'new_env_vars\["VIEWER_JWT_KEY"\]="\$\(openssl rand'
+  assert_file_not_contains "$ROOT_DIR/configure-rf.sh" 'ROTATE_JWT.*true.*VIEWER_JWT_KEY'
+  assert_file_not_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'VIEWER_JWT_KEY=\$\{VIEWER_JWT_KEY\}'
+}
+
+test_configure_atomic_env_writer() {
+  local ws
+  ws="$(make_workspace)"
+  mkdir -p "$ws/bin"
+  cat > "$ws/bin/docker" <<'MOCK'
+#!/usr/bin/env bash
+exit 0
+MOCK
+  chmod +x "$ws/bin/docker"
+  awk '/^write_env_atomically\(\)/,/^}/' "$ws/configure-rf.sh" > "$ws/env-writer.sh"
+  cat > "$ws/source.env" <<'ENV'
+# preserved comment
+SOCIAL_META=old
+DUPLICATE=first
+DUPLICATE=second
+KEEP=unchanged
+ENV
+  : > "$ws/compose.yaml"
+
+  (
+    PATH="$ws/bin:$PATH"
+    WORKING_DIR="$ws"
+    ENV_FILE="$ws/source.env"
+    COMPOSE_FILE="$ws/compose.yaml"
+    RED='' NC=''
+    original_keys=(SOCIAL_META DUPLICATE DUPLICATE KEEP)
+    backup_file() { cp "$1" "$1.backup"; }
+    source "$ws/env-writer.sh"
+    declare -A proposed=(
+      [SOCIAL_META]='value with & and | and \slashes'
+      [DUPLICATE]='replacement'
+      [NEW_VALUE]='new=value'
+    )
+    write_env_atomically proposed
+    grep -Fxq '# preserved comment' "$ENV_FILE"
+    grep -Fxq 'SOCIAL_META=value with & and | and \slashes' "$ENV_FILE"
+    [[ $(grep -c '^DUPLICATE=' "$ENV_FILE") -eq 1 ]]
+    grep -Fxq 'DUPLICATE=replacement' "$ENV_FILE"
+    grep -Fxq 'KEEP=unchanged' "$ENV_FILE"
+    grep -Fxq 'NEW_VALUE=new=value' "$ENV_FILE"
+    [[ -f "$ENV_FILE.backup" ]]
+  )
 }
 
 test_secret_input_displays_masked_progress() {
@@ -1196,6 +1743,11 @@ test_fresh_install_checks_each_deployed_service() {
   assert_file_contains "$ROOT_DIR/update_containers.sh" 'ps --services --filter status=running'
   assert_file_not_contains "$ROOT_DIR/update_containers.sh" '"\$HEALTH_CHECK_SCRIPT" 0s'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Container update failed. Aborting configuration.'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'RF_DEFER_VERSITYGW_INIT="\$defer_versitygw_init"'
+  assert_file_contains "$ROOT_DIR/update_containers.sh" 'DEFER_VERSITYGW_INIT="\$\{RF_DEFER_VERSITYGW_INIT:-false\}"'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Every fresh/no-running-container path must finish storage setup'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '^[[:space:]]+versitygw_init$'
+  assert_file_contains "$ROOT_DIR/configure-rf.sh" '^[[:space:]]+run_configure_health_check$'
 }
 
 test_fresh_storage_is_initialized_and_required() {
@@ -1245,6 +1797,7 @@ test_current_platform_runtime_configuration() {
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'QUARKUS_MONGODB_CONNECTION_STRING=mongodb://\$\{MONGO_APP_USERNAME\}:\$\{MONGO_APP_PASSWORD\}@mongo:27017/remote-falcon\?authSource=remote-falcon'
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'SPRING_DATA_MONGODB_URI=mongodb://\$\{MONGO_APP_USERNAME\}:\$\{MONGO_APP_PASSWORD\}@mongo:27017/remote-falcon\?authSource=remote-falcon'
   assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'IMAGES_CDN_ENDPOINT=https://\$\{DOMAIN\}/\$\{IMAGES_S3_BUCKET\}'
+  assert_file_contains "$ROOT_DIR/remotefalcon/compose.yaml" 'SELF_HOSTED=true'
   assert_file_contains "$ROOT_DIR/configure-rf.sh" 'Configuration completed with failed health checks.'
   ! grep -Rqs 'mongodb://root:root' "$ROOT_DIR"/*.sh || return 1
 }
@@ -1293,7 +1846,8 @@ test_ci_has_pinned_static_validation() {
   assert_file_contains "$ROOT_DIR/requirements-docs.txt" '^mike==[0-9]'
   assert_file_contains "$ROOT_DIR/mkdocs.yml" '^site_url: https://ne0n09\.github\.io/cloudflared-remotefalcon/$'
   assert_file_contains "$ROOT_DIR/mkdocs.yml" '^[[:space:]]+provider: mike$'
-  assert_file_not_contains "$ROOT_DIR/mkdocs.yml" "^[[:space:]]+- 'GitHub': install/github\.md$"
+  assert_file_not_contains "$ROOT_DIR/mkdocs.yml" 'install/github\.md'
+  [[ ! -e "$ROOT_DIR/docs/install/github.md" ]] || return 1
   assert_file_contains "$ROOT_DIR/.github/workflows/ci.yml" 'mkdocs build --strict'
   assert_file_contains "$ROOT_DIR/.github/workflows/ci.yml" 'fetch-depth: 0'
   assert_file_not_contains "$ROOT_DIR/.github/workflows/ci.yml" 'mkdocs gh-deploy'
@@ -1324,6 +1878,7 @@ test_public_backend_workflow_is_multiarch_and_coordinated() {
   assert_file_contains "$workflow" 'index\("arm64"\) != null'
   assert_file_contains "$workflow" '^      - name: Smoke test native architecture image$'
   assert_file_contains "$workflow" 'mongo:7\.0\.43'
+  assert_file_contains "$workflow" 'docker exec --user mongodb --env HOME=/tmp "\$mongo_container" mongosh --quiet'
   assert_file_contains "$workflow" "docker image inspect --format '\{\{\.Architecture\}\}'"
   assert_file_contains "$workflow" "docker inspect --format '\{\{\.State\.Running\}\}'"
   assert_file_contains "$workflow" 'remained running on \$ARCHITECTURE with MongoDB available'
@@ -1348,6 +1903,20 @@ test_upstream_arg_monitor_detects_contract_drift() {
   local checker="$ROOT_DIR/.github/scripts/check_upstream_build_args.py"
   local monitor="$ROOT_DIR/.github/workflows/monitor-upstream-build-args.yml"
   mkdir -p "$fixture/upstream/apps/example"
+
+  python3 - "$ROOT_DIR/.github/upstream-build-args.json" <<'PY' || return 1
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as baseline_file:
+    baseline = json.load(baseline_file)
+
+assert baseline["approved_upstream_commit"] == "a34d0f5f0ea62ab6585bbc0767b71b87783350c0"
+ui = baseline["services"]["ui"]
+assert "SELF_HOSTED" in ui["provided_args"]
+assert "SELF_HOSTED" in ui["args"] and ui["args"]["SELF_HOSTED"] is None
+PY
+
   git -C "$fixture/upstream" init -q
   git -C "$fixture/upstream" config user.name test
   git -C "$fixture/upstream" config user.email test@example.com
@@ -1407,10 +1976,10 @@ test_github_release_uses_documented_notes() {
 
   bash "$ROOT_DIR/tests/extract-release-notes.sh" \
     "$ROOT_DIR/VERSION" "$ROOT_DIR/docs/release-notes.md" "$output" || return 1
-  assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$"
-  assert_file_contains "$output" '^-[[:space:]]+MongoDB now receives a random root password' || return 1
-  assert_file_contains "$output" "^\[Full documentation\](https://ne0n09.github.io/cloudflared-remotefalcon/$(cat "$ROOT_DIR/VERSION")/release-notes/)$"
-  assert_file_not_contains "$output" '^## 2026\.9\.19\.3$'
+  assert_file_contains "$output" "^## $(cat "$ROOT_DIR/VERSION")$" || return 1
+  assert_file_contains "$output" '^-[[:space:]]+[^[:space:]]' || return 1
+  assert_file_contains "$output" "^\[Full documentation\]\(https://ne0n09.github.io/cloudflared-remotefalcon/$(cat "$ROOT_DIR/VERSION")/release-notes/\)$" || return 1
+  assert_file_not_contains "$output" '^## 2026\.10\.5$' || return 1
 
   printf '1900.1.1\n' > "$missing_version"
   if bash "$ROOT_DIR/tests/extract-release-notes.sh" \
@@ -1418,19 +1987,19 @@ test_github_release_uses_documented_notes() {
     return 1
   fi
 
-  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'body_path: github-release-notes\.md'
+  assert_file_contains "$ROOT_DIR/.github/workflows/release.yml" 'body_path: github-release-notes\.md' || return 1
   assert_file_not_contains "$ROOT_DIR/.github/workflows/release.yml" 'generate_release_notes: true'
 }
 
 test_install_manifest_is_authoritative() {
-  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable configure-rf\.sh$'
-  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable mongo_init\.sh$'
-  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable upgrade_installation\.sh$'
-  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^template remotefalcon/compose\.yaml$'
-  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^release-dir tests$'
-  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired minio_init\.sh$'
-  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired revert\.sh$'
-  assert_file_contains "$ROOT_DIR/update_scripts.sh" 'mapfile -t scripts.*install-manifest'
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable configure-rf\.sh$' || return 1
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable mongo_init\.sh$' || return 1
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^executable upgrade_installation\.sh$' || return 1
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^template remotefalcon/compose\.yaml$' || return 1
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^release-dir tests$' || return 1
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired minio_init\.sh$' || return 1
+  assert_file_contains "$ROOT_DIR/install-manifest.txt" '^retired revert\.sh$' || return 1
+  assert_file_contains "$ROOT_DIR/update_scripts.sh" 'mapfile -t scripts.*"\$manifest"' || return 1
   assert_file_not_contains "$ROOT_DIR/update_scripts.sh" '^scripts=\('
 }
 
@@ -1809,6 +2378,9 @@ run_test "Quarkus runtime migration is targeted and idempotent" test_quarkus_env
 run_test "control-panel runtime migration is targeted and idempotent" test_control_panel_environment_migration
 run_test "image upgrades check only their service and roll back on HTTP failure" test_update_targeted_health_and_rollback
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
+run_test "update_containers.sh rejects a full /tmp before container checks" test_update_containers_rejects_full_tmp
+run_test "infrastructure updates pull published images without local builds" test_infrastructure_updates_pull_published_images
+run_test "public applications deploy as one coordinated group" test_public_applications_deploy_as_a_coordinated_group
 run_test "public images use the platform SHA before env migration" test_public_images_use_platform_sha_without_migrated_env
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare
 run_test "mongo_init.sh rotates defaults and creates a scoped application user" test_mongo_init_rotates_defaults_and_creates_app_user
@@ -1822,7 +2394,18 @@ run_test "MinIO migration preserves its volume when the temporary server fails" 
 run_test "health_check.sh reports an empty S3 bucket" test_health_check_empty_s3_bucket
 run_test "health_check.sh fails when the S3 bucket is missing" test_health_check_requires_s3_bucket
 run_test "configure-rf.sh exposes expected CLI help" test_configure_rf_help
+run_test "noninteractive input does not imply approval" test_noninteractive_approval_is_explicit
+run_test "TUI yes/no dialogs remain visible inside command substitution" test_tui_yesno_dialog_remains_visible
+run_test "Cloudflare guidance is included in the secure token prompt" test_cloudflare_guidance_is_in_secure_token_prompt
+run_test "TUI combines optional and review decisions with their summaries" test_tui_combines_summary_review_and_decisions
+run_test "TUI validation errors remain visible before retrying" test_tui_validation_errors_remain_visible
+run_test "execution plan numbers only the actions that apply" test_execution_plan_numbers_only_present_actions
+run_test "TUI Cancel exits validated prompts without showing a validation error" test_tui_cancel_stops_validated_input
+run_test "default required values enter configuration without an extra prompt" test_default_required_values_enter_configuration_directly
+run_test "TUI setup guidance is clear and actionable" test_configure_tui_guidance_is_actionable
 run_test "secret prompts display masked input progress" test_secret_input_displays_masked_progress
+run_test "configure-rf.sh preserves the legacy viewer key and rotates only the active user key" test_configure_preserves_legacy_viewer_key_and_rotates_user_key_only
+run_test "configure-rf.sh writes env changes atomically and safely" test_configure_atomic_env_writer
 run_test "configure-rf.sh has no archived updater" test_configure_rf_has_no_archived_updater
 run_test "fresh installs validate deployed services individually" test_fresh_install_checks_each_deployed_service
 run_test "fresh storage is initialized and required by health checks" test_fresh_storage_is_initialized_and_required

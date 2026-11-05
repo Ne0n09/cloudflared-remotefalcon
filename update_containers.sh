@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.10.5
+# VERSION=2026.11.5
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -31,9 +31,13 @@ MODE="${2:-}"  # Options: dry-run, auto-apply, or interactive, defaults to inter
 HEALTH_CHECK="${3:-}" # Options: health or empty
 # CONTAINERS defines the order that the containers will be updated in if no name is provided
 CONTAINERS=("mongo" "versitygw" "plugins-api" "control-panel" "viewer" "ui" "external-api" "nginx" "cloudflared" )
+RF_APPLICATION_SERVICES=("plugins-api" "control-panel" "viewer" "ui" "external-api")
 BACKED_UP=false # Flag to track if a backup was made
 MONGO_NO_AVX_PIN_ACTIVE=false
+PUBLIC_BACKEND_RELEASE_SHA=""
 REMOTE_FALCON_REPO="$REMOTE_FALCON_PLATFORM_REPO" # Main repo to compare sha
+FRESH_INSTALL_MODE="${RF_FRESH_INSTALL:-}"
+DEFER_VERSITYGW_INIT="${RF_DEFER_VERSITYGW_INIT:-false}"
 
 if [[ -z "$SERVICE_NAME" ]]; then
   SERVICE_NAME="all"  # Default to all if not provided
@@ -48,6 +52,20 @@ if [[ -z "$HEALTH_CHECK" ]]; then
 fi
 
 # ========== Functions ==========
+detect_fresh_install_mode() {
+  [[ -n "$FRESH_INSTALL_MODE" ]] && return 0
+
+  # Capture this before version probing can create containers. Those temporary
+  # containers do not constitute a previous deployment that can be restored.
+  FRESH_INSTALL_MODE=true
+  for service in "${RF_APPLICATION_SERVICES[@]}"; do
+    if docker inspect "$service" >/dev/null 2>&1; then
+      FRESH_INSTALL_MODE=false
+      break
+    fi
+  done
+}
+
 # Get a registry access token for GHCR
 get_token() {
   local image=$1
@@ -200,20 +218,50 @@ wait_for_service_deployment() {
 prepare_service_image() {
   local service_name="$1"
 
-  if service_uses_registry_image "$service_name"; then
-    echo -e "${BLUE}⬇️ Pulling the published $service_name image...${NC}"
-    rf_compose pull "$service_name"
-  else
-    echo -e "${BLUE}🔨 Building $service_name locally...${NC}"
-    rf_compose build "$service_name"
+  case "$service_name" in
+    plugins-api|control-panel|viewer|ui|external-api)
+      if service_uses_registry_image "$service_name"; then
+        echo -e "${BLUE}⬇️ Pulling the published $service_name image...${NC}"
+        rf_compose pull "$service_name"
+      else
+        echo -e "${BLUE}🔨 Building $service_name locally...${NC}"
+        rf_compose build "$service_name"
+      fi
+      ;;
+    *)
+      # Infrastructure services use upstream registry images and never have a
+      # local Compose build context.
+      echo -e "${BLUE}⬇️ Pulling the published $service_name image...${NC}"
+      rf_compose pull "$service_name"
+      ;;
+  esac
+}
+
+initialize_updated_service() {
+  local service_name="$1"
+
+  # A fresh VersityGW container is not healthy for Remote Falcon until its
+  # application user, bucket, and public policy exist. Initialize those
+  # idempotently before the targeted deployment health check can roll the
+  # image back for a missing bucket.
+  if [[ "$service_name" == "versitygw" ]]; then
+    if [[ "$DEFER_VERSITYGW_INIT" == "true" ]]; then
+      echo -e "${BLUE}🪣 Deferring VersityGW credential and bucket initialization until the complete fresh-install stack is started.${NC}"
+      return 0
+    fi
+    echo -e "${BLUE}🪣 Initializing VersityGW storage before its deployment check...${NC}"
+    versitygw_init
   fi
+}
+
+coordinated_public_application_updates_enabled() {
+  ! github_workflow_builds_configured && public_backend_images_supported
 }
 
 preflight_public_backend_release() {
   local platform_sha short_sha service
 
-  github_workflow_builds_configured && return 0
-  public_backend_images_supported || return 0
+  coordinated_public_application_updates_enabled || return 0
 
   platform_sha=$(curl -fsSL "https://api.github.com/repos/${REMOTE_FALCON_REPO}/commits/main" | jq -r '.sha // empty')
   [[ "$platform_sha" =~ ^[0-9a-f]{40}$ ]] || {
@@ -229,6 +277,165 @@ preflight_public_backend_release() {
       return 1
     fi
   done
+  PUBLIC_BACKEND_RELEASE_SHA="$platform_sha"
+}
+
+perform_coordinated_public_application_update() {
+  local full_sha="$1"
+  local short_sha="${full_sha:0:7}"
+  local previous_compose service timestamp deployment_ok=true
+  local -A previous_images=()
+  local -A previous_refs=()
+  local -A rollback_tags=()
+
+  previous_compose=$(mktemp) || return 1
+  cp "$COMPOSE_FILE" "$previous_compose" || { rm -f "$previous_compose"; return 1; }
+  timestamp=$(date +%s)
+
+  for service in "${RF_APPLICATION_SERVICES[@]}"; do
+    previous_images[$service]=$(docker inspect --format '{{.Image}}' "$service" 2>/dev/null || true)
+    previous_refs[$service]=$(docker inspect --format '{{.Config.Image}}' "$service" 2>/dev/null || true)
+    if [[ -n "${previous_images[$service]}" && -n "${previous_refs[$service]}" ]]; then
+      rollback_tags[$service]="rf-rollback-${service}:${timestamp}"
+      docker image tag "${previous_images[$service]}" "${rollback_tags[$service]}" || rollback_tags[$service]=""
+    fi
+  done
+
+  if [[ $BACKED_UP == false ]]; then
+    backup_file "$COMPOSE_FILE"
+    BACKED_UP=true
+  fi
+
+  if ! update_rf_version; then
+    deployment_ok=false
+  fi
+  update_compose_dockerfile_paths
+  for service in "${RF_APPLICATION_SERVICES[@]}"; do
+    if ! ensure_service_runtime_environment "$service"; then
+      deployment_ok=false
+      break
+    fi
+    update_rf_build_context "$service" "$full_sha"
+    sed -i.bak -E "s|(^[[:space:]]*image:[[:space:]]*\"?)([^\"[:space:]]*${service}):[^\"[:space:]]+(\"?)|\1\2:${short_sha}\3|" "$COMPOSE_FILE"
+  done
+
+  if $deployment_ok; then
+    echo -e "✔ Updated all Remote Falcon application image tags to coordinated release $short_sha in $COMPOSE_FILE..."
+    rf_compose config -q || deployment_ok=false
+  fi
+  if $deployment_ok; then
+    echo -e "${BLUE}⬇️ Pulling all four coordinated public backend images...${NC}"
+    rf_compose pull "${RF_BACKEND_SERVICES[@]}" || deployment_ok=false
+  fi
+  if $deployment_ok; then
+    echo -e "${BLUE}🔨 Building ui locally from the same $short_sha platform commit...${NC}"
+    rf_compose build ui || deployment_ok=false
+  fi
+  if $deployment_ok; then
+    echo -e "${BLUE}🔄 Restarting all five Remote Falcon application services together on release $short_sha...${NC}"
+    rf_compose up -d --no-deps "${RF_APPLICATION_SERVICES[@]}" || deployment_ok=false
+  fi
+  if $deployment_ok; then
+    for service in "${RF_APPLICATION_SERVICES[@]}"; do
+      # Public routes are configured and checked later in configure-rf. During
+      # a fresh install, verify that each container starts without requiring a
+      # Cloudflare/NGINX endpoint that cannot be ready yet.
+      if [[ "$FRESH_INSTALL_MODE" == "true" ]]; then
+        if ! wait_for_service_deployment "$service" ""; then
+          deployment_ok=false
+          break
+        fi
+      elif ! wait_for_service_deployment "$service" "health"; then
+        deployment_ok=false
+        break
+      fi
+    done
+  fi
+
+  if $deployment_ok; then
+    rm -f "$previous_compose"
+    for service in "${RF_APPLICATION_SERVICES[@]}"; do
+      [[ -z "${rollback_tags[$service]:-}" ]] || docker image rm "${rollback_tags[$service]}" >/dev/null 2>&1 || true
+    done
+    return 0
+  fi
+
+  if [[ "$FRESH_INSTALL_MODE" == "true" ]]; then
+    echo -e "${RED}❌ The fresh application deployment failed. No previous application deployment exists to restore; the selected Compose file and images were left in place for diagnosis.${NC}" >&2
+    rm -f "$previous_compose"
+    for service in "${RF_APPLICATION_SERVICES[@]}"; do
+      [[ -z "${rollback_tags[$service]:-}" ]] || docker image rm "${rollback_tags[$service]}" >/dev/null 2>&1 || true
+    done
+    return 1
+  fi
+
+  echo -e "${RED}❌ The coordinated application deployment failed; restoring all five previous images and the Compose file.${NC}" >&2
+  cp "$previous_compose" "$COMPOSE_FILE"
+  rm -f "$previous_compose"
+  for service in "${RF_APPLICATION_SERVICES[@]}"; do
+    if [[ -n "${rollback_tags[$service]:-}" ]]; then
+      docker image tag "${rollback_tags[$service]}" "${previous_refs[$service]}" || true
+    fi
+  done
+  rf_compose up -d --no-deps --force-recreate "${RF_APPLICATION_SERVICES[@]}" || true
+  for service in "${RF_APPLICATION_SERVICES[@]}"; do
+    if ! wait_for_service_deployment "$service"; then
+      echo "❌ Restored $service is still unhealthy; inspect its configuration and logs." >&2
+    fi
+    [[ -z "${rollback_tags[$service]:-}" ]] || docker image rm "${rollback_tags[$service]}" >/dev/null 2>&1 || true
+  done
+  return 1
+}
+
+check_coordinated_public_application_update() {
+  local full_sha="$PUBLIC_BACKEND_RELEASE_SHA"
+  local short_sha="${full_sha:0:7}"
+  local service current_version compose_version confirm
+  local update_required=false
+
+  [[ "$full_sha" =~ ^[0-9a-f]{40}$ ]] || {
+    echo -e "${RED}❌ Coordinated public release was not resolved during preflight.${NC}" >&2
+    return 1
+  }
+
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${BLUE}📦 Coordinated Remote Falcon application release${NC}"
+  for service in "${RF_APPLICATION_SERVICES[@]}"; do
+    if is_container_running "$service"; then
+      current_version=$(get_current_version "$service")
+    else
+      current_version=$(get_current_compose_tag "$service")
+    fi
+    compose_version=$(get_current_compose_tag "$service")
+    [[ -n "$current_version" ]] || current_version="undetermined"
+    printf '🔸 %-14s current: %s  latest: %s\n' "$service" "$current_version" "$short_sha"
+    if [[ "$current_version" != "$short_sha" || "$compose_version" != "$short_sha" ]]; then
+      update_required=true
+    fi
+  done
+
+  if ! $update_required; then
+    echo -e "${GREEN}✅ All five application services are on coordinated release $short_sha.${NC}"
+    return 0
+  fi
+
+  echo -e "${BLUE}🔗 https://github.com/${REMOTE_FALCON_REPO}/commit/${full_sha}${NC}"
+  case "$MODE" in
+    dry-run)
+      echo -e "🧪 ${YELLOW}Dry-run:${NC} would pull four backends, build ui, and restart all five services together on $short_sha"
+      ;;
+    auto-apply)
+      perform_coordinated_public_application_update "$full_sha"
+      ;;
+    *)
+      read -rp "❓ Update all five Remote Falcon application services together to ${short_sha}? (y/n) [n]: " confirm
+      if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        perform_coordinated_public_application_update "$full_sha"
+      else
+        echo -e "⏭️ Skipped the coordinated Remote Falcon application update."
+      fi
+      ;;
+  esac
 }
 
 perform_update() {
@@ -236,11 +443,19 @@ perform_update() {
   local latest_version="$2"
   local sed_command="$3"
   local previous_compose previous_image previous_ref rollback_tag=""
+  local deployment_health_check=""
 
   previous_compose=$(mktemp) || return 1
   cp "$COMPOSE_FILE" "$previous_compose" || { rm -f "$previous_compose"; return 1; }
   previous_image=$(docker inspect --format '{{.Image}}' "$service_name" 2>/dev/null || true)
   previous_ref=$(docker inspect --format '{{.Config.Image}}' "$service_name" 2>/dev/null || true)
+  deployment_health_check="${previous_image:+health}"
+  if [[ "$service_name" == "versitygw" && "$DEFER_VERSITYGW_INIT" == "true" ]]; then
+    # configure-rf owns the single final initialization on a fresh install.
+    # Until then, only verify that the new VersityGW container becomes ready;
+    # its bucket and application credentials intentionally do not exist yet.
+    deployment_health_check=""
+  fi
   if [[ -n "$previous_image" && -n "$previous_ref" ]]; then
     rollback_tag="rf-rollback-${service_name}:$(date +%s)"
     docker image tag "$previous_image" "$rollback_tag" || rollback_tag=""
@@ -280,7 +495,8 @@ perform_update() {
   if rf_compose config -q &&
      prepare_service_image "$service_name" &&
      rf_compose up -d --no-deps "$service_name" &&
-     wait_for_service_deployment "$service_name" "${previous_image:+health}"; then
+     initialize_updated_service "$service_name" &&
+     wait_for_service_deployment "$service_name" "$deployment_health_check"; then
     rm -f "$previous_compose"
     [[ -z "$rollback_tag" ]] || docker image rm "$rollback_tag" >/dev/null 2>&1 || true
     return 0
@@ -342,7 +558,36 @@ prompt_to_update() {
     esac
 }
 
+# Docker's OCI runtime creates temporary process files under /tmp for commands
+# such as `docker exec`. Fail before checking container versions when that
+# filesystem is full so runtime errors cannot be mistaken for version strings.
+check_tmp_space() {
+  local usage_percent
+
+  usage_percent=$(df -Pk /tmp 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')
+  if [[ ! "$usage_percent" =~ ^[0-9]+$ ]]; then
+    echo -e "${YELLOW}⚠️ Could not determine /tmp filesystem usage; continuing without the temporary-space preflight.${NC}" >&2
+    return 0
+  fi
+
+  if (( usage_percent < 100 )); then
+    return 0
+  fi
+
+  echo -e "${RED}❌ /tmp is full (${usage_percent}% used). Docker cannot start container processes until space is released.${NC}" >&2
+  echo -e "${YELLOW}Inspect visible temporary files:${NC} sudo du -xhd1 /tmp | sort -h" >&2
+  echo -e "${YELLOW}Find deleted files still held open:${NC} sudo lsof +L1 /tmp" >&2
+  echo -e "${YELLOW}Stop only confirmed stale processes holding large deleted files, then verify:${NC} df -h /tmp" >&2
+  return 1
+}
+
 # ========== Main update logic ==========
+if ! check_tmp_space; then
+  exit 1
+fi
+
+detect_fresh_install_mode
+
 # If REPO and GITHUB_PAT are configured, validate GitHub CLI and GHCR docker login are successful in order to build and pull images, these are in shared_functions.sh
 # Validate the REPO variable is set to a non-default value in the correct format
 if [[ "$SERVICE_NAME" == "all" || "$SERVICE_NAME" =~ ^(plugins-api|control-panel|viewer|ui|external-api)$ ]]; then
@@ -695,6 +940,12 @@ if [ "$SERVICE_NAME" == "all" ]; then
   echo -e "${BLUE}⚙️ Checking for container updates...${NC}"
   preflight_public_backend_release || exit 1
   for container in "${CONTAINERS[@]}"; do
+    if coordinated_public_application_updates_enabled && [[ " ${RF_APPLICATION_SERVICES[*]} " == *" ${container} "* ]]; then
+      if [[ "$container" == "${RF_APPLICATION_SERVICES[0]}" ]]; then
+        check_coordinated_public_application_update || exit 1
+      fi
+      continue
+    fi
     check_for_update "$container"
     if [[ "$container" == "mongo" && "$MODE" != "dry-run" ]]; then
       mongo_init || exit 1

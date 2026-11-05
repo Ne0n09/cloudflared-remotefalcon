@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.10.5
+# VERSION=2026.11.5
 
 #set -euo pipefail
 #set -x
@@ -195,7 +195,11 @@ if [[ -f $ENV_FILE ]]; then
   )
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "${CYAN}🔄 Checking Remote Falcon endpoints...${NC}"
+  if [[ "$TARGET_SERVICE" == all ]]; then
+    echo -e "${CYAN}🔄 Checking Remote Falcon endpoints and services...${NC}"
+  else
+    echo -e "${CYAN}🔄 Checking $TARGET_SERVICE...${NC}"
+  fi
 
 check_endpoint() {
   # Perform the request and capture both code and DNS errors

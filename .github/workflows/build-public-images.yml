@@ -238,7 +238,7 @@ jobs:
 
           mongo_ready=false
           for _ in {1..30}; do
-            if docker exec "$mongo_container" mongosh --quiet \
+            if docker exec --user mongodb --env HOME=/tmp "$mongo_container" mongosh --quiet \
               --username smoke --password smoke-password \
               --authenticationDatabase admin \
               --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)' >/dev/null 2>&1; then

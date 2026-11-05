@@ -1,5 +1,19 @@
 # Release Notes
 
+## 2026.11.5
+
+- Added an SSH-friendly configuration wizard with a plain-terminal fallback, masked secret entry, clearer Cloudflare and manual-certificate guidance, direct documentation links, and an explicit final review that shows only the changes and actions that will be applied.
+
+- Added safer preview and automation options with `--plan`/`--dry-run`, `--validate-only`, separate non-interactive input and approval controls, atomic `.env` updates, and explicit JWT rotation. No packages, files, external resources, builds, or containers are changed until the reviewed plan is approved.
+
+- Updated public application deployments to pull all four coordinated backend images, build the deployment-specific UI from the same upstream commit, and restart all five Remote Falcon application services as one health-checked rollback boundary. Self-hosted UI links now use the installation's configured domain, port, subdomain, and `SWAP_CP` routing.
+
+- Improved container updates with accurate pull/build reporting, concrete version resolution for `latest` infrastructure images, targeted service health checks, and actionable detection of full `/tmp` filesystems, including deleted files that are still held open.
+
+- Corrected fresh-install sequencing so application containers are checked before public routing is available, VersityGW credentials and storage are initialized once after the complete stack starts, and Control Panel is not started prematurely. Failed initial deployments remain available for diagnosis instead of attempting to restore a deployment that did not previously exist.
+
+- Updated the installation and script documentation for the new workflow and removed the deprecated GitHub image-builder configuration page from the latest documentation while retaining it in historical versions.
+
 ## 2026.10.5
 
 - MongoDB now receives a random root password when the shipped default is detected. Existing databases are updated through MongoDB instead of only changing `.env`, and interrupted rotations retain a private recovery marker.

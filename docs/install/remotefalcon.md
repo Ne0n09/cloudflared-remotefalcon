@@ -28,12 +28,27 @@ Use `./configure-rf.sh --docker-mode manual` to manage socket access yourself. R
 
 The configurator does not automatically convert an existing rootful installation because rootless Docker has separate storage, networking, systemd, and migration considerations. Follow the official rootless Docker instructions first.
 
-## Noninteractive configuration
+## Configure Remote Falcon
 
-Keep tokens in the private `remotefalcon/.env` file or enter them at hidden interactive prompts. Avoid putting credentials in command-line arguments. After preparing `.env`, run:
+Run the configurator and follow the prompts:
+
+```sh
+./configure-rf.sh
+```
+
+You can preview the planned changes or validate the current configuration without applying anything:
+
+```sh
+./configure-rf.sh --plan
+./configure-rf.sh --validate-only
+```
+
+For unattended setup, store secrets in the private `remotefalcon/.env` file and run:
 
 ```sh
 ./configure-rf.sh -y --set DOMAIN=example.com
 ```
+
+Avoid putting tokens or passwords in command-line arguments.
 
 Run `./health_check.sh 0s` after setup. It exits with a failure code if a required service or endpoint check fails.

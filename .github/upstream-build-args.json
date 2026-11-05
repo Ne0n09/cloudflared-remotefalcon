@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "approved_upstream_commit": "88b7a2a550065592ce7c84ebb7d20d4cd4780e62",
+  "approved_upstream_commit": "a34d0f5f0ea62ab6585bbc0767b71b87783350c0",
   "services": {
     "plugins-api": {
       "dockerfile": "apps/plugins-api/Dockerfile",
@@ -26,6 +26,7 @@
       "dockerfile": "apps/ui/Dockerfile",
       "provided_args": [
         "HOST_ENV",
+        "SELF_HOSTED",
         "VERSION",
         "CONTROL_PANEL_API",
         "VIEWER_API",
@@ -44,6 +45,7 @@
       ],
       "args": {
         "HOST_ENV": null,
+        "SELF_HOSTED": null,
         "VERSION": null,
         "CONTROL_PANEL_API": null,
         "VIEWER_API": null,

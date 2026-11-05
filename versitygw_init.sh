@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.9.27.5
+# VERSION=2026.11.5
 
 # Configure new VersityGW container
 #set -euo pipefail
@@ -144,6 +144,33 @@ verify_bucket() {
 
 echo -e "${BLUE}⚙️ Running Versity Gateway container initialization script to allow for self-hosted Image Hosting under the Control Panel...${NC}"
 
+# Credential rotation must not create Control Panel during initial storage
+# setup. Capture its pre-existing state before any Compose actions and only
+# restart it when the running image and Compose file already use the same
+# concrete platform tag.
+CONTROL_PANEL_RESTART_ELIGIBLE=false
+if is_container_running control-panel; then
+  control_panel_running_tag=$(get_current_version control-panel)
+  control_panel_compose_tag=$(get_current_compose_tag control-panel)
+  if check_tag_format control-panel "$control_panel_running_tag" &&
+     check_tag_format control-panel "$control_panel_compose_tag" &&
+     [[ "$control_panel_running_tag" == "$control_panel_compose_tag" ]]; then
+    CONTROL_PANEL_RESTART_ELIGIBLE=true
+  fi
+fi
+
+restart_control_panel_for_s3_change() {
+  local reason="$1"
+
+  if [[ "$CONTROL_PANEL_RESTART_ELIGIBLE" == true ]]; then
+    echo -e "${BLUE}🔄 Restarting container 'control-panel' $reason...${NC}"
+    rf_compose rm -f -s control-panel
+    rf_compose up -d control-panel
+  else
+    echo -e "${YELLOW}ℹ️ Control Panel was not already running with a matching pinned image tag. It will not be started during VersityGW initialization.${NC}"
+  fi
+}
+
 # If the container is not running start it
 if ! is_container_running "$CONTAINER_NAME"; then
   echo -e "${YELLOW}⚠️ $CONTAINER_NAME does not exist or is not running.${NC}"
@@ -160,9 +187,7 @@ if [[ $S3_ENDPOINT != "http://versitygw:7070" ]]; then
   S3_ENDPOINT="http://versitygw:7070"
   sed -i "s|^S3_ENDPOINT=.*|S3_ENDPOINT=$S3_ENDPOINT|" "$ENV_FILE"
 
-  echo -e "${BLUE}🔄 Restarting container 'control-panel' to use the new S3_ENDPOINT $S3_ENDPOINT...${NC}"
-  rf_compose rm -f -s control-panel
-  rf_compose up -d control-panel
+  restart_control_panel_for_s3_change "to use the new S3_ENDPOINT $S3_ENDPOINT"
 else
   echo -e "${GREEN}✅ S3_ENDPOINT is set to recommended default value http://versitygw:7070.${NC}"
 fi
@@ -209,9 +234,7 @@ if [[ $S3_SECRET_KEY == "123456" ]]; then
 fi
 # Restart control panel container if the S3 access key or secret key were changed since those are used by the control panel to access the S3 storage
 if [[ $changed_creds == true ]]; then
-  echo -e "${BLUE}🔄 Restarting container 'control-panel' to use the new S3 access key and secret key...${BLUE}"
-  rf_compose rm -f -s control-panel
-  rf_compose up -d control-panel
+  restart_control_panel_for_s3_change "to use the new S3 access key and secret key"
 else
   echo -e "${GREEN}✅ S3_ACCESS_KEY and S3_SECRET_KEY are already set to non-default values.${NC}"
 fi

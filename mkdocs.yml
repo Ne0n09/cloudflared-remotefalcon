@@ -64,8 +64,6 @@ nav:
   - 'Updates': updates.md
   - 'Extra': extra.md
   - 'Troubleshooting': troubleshooting.md
-  - 'Legacy compatibility':
-    - 'Deprecated GitHub image builder': install/github.md
 
 
 markdown_extensions:

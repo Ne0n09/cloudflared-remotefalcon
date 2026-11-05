@@ -1,4 +1,4 @@
-# COMPOSE_VERSION=2026.10.5
+# COMPOSE_VERSION=2026.11.5
 # If no ports are published via ports: - "port:port" this will isolate the container and does not map it to any host port
 # plugins-api port 8083 is published which allows for direct LAN access from the plugin to avoid traversing the internet
 # Configure the plugin for local access with: http://ip.address.of.remote.falcon:8083/remote-falcon-plugins-api instead of yourdomain.com
@@ -125,6 +125,7 @@ services:
       # 'ui' will always use Dockerfile and never Dockerfile.dev
       args:
         - HOST_ENV=${HOST_ENV}
+        - SELF_HOSTED=true
         - VERSION=${VERSION}
         - CONTROL_PANEL_API=https://${DOMAIN}/remote-falcon-control-panel
         - VIEWER_API=https://${DOMAIN}/remote-falcon-viewer
