@@ -2233,7 +2233,7 @@ MOCK
   for script in jq docker update_containers.sh versitygw_init.sh health_check.sh; do
     printf '#!/usr/bin/env bash\nexit 0\n' > "$ws/$script"
   done
-  chmod +x "$ws"/*.sh
+  chmod +x "$ws"/*.sh "$ws/gh" "$ws/jq" "$ws/docker"
   export MOCK_PUBLIC_MIGRATION_LOG="$ws/migration.log"
 
   PATH="$ws:$PATH" RF_MIGRATE_PUBLIC_IMAGES=true \
