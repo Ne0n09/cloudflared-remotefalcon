@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# VERSION=2026.11.16.3
+
 set -euo pipefail
 
 REPOSITORY="${RF_INSTALL_REPOSITORY:-Ne0n09/cloudflared-remotefalcon}"
@@ -236,7 +239,7 @@ if [[ "$RUN_CONFIGURE" == true ]]; then
     *) next_script="" ;;
   esac
   if [[ -n "$next_script" ]]; then
-    exec bash -c 'updater=$1; next_script=$2; shift 2; bash "$updater" "$@"; exec "$next_script"' \
+    exec bash -c 'updater=$1; next_script=$2; shift 2; bash "$updater" "$@" && exec "$next_script"' \
       _ "$temporary_dir/payload/update_scripts.sh" "$next_script" "${updater_args[@]}"
   fi
 fi

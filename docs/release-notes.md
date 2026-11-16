@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.11.16.3
+
+- Release validation is now independent of the installation host's available memory, so the `2026.11.16.2` memory preflight can be installed on a ballooned low-memory VM.
+
+- The bootstrap installer now stops immediately when release validation or script installation fails. It no longer continues into the installation's older upgrader, which could bypass the new memory preflight and enter the legacy local-backend build rollback path.
+
 ## 2026.11.16.2
 
 - Public-image migrations and coordinated public updates now stop before changing configuration, disabling private image-builder workflows, pulling images, or recreating containers unless Linux can see at least 3584 MiB of memory. Direct UI rebuilds use the same preflight. The error explains that a VM configured with 4 GiB may still need its ballooning minimum raised before retrying.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.11.16.2
+# VERSION=2026.11.16.3
 
 set -u
 
@@ -995,6 +995,7 @@ test_public_applications_deploy_as_a_coordinated_group() {
   local ws
   ws="$(make_workspace)"
   with_mocks "$ws"
+  export RF_UI_BUILD_MEMORY_KIB_OVERRIDE=4194304
   export MOCK_RUNNING_SERVICES="plugins-api control-panel viewer ui external-api"
   export MOCK_OLD_IMAGE_ID="sha256:oldimage"
   export MOCK_OLD_IMAGE_REF="application:oldtag"
@@ -2054,6 +2055,81 @@ test_upgrade_installer_discovers_installation() {
   [[ "$(sed -n '2p' "$ws/discovery.log")" == "$install_root" ]] || return 1
 }
 
+test_installer_stops_when_release_update_fails() {
+  local ws target payload bin archive checksum status
+  ws="$(mktemp -d "$TEST_TMP/installer-update-failure.XXXXXX")"
+  target="$ws/target"
+  payload="$ws/payload"
+  bin="$ws/bin"
+  archive="$ws/cloudflared-remotefalcon.tar.gz"
+  checksum="$ws/SHA256SUMS"
+  mkdir -p "$target/remotefalcon" "$payload" "$bin"
+
+  touch "$target/configure-rf.sh" \
+    "$target/shared_functions.sh" \
+    "$target/update_containers.sh" \
+    "$target/remotefalcon/compose.yaml" \
+    "$target/remotefalcon/.env"
+  cat > "$target/upgrade_installation.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf 'old upgrader ran\n' > "$MOCK_OLD_UPGRADER_MARKER"
+MOCK
+  chmod +x "$target/upgrade_installation.sh"
+
+  cat > "$payload/update_scripts.sh" <<'MOCK'
+#!/usr/bin/env bash
+echo 'mock release validation failed' >&2
+exit 42
+MOCK
+  chmod +x "$payload/update_scripts.sh"
+  tar -czf "$archive" -C "$payload" .
+  printf '%s  cloudflared-remotefalcon.tar.gz\n' \
+    "$(sha256sum "$archive" | awk '{print $1}')" > "$checksum"
+
+  cat > "$bin/docker" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "$1" == info || "$*" == 'compose version' ]]; then
+  exit 0
+fi
+exit 1
+MOCK
+  cat > "$bin/curl" <<'MOCK'
+#!/usr/bin/env bash
+output=''
+url=''
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o) output="$2"; shift 2 ;;
+    http*) url="$1"; shift ;;
+    *) shift ;;
+  esac
+done
+case "$url" in
+  */cloudflared-remotefalcon.tar.gz) cp "$MOCK_RELEASE_ARCHIVE" "$output" ;;
+  */SHA256SUMS) cp "$MOCK_RELEASE_CHECKSUM" "$output" ;;
+  *) exit 1 ;;
+esac
+MOCK
+  chmod +x "$bin/docker" "$bin/curl"
+
+  status=0
+  PATH="$bin:$PATH" \
+    MOCK_RELEASE_ARCHIVE="$archive" \
+    MOCK_RELEASE_CHECKSUM="$checksum" \
+    MOCK_OLD_UPGRADER_MARKER="$ws/old-upgrader-ran" \
+    bash "$ROOT_DIR/install.sh" --update --target "$target" > "$ws/install.out" 2>&1 || status=$?
+  if [[ "$status" -ne 42 ]]; then
+    echo "Expected installer status 42 from the failed updater; got $status"
+    return 1
+  fi
+
+  [[ ! -e "$ws/old-upgrader-ran" ]] || {
+    echo 'The existing upgrader ran after the release updater failed'
+    return 1
+  }
+  assert_file_contains "$ws/install.out" 'mock release validation failed'
+}
+
 test_upgrade_installs_required_jq() {
   local ws bin upgrade
   ws="$(mktemp -d "$TEST_TMP/upgrade-jq.XXXXXX")"
@@ -2585,6 +2661,7 @@ if [[ "${RF_RELEASE_PAYLOAD_TESTS:-false}" != true ]]; then
 fi
 run_test "installation manifest drives managed and retired files" test_install_manifest_is_authoritative
 run_test "upgrade installer discovers an existing installation" test_upgrade_installer_discovers_installation
+run_test "installer stops before the existing upgrader when release validation fails" test_installer_stops_when_release_update_fails
 run_test "upgrade installs jq and reports installation failure" test_upgrade_installs_required_jq
 run_test "legacy upgrades run the safe transition in order" test_legacy_upgrade_is_orchestrated
 run_test "legacy upgrades rebuild all platform images in one workflow" test_legacy_upgrade_rebuilds_platform_images_as_one_workflow
