@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.10.5
+# VERSION=2026.11.16
 
 set -euo pipefail
 
@@ -8,6 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLATFORM_REBUILD_MARKER="$SCRIPT_DIR/.rf-platform-rebuild-required"
 APPLICATION_SERVICES=(plugins-api control-panel viewer ui external-api)
 BACKEND_SERVICES=(plugins-api control-panel viewer external-api)
+PRIVATE_BUILDER_WORKFLOWS=(build.yml build-all.yml build-container.yml)
+DISABLED_PRIVATE_WORKFLOWS=()
 
 ensure_jq_installed() {
   command -v jq >/dev/null 2>&1 && return 0
@@ -72,6 +74,154 @@ get_platform_sha() {
     jq -r '.sha // empty'
 }
 
+resolve_platform_sha() {
+  local platform_sha
+  platform_sha=$(get_platform_sha)
+  [[ "$platform_sha" =~ ^[0-9a-f]{40}$ ]] || {
+    echo -e "${RED}❌ Could not resolve the current Remote Falcon platform commit.${NC}" >&2
+    return 1
+  }
+  printf '%s\n' "$platform_sha"
+}
+
+private_builder_migration_requested() {
+  local answer=""
+
+  case "${RF_MIGRATE_PUBLIC_IMAGES:-}" in
+    1|true|TRUE|yes|YES) return 0 ;;
+    0|false|FALSE|no|NO) return 1 ;;
+    "") ;;
+    *)
+      echo "RF_MIGRATE_PUBLIC_IMAGES must be true or false." >&2
+      return 2
+      ;;
+  esac
+
+  if [[ ! -t 0 ]]; then
+    echo -e "${YELLOW}⚠️ Private image-builder settings were retained because this upgrade is non-interactive.${NC}"
+    echo "Set RF_MIGRATE_PUBLIC_IMAGES=true when rerunning the upgrade to migrate automatically."
+    return 1
+  fi
+
+  echo
+  echo "This AMD64/ARM64 installation can use the four public backend images."
+  echo "The deployment-specific UI will continue to be built locally."
+  echo "Migration disables the scheduled private image-builder workflows and removes its REPO and GITHUB_PAT settings."
+  read -r -p "Migrate to public backend images now? [Y/n] " answer || return 1
+  [[ -z "$answer" || "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
+
+disable_private_builder_workflows() {
+  local repo="$1" workflow_path workflow state workflow_list
+
+  validate_github_user "$GITHUB_PAT" || return 1
+  validate_github_repo "$repo" || return 1
+  DISABLED_PRIVATE_WORKFLOWS=()
+  workflow_list=$(mktemp) || return 1
+
+  if ! gh api --paginate "repos/$repo/actions/workflows" --jq \
+      '.workflows[] | select(.path == ".github/workflows/build.yml" or .path == ".github/workflows/build-all.yml" or .path == ".github/workflows/build-container.yml") | [.path, .state] | @tsv' \
+      > "$workflow_list"; then
+    echo -e "${RED}❌ Could not inspect the private image-builder workflows in $repo.${NC}" >&2
+    rm -f "$workflow_list"
+    return 1
+  fi
+
+  while IFS=$'\t' read -r workflow_path state; do
+    workflow="${workflow_path##*/}"
+    [[ " ${PRIVATE_BUILDER_WORKFLOWS[*]} " == *" $workflow "* ]] || continue
+    [[ "$state" == "active" ]] || continue
+    gh api --method PUT "repos/$repo/actions/workflows/$workflow/disable" >/dev/null || {
+      echo -e "${RED}❌ Could not disable $workflow in $repo.${NC}" >&2
+      rm -f "$workflow_list"
+      restore_private_builder_workflows "$repo"
+      return 1
+    }
+    DISABLED_PRIVATE_WORKFLOWS+=("$workflow")
+    echo -e "${GREEN}✔ Disabled the private $workflow workflow in $repo.${NC}"
+  done < "$workflow_list"
+  rm -f "$workflow_list"
+}
+
+restore_private_builder_workflows() {
+  local repo="$1" workflow
+
+  for workflow in "${DISABLED_PRIVATE_WORKFLOWS[@]}"; do
+    if gh api --method PUT "repos/$repo/actions/workflows/$workflow/enable" >/dev/null; then
+      echo -e "${YELLOW}Restored the private $workflow workflow after the failed migration.${NC}"
+    else
+      echo -e "${RED}❌ Could not re-enable $workflow in $repo. Re-enable it manually in GitHub Actions.${NC}" >&2
+    fi
+  done
+  DISABLED_PRIVATE_WORKFLOWS=()
+}
+
+write_public_image_configuration() {
+  local candidate
+  candidate=$(mktemp) || return 1
+
+  if ! awk '
+    BEGIN {
+      updates["REPO"]="username/repo"
+      updates["GITHUB_PAT"]=""
+      updates["RF_IMAGE_TAG_MODE"]="platform"
+      updates["DOCKERFILE"]="Dockerfile.dev"
+    }
+    $0 ~ /^[A-Za-z_][A-Za-z0-9_]*=/ {
+      key=$0
+      sub(/=.*/, "", key)
+      if (key in updates) {
+        print key "=" updates[key]
+        written[key]=1
+        next
+      }
+    }
+    { print }
+    END {
+      for (key in updates) if (!(key in written)) print key "=" updates[key]
+    }
+  ' "$ENV_FILE" > "$candidate"; then
+    rm -f "$candidate"
+    return 1
+  fi
+
+  if ! env -u REPO -u GITHUB_PAT -u RF_IMAGE_TAG_MODE -u DOCKERFILE \
+      docker compose -f "$COMPOSE_FILE" --env-file "$candidate" config -q; then
+    echo -e "${RED}❌ Docker Compose rejected the public-image configuration.${NC}" >&2
+    rm -f "$candidate"
+    return 1
+  fi
+  mv -f "$candidate" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  parse_env
+}
+
+migrate_private_builder_to_public_images() {
+  local platform_sha="$1" private_repo="$REPO" env_snapshot compose_snapshot
+  env_snapshot=$(mktemp) || return 1
+  compose_snapshot=$(mktemp) || { rm -f "$env_snapshot"; return 1; }
+  cp "$ENV_FILE" "$env_snapshot"
+  cp "$COMPOSE_FILE" "$compose_snapshot"
+
+  if disable_private_builder_workflows "$private_repo" &&
+     write_public_image_configuration &&
+     rebuild_all_application_images "$platform_sha"; then
+    rm -f "$env_snapshot" "$compose_snapshot"
+    echo -e "${GREEN}✔ Migrated to public backend images. The UI remains a local build.${NC}"
+    return 0
+  fi
+
+  echo -e "${RED}❌ Public-image migration failed. Restoring the private-builder configuration.${NC}" >&2
+  cp "$env_snapshot" "$ENV_FILE"
+  cp "$compose_snapshot" "$COMPOSE_FILE"
+  chmod 600 "$ENV_FILE"
+  rm -f "$env_snapshot" "$compose_snapshot"
+  parse_env
+  restore_private_builder_workflows "$private_repo"
+  rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}" || true
+  return 1
+}
+
 rebuild_all_application_images() {
   local platform_sha="$1" snapshot service
   local -a workflow_args=()
@@ -127,12 +277,24 @@ echo -e "${CYAN}2/8 Migrating MongoDB credentials before application containers 
 mongo_init
 
 echo -e "${CYAN}3/8 Checking whether the legacy application images require a coordinated rebuild...${NC}"
-if [[ -f "$PLATFORM_REBUILD_MARKER" ]]; then
-  platform_sha=$(get_platform_sha)
-  [[ "$platform_sha" =~ ^[0-9a-f]{40}$ ]] || {
-    echo -e "${RED}❌ Could not resolve the current Remote Falcon platform commit.${NC}" >&2
-    exit 1
-  }
+if github_workflow_builds_configured && public_backend_images_supported; then
+  migration_status=0
+  private_builder_migration_requested || migration_status=$?
+  if [[ "$migration_status" -eq 0 ]]; then
+    platform_sha=$(resolve_platform_sha)
+    migrate_private_builder_to_public_images "$platform_sha"
+    rm -f "$PLATFORM_REBUILD_MARKER"
+  elif [[ "$migration_status" -eq 1 && -f "$PLATFORM_REBUILD_MARKER" ]]; then
+    platform_sha=$(resolve_platform_sha)
+    rebuild_all_application_images "$platform_sha"
+    rm -f "$PLATFORM_REBUILD_MARKER"
+  elif [[ "$migration_status" -eq 1 ]]; then
+    echo -e "${GREEN}✔ Platform image migration was previously completed; the private-builder override was retained.${NC}"
+  else
+    exit "$migration_status"
+  fi
+elif [[ -f "$PLATFORM_REBUILD_MARKER" ]]; then
+  platform_sha=$(resolve_platform_sha)
   rebuild_all_application_images "$platform_sha"
   rm -f "$PLATFORM_REBUILD_MARKER"
 else

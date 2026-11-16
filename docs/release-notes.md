@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.11.16
+
+- Legacy AMD64 and ARM64 upgrades now offer to migrate an existing private image-builder installation to the coordinated public backend images. Accepting disables active `build.yml`, `build-all.yml`, and `build-container.yml` GitHub Actions workflows, removes the `REPO` and `GITHUB_PAT` compatibility override, pulls the four public backends, and continues to build the deployment-specific UI locally at the same platform commit.
+
+- The migration remains available on later upgrades even when the earlier platform-tag transition has already completed. Non-interactive upgrades retain the private builder unless `RF_MIGRATE_PUBLIC_IMAGES=true` is set explicitly. A failed migration restores the previous `.env`, Compose configuration, application containers, and any workflows that the installer disabled.
+
 ## 2026.11.5
 
 - Added an SSH-friendly configuration wizard with a plain-terminal fallback, masked secret entry, clearer Cloudflare and manual-certificate guidance, direct documentation links, and an explicit final review that shows only the changes and actions that will be applied.

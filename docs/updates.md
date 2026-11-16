@@ -18,7 +18,7 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 - On AMD64 and ARM64, four backend images are pulled anonymously from the project's public multi-platform GHCR packages. The deployment-specific UI is built locally from the same platform commit. After all five images are prepared, Compose recreates all five application services together.
 
-- Existing installations with `REPO` and `GITHUB_PAT` retain the deprecated private-builder compatibility override. New installations should not configure it. Other architectures currently build all application images locally.
+- During a legacy AMD64 or ARM64 upgrade, installations with `REPO` and `GITHUB_PAT` are offered a migration to the public backend images. Accepting disables the scheduled private `build.yml` workflow (and either older legacy workflow, when present), clears the private-builder settings, pulls the four public backends, and builds only the deployment-specific UI locally. Declining keeps the compatibility override. Other architectures currently build all application images locally.
 
 - Before an all-service public update, the updater verifies that the same platform commit tag exists for all four backends. An incomplete release leaves the application containers unchanged. Interactive mode presents one decision for the coordinated five-service application release rather than prompting for each application separately.
 
@@ -95,7 +95,7 @@ To override automatic discovery, add `--target /path/to/cloudflared-remotefalcon
 
 The installer verifies the release archive, creates a dated configuration backup, preserves existing `.env` values and image references, and validates the merged Compose configuration before applying it. It then upgrades containers in a safe order, checks each changed service, migrates legacy MinIO objects to Versity Gateway, removes retired containers, and runs the complete health check.
 
-When upgrading from older per-application images on AMD64 or ARM64, the installer pins all applications to one platform commit, pulls the four coordinated public backends, builds the deployment-specific UI locally, and only then recreates the application stack. Existing private-builder installations retain their coordinated five-image workflow. Other architectures build all five applications locally as one batch.
+When upgrading from older per-application images on AMD64 or ARM64, the installer pins all applications to one platform commit, pulls the four coordinated public backends, builds the deployment-specific UI locally, and only then recreates the application stack. Existing private-builder installations are prompted to migrate; accepting disables their scheduled private workflow and removes the `REPO`/`GITHUB_PAT` override, while declining retains the coordinated five-image workflow. For a non-interactive migration, set `RF_MIGRATE_PUBLIC_IMAGES=true` when running the installer. Other architectures build all five applications locally as one batch.
 
 Versity Gateway initialization is a required upgrade step. The installer creates and verifies the configured image bucket, its owner, and its public-read policy before attempting a legacy MinIO migration or running the final health check. A bucket initialization failure stops the upgrade with the source MinIO data unchanged.
 
@@ -105,4 +105,4 @@ If the current user cannot access Docker, the installer asks whether to add that
 
 If a service fails its deployment check, its previous image and Compose configuration are restored. A failed MinIO migration leaves the source data unchanged; after a successful verified migration, the old data directory is retained with a dated `.migrated-*` name.
 
-Existing `REPO` and `GITHUB_PAT` settings are reused only as a deprecated private-builder compatibility override. Otherwise AMD64 and ARM64 use anonymous public backend pulls plus a local UI build.
+Existing `REPO` and `GITHUB_PAT` settings are reused only when the deprecated private-builder migration is declined. Otherwise AMD64 and ARM64 use anonymous public backend pulls plus a local UI build.

@@ -56,3 +56,9 @@ use the private image-builder workflow for all five application images.
 `sync_repo_secrets.sh` updates its build settings and `run_workflow.sh` starts
 the workflow, deploys only the selected services, and restores prior images and
 Compose configuration after a failed deployment check.
+
+The legacy upgrade installer offers supported AMD64 and ARM64 hosts a migration
+to the public backend images. Accepting disables `build.yml` plus either older
+legacy workflow when present, clears the private-builder configuration, and
+builds only the UI locally. If image preparation fails, the installer restores
+the previous `.env`, Compose file, application containers, and workflows.

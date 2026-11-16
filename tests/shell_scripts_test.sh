@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.11.5
+# VERSION=2026.11.16
 
 set -u
 
@@ -49,6 +49,10 @@ assert_file_not_contains() {
 run_test() {
   local name="$1"
   shift
+
+  if [[ -n "${RF_TEST_FILTER:-}" && "$name" != *"$RF_TEST_FILTER"* ]]; then
+    return 0
+  fi
 
   mkdir -p "$TEST_TMP"
   local output
@@ -2086,6 +2090,7 @@ check_compose_exists() { :; }
 check_env_exists() { :; }
 parse_env() { :; }
 mongo_init() { printf 'mongo-init\n' >> "$MOCK_UPGRADE_LOG"; }
+github_workflow_builds_configured() { return 1; }
 rf_compose() {
   printf 'compose %s\n' "$*" >> "$MOCK_UPGRADE_LOG"
   if [[ "$*" == "ps --services --filter status=running" ]]; then
@@ -2105,10 +2110,11 @@ MOCK
 #!/usr/bin/env bash
 printf 'health %s\n' "$*" >> "$MOCK_UPGRADE_LOG"
 MOCK
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$ws/jq"
   chmod +x "$ws"/*.sh
   export MOCK_UPGRADE_LOG="$ws/upgrade.log"
 
-  RF_DOCKER_GROUP_ADDED=true "$ws/upgrade_installation.sh" > "$ws/upgrade.out" || return 1
+  PATH="$ws:$PATH" RF_DOCKER_GROUP_ADDED=true "$ws/upgrade_installation.sh" > "$ws/upgrade.out" || return 1
 
   expected="$ws/expected.log"
   cat > "$expected" <<'EXPECTED'
@@ -2154,17 +2160,117 @@ MOCK
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "$MOCK_BATCH_WORKFLOW_LOG"
 MOCK
-  for script in update_containers.sh versitygw_init.sh health_check.sh; do
+  for script in jq update_containers.sh versitygw_init.sh health_check.sh; do
     printf '#!/usr/bin/env bash\nexit 0\n' > "$ws/$script"
   done
   chmod +x "$ws"/*.sh
   export MOCK_BATCH_WORKFLOW_LOG="$ws/batch-workflow.log"
 
-  RF_PLATFORM_SHA_OVERRIDE=1234567890abcdef1234567890abcdef12345678 \
+  PATH="$ws:$PATH" RF_PLATFORM_SHA_OVERRIDE=1234567890abcdef1234567890abcdef12345678 \
     "$ws/upgrade_installation.sh" >/dev/null || return 1
 
   assert_file_contains "$ws/batch-workflow.log" '^plugins-api=1234567890abcdef1234567890abcdef12345678 control-panel=1234567890abcdef1234567890abcdef12345678 viewer=1234567890abcdef1234567890abcdef12345678 ui=1234567890abcdef1234567890abcdef12345678 external-api=1234567890abcdef1234567890abcdef12345678$'
   [[ ! -e "$ws/.rf-platform-rebuild-required" ]] || return 1
+}
+
+test_legacy_upgrade_can_migrate_to_public_images() {
+  local ws
+  ws="$(mktemp -d "$TEST_TMP/legacy-public-migration.XXXXXX")"
+  mkdir -p "$ws/remotefalcon"
+  cp "$ROOT_DIR/upgrade_installation.sh" "$ws/"
+  cat > "$ws/remotefalcon/.env" <<'ENV'
+REPO=test-owner/test-repo
+GITHUB_PAT=ghp_test
+RF_IMAGE_TAG_MODE=app
+DOCKERFILE=Dockerfile
+ENV
+  cat > "$ws/remotefalcon/compose.yaml" <<'COMPOSE'
+services:
+  plugins-api:
+    image: ghcr.io/${REPO}/plugins-api:old
+  control-panel:
+    image: ghcr.io/${REPO}/control-panel:old
+  viewer:
+    image: ghcr.io/${REPO}/viewer:old
+  ui:
+    image: ghcr.io/${REPO}/ui:old
+  external-api:
+    image: ghcr.io/${REPO}/external-api:old
+COMPOSE
+
+  cat > "$ws/shared_functions.sh" <<'MOCK'
+#!/usr/bin/env bash
+CYAN= GREEN= RED= YELLOW= BLUE= NC=
+ENV_FILE="$SCRIPT_DIR/remotefalcon/.env"
+COMPOSE_FILE="$SCRIPT_DIR/remotefalcon/compose.yaml"
+check_compose_exists() { :; }
+check_env_exists() { :; }
+parse_env() { set -a; source "$ENV_FILE"; set +a; }
+mongo_init() { :; }
+public_backend_images_supported() { return 0; }
+github_workflow_builds_configured() { [[ "$REPO" != username/repo && -n "$GITHUB_PAT" ]]; }
+validate_github_user() { :; }
+validate_github_repo() { :; }
+replace_compose_tag() { printf 'tag %s %s\n' "$1" "$2" >> "$MOCK_PUBLIC_MIGRATION_LOG"; }
+update_compose_image_path() { printf 'public-paths\n' >> "$MOCK_PUBLIC_MIGRATION_LOG"; }
+rf_compose() {
+  printf 'compose %s\n' "$*" >> "$MOCK_PUBLIC_MIGRATION_LOG"
+  if [[ "${MOCK_PUBLIC_MIGRATION_FAIL:-false}" == true && "$*" == "pull plugins-api control-panel viewer external-api" ]]; then return 1; fi
+  if [[ "$*" == "ps --services --filter status=running" ]]; then printf 'nginx\n'; fi
+}
+MOCK
+  cat > "$ws/gh" <<'MOCK'
+#!/usr/bin/env bash
+printf 'gh %s\n' "$*" >> "$MOCK_PUBLIC_MIGRATION_LOG"
+if [[ "$*" == "api --paginate repos/test-owner/test-repo/actions/workflows --jq "* ]]; then
+  printf '.github/workflows/build.yml\tactive\n'
+fi
+MOCK
+  cat > "$ws/run_workflow.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf 'private-workflow %s\n' "$*" >> "$MOCK_PUBLIC_MIGRATION_LOG"
+MOCK
+  for script in jq docker update_containers.sh versitygw_init.sh health_check.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$ws/$script"
+  done
+  chmod +x "$ws"/*.sh
+  export MOCK_PUBLIC_MIGRATION_LOG="$ws/migration.log"
+
+  PATH="$ws:$PATH" RF_MIGRATE_PUBLIC_IMAGES=true \
+    RF_PLATFORM_SHA_OVERRIDE=1234567890abcdef1234567890abcdef12345678 \
+    "$ws/upgrade_installation.sh" > "$ws/migration.out" || return 1
+
+  assert_file_contains "$ws/remotefalcon/.env" '^REPO=username/repo$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^GITHUB_PAT=$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^RF_IMAGE_TAG_MODE=platform$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^DOCKERFILE=Dockerfile.dev$' || return 1
+  assert_file_contains "$ws/migration.log" 'gh api --method PUT repos/test-owner/test-repo/actions/workflows/build.yml/disable' || return 1
+  assert_file_contains "$ws/migration.log" 'compose pull plugins-api control-panel viewer external-api' || return 1
+  assert_file_contains "$ws/migration.log" 'compose build ui' || return 1
+  assert_file_not_contains "$ws/migration.log" 'private-workflow|/enable' || return 1
+  assert_file_contains "$ws/migration.out" 'Migrated to public backend images' || return 1
+  [[ ! -e "$ws/.rf-platform-rebuild-required" ]] || return 1
+
+  cat > "$ws/remotefalcon/.env" <<'ENV'
+REPO=test-owner/test-repo
+GITHUB_PAT=ghp_test
+RF_IMAGE_TAG_MODE=app
+DOCKERFILE=Dockerfile
+ENV
+  touch "$ws/.rf-platform-rebuild-required"
+  : > "$ws/migration.log"
+  if PATH="$ws:$PATH" RF_MIGRATE_PUBLIC_IMAGES=true MOCK_PUBLIC_MIGRATION_FAIL=true \
+      RF_PLATFORM_SHA_OVERRIDE=1234567890abcdef1234567890abcdef12345678 \
+      "$ws/upgrade_installation.sh" > "$ws/migration-failure.out" 2>&1; then
+    return 1
+  fi
+  assert_file_contains "$ws/remotefalcon/.env" '^REPO=test-owner/test-repo$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^GITHUB_PAT=ghp_test$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^RF_IMAGE_TAG_MODE=app$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^DOCKERFILE=Dockerfile$' || return 1
+  assert_file_contains "$ws/migration.log" 'gh api --method PUT repos/test-owner/test-repo/actions/workflows/build.yml/enable' || return 1
+  assert_file_contains "$ws/migration-failure.out" 'Restoring the private-builder configuration' || return 1
+  [[ -e "$ws/.rf-platform-rebuild-required" ]]
 }
 
 test_upgrade_handles_missing_docker_group_access() {
@@ -2431,6 +2537,7 @@ run_test "upgrade installer discovers an existing installation" test_upgrade_ins
 run_test "upgrade installs jq and reports installation failure" test_upgrade_installs_required_jq
 run_test "legacy upgrades run the safe transition in order" test_legacy_upgrade_is_orchestrated
 run_test "legacy upgrades rebuild all platform images in one workflow" test_legacy_upgrade_rebuilds_platform_images_as_one_workflow
+run_test "legacy upgrades can migrate to public images and disable private workflows" test_legacy_upgrade_can_migrate_to_public_images
 run_test "legacy upgrades handle missing Docker group access" test_upgrade_handles_missing_docker_group_access
 run_test "fresh AMD64 and ARM64 installs use public backends and a local UI" test_fresh_public_install_uses_hybrid_images
 run_test "remote deployments validate built services before the full stack" test_remote_deploy_checks_built_services_before_full_stack
