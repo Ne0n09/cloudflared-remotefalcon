@@ -22,6 +22,8 @@ Run the [update_containers](about/scripts.md#update_containerssh) script:
 
 - Before an all-service public update, the updater verifies that the same platform commit tag exists for all four backends. An incomplete release leaves the application containers unchanged. Interactive mode presents one decision for the coordinated five-service application release rather than prompting for each application separately.
 
+- Before a coordinated public update or public-image migration, the updater requires at least 3584 MiB to be visible inside Linux, which corresponds to a VM configured with 4 GiB after normal guest overhead. With hypervisor memory ballooning, the configured maximum is not sufficient if the VM has been reduced to a lower minimum. These update paths stop before workflows, configuration, images, or containers are changed; direct UI rebuilds use the same memory preflight.
+
 - MongoDB, Versity Gateway, NGINX, and Cloudflared use published upstream images. Their update output now says that those images are being pulled instead of incorrectly describing the operation as a local build.
 
 ## Updating Mongo, Versity Gateway, NGINX, and Cloudflared containers

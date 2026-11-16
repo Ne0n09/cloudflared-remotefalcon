@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.11.16
+# VERSION=2026.11.16.2
 
 set -euo pipefail
 
@@ -10,6 +10,11 @@ APPLICATION_SERVICES=(plugins-api control-panel viewer ui external-api)
 BACKEND_SERVICES=(plugins-api control-panel viewer external-api)
 PRIVATE_BUILDER_WORKFLOWS=(build.yml build-all.yml build-container.yml)
 DISABLED_PRIVATE_WORKFLOWS=()
+MIGRATION_ACTIVE=false
+MIGRATION_PRIVATE_REPO=""
+MIGRATION_ENV_SNAPSHOT=""
+MIGRATION_COMPOSE_SNAPSHOT=""
+MIGRATION_APPLICATION_RECREATE_ATTEMPTED=false
 
 ensure_jq_installed() {
   command -v jq >/dev/null 2>&1 && return 0
@@ -197,33 +202,67 @@ write_public_image_configuration() {
 }
 
 migrate_private_builder_to_public_images() {
-  local platform_sha="$1" private_repo="$REPO" env_snapshot compose_snapshot
-  env_snapshot=$(mktemp) || return 1
-  compose_snapshot=$(mktemp) || { rm -f "$env_snapshot"; return 1; }
-  cp "$ENV_FILE" "$env_snapshot"
-  cp "$COMPOSE_FILE" "$compose_snapshot"
+  local platform_sha="$1" private_repo="$REPO"
+
+  # Fail before disabling workflows or changing configuration when Proxmox (or
+  # another hypervisor) has ballooned the guest below the UI build minimum.
+  check_ui_build_memory || return 1
+
+  MIGRATION_ENV_SNAPSHOT=$(mktemp) || return 1
+  MIGRATION_COMPOSE_SNAPSHOT=$(mktemp) || { rm -f "$MIGRATION_ENV_SNAPSHOT"; return 1; }
+  cp "$ENV_FILE" "$MIGRATION_ENV_SNAPSHOT"
+  cp "$COMPOSE_FILE" "$MIGRATION_COMPOSE_SNAPSHOT"
+  MIGRATION_PRIVATE_REPO="$private_repo"
+  MIGRATION_APPLICATION_RECREATE_ATTEMPTED=false
+  MIGRATION_ACTIVE=true
+  trap handle_migration_interrupt INT TERM
 
   if disable_private_builder_workflows "$private_repo" &&
      write_public_image_configuration &&
-     rebuild_all_application_images "$platform_sha"; then
-    rm -f "$env_snapshot" "$compose_snapshot"
+     rebuild_all_application_images "$platform_sha" migration; then
+    trap - INT TERM
+    rm -f "$MIGRATION_ENV_SNAPSHOT" "$MIGRATION_COMPOSE_SNAPSHOT"
+    MIGRATION_ACTIVE=false
     echo -e "${GREEN}✔ Migrated to public backend images. The UI remains a local build.${NC}"
     return 0
   fi
 
   echo -e "${RED}❌ Public-image migration failed. Restoring the private-builder configuration.${NC}" >&2
-  cp "$env_snapshot" "$ENV_FILE"
-  cp "$compose_snapshot" "$COMPOSE_FILE"
-  chmod 600 "$ENV_FILE"
-  rm -f "$env_snapshot" "$compose_snapshot"
-  parse_env
-  restore_private_builder_workflows "$private_repo"
-  rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}" || true
+  restore_private_builder_migration
   return 1
 }
 
+restore_private_builder_migration() {
+  [[ "$MIGRATION_ACTIVE" == true ]] || return 0
+  trap '' INT TERM
+
+  cp "$MIGRATION_ENV_SNAPSHOT" "$ENV_FILE"
+  cp "$MIGRATION_COMPOSE_SNAPSHOT" "$COMPOSE_FILE"
+  chmod 600 "$ENV_FILE"
+  parse_env
+  restore_private_builder_workflows "$MIGRATION_PRIVATE_REPO"
+
+  # A pull or build failure never changed the running containers. Only restore
+  # containers if the coordinated recreation had actually begun, and never
+  # permit rollback to start a local build.
+  if [[ "$MIGRATION_APPLICATION_RECREATE_ATTEMPTED" == true ]]; then
+    rf_compose up -d --no-build --force-recreate "${APPLICATION_SERVICES[@]}" || true
+  fi
+
+  rm -f "$MIGRATION_ENV_SNAPSHOT" "$MIGRATION_COMPOSE_SNAPSHOT"
+  MIGRATION_ACTIVE=false
+  trap - INT TERM
+}
+
+handle_migration_interrupt() {
+  echo >&2
+  echo -e "${YELLOW}Migration interrupted. Restoring the private-builder configuration before exiting.${NC}" >&2
+  restore_private_builder_migration
+  exit 130
+}
+
 rebuild_all_application_images() {
-  local platform_sha="$1" snapshot service
+  local platform_sha="$1" rollback_owner="${2:-self}" snapshot service
   local -a workflow_args=()
 
   if [[ -n "${REPO:-}" && "$REPO" != "username/repo" &&
@@ -237,6 +276,7 @@ rebuild_all_application_images() {
   fi
 
   if public_backend_images_supported; then
+    check_ui_build_memory || return 1
     echo -e "${CYAN}Pulling the coordinated public AMD64/ARM64 backends and building the deployment-specific UI...${NC}"
   else
     echo -e "${CYAN}Building all application images locally because public images target AMD64 and ARM64 only...${NC}"
@@ -251,10 +291,12 @@ rebuild_all_application_images() {
   if public_backend_images_supported; then
     if rf_compose config -q &&
        rf_compose pull "${BACKEND_SERVICES[@]}" &&
-       rf_compose build ui &&
-       rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}"; then
-      rm -f "$snapshot"
-      return 0
+       rf_compose build ui; then
+      [[ "$rollback_owner" != migration ]] || MIGRATION_APPLICATION_RECREATE_ATTEMPTED=true
+      if rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}"; then
+        rm -f "$snapshot"
+        return 0
+      fi
     fi
   elif rf_compose config -q &&
        rf_compose build "${APPLICATION_SERVICES[@]}" &&
@@ -263,10 +305,14 @@ rebuild_all_application_images() {
     return 0
   fi
 
-  echo -e "${RED}❌ Batch application rebuild failed. Restoring the previous Compose configuration and application containers.${NC}" >&2
-  cp "$snapshot" "$COMPOSE_FILE"
+  if [[ "$rollback_owner" != migration ]]; then
+    echo -e "${RED}❌ Batch application rebuild failed. Restoring the previous Compose configuration and application containers.${NC}" >&2
+    cp "$snapshot" "$COMPOSE_FILE"
+    rf_compose up -d --no-build --force-recreate "${APPLICATION_SERVICES[@]}" || true
+  else
+    echo -e "${RED}❌ Batch application preparation failed. Migration rollback will restore the private-builder configuration.${NC}" >&2
+  fi
   rm -f "$snapshot"
-  rf_compose up -d --force-recreate "${APPLICATION_SERVICES[@]}" || true
   return 1
 }
 

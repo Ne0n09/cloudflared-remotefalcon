@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2026.11.16.2
+
+- Public-image migrations and coordinated public updates now stop before changing configuration, disabling private image-builder workflows, pulling images, or recreating containers unless Linux can see at least 3584 MiB of memory. Direct UI rebuilds use the same preflight. The error explains that a VM configured with 4 GiB may still need its ballooning minimum raised before retrying.
+
+- Public-image migration now has one interrupt-safe rollback owner. A failed or cancelled pull/build restores the private `.env`, Compose configuration, and workflows without touching the still-running application containers. If recreation had begun, rollback uses `--no-build`, preventing `${REPO}` from expanding to `ghcr.io/username/repo/` and triggering unintended local builds.
+
 ## 2026.11.16
 
 - Legacy AMD64 and ARM64 upgrades now offer to migrate an existing private image-builder installation to the coordinated public backend images. Accepting disables active `build.yml`, `build-all.yml`, and `build-container.yml` GitHub Actions workflows, removes the `REPO` and `GITHUB_PAT` compatibility override, pulls the four public backends, and continues to build the deployment-specific UI locally at the same platform commit.

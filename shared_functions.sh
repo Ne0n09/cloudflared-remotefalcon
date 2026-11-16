@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SHARED_FUNCTIONS_VERSION=2026.10.5
+# SHARED_FUNCTIONS_VERSION=2026.11.16.2
 
 # ========== START Shared Config ==========
 # Configuration variables that are re-used across multiple scripts
@@ -355,6 +355,32 @@ is_rf_backend_service() {
 # The public image workflow publishes linux/amd64 and linux/arm64 images.
 public_backend_images_supported() {
   is_amd64_cpu || is_arm64_cpu
+}
+
+# Local UI builds need a VM configured with at least 4 GiB. Linux reports
+# slightly less than the configured amount, so require 3.5 GiB guest-visible
+# memory while still rejecting VMs ballooned down near a 1 GiB minimum.
+check_ui_build_memory() {
+  local required_kib=$((3584 * 1024))
+  local memory_kib="${RF_UI_BUILD_MEMORY_KIB_OVERRIDE:-}"
+  local memory_mib
+
+  if [[ -z "$memory_kib" && -r /proc/meminfo ]]; then
+    memory_kib=$(awk '/^MemTotal:/ { print $2; exit }' /proc/meminfo)
+  fi
+  if [[ ! "$memory_kib" =~ ^[0-9]+$ ]]; then
+    echo -e "${RED}❌ Unable to detect guest-visible memory required for the local UI build.${NC}" >&2
+    return 1
+  fi
+
+  memory_mib=$((memory_kib / 1024))
+  if (( memory_kib < required_kib )); then
+    echo -e "${RED}❌ Local UI build requires a VM with 4 GiB assigned and at least 3584 MiB visible to Linux; only ${memory_mib} MiB is visible.${NC}" >&2
+    echo "If memory ballooning is enabled, temporarily raise the VM's minimum memory before retrying." >&2
+    echo "No image-builder workflows, configuration, images, or containers were changed by this memory check." >&2
+    return 1
+  fi
+  return 0
 }
 
 # Print the GHCR repository used by a service, or print nothing for local builds.

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.11.5
+# VERSION=2026.11.16.2
 
 #set -euo pipefail
 
@@ -1927,6 +1927,7 @@ Tip: Ctrl+click a URL in most terminal applications to open the link." "$SWAP_CP
           fi
         else
           echo -e "${YELLOW}⚠️ UI build arguments changed. Rebuilding the UI locally and recreating the stack to apply runtime settings...${NC}"
+          check_ui_build_memory || exit 1
           rf_compose build ui
           rf_compose up -d --force-recreate
         fi
@@ -1980,6 +1981,7 @@ Tip: Ctrl+click a URL in most terminal applications to open the link." "$SWAP_CP
             run_updates auto-apply
           else
             echo -e "${BLUE}🔄 Building the UI locally to apply updated build arguments...${NC}"
+            check_ui_build_memory || exit 1
             rf_compose build ui
             rf_compose up -d --force-recreate
           fi

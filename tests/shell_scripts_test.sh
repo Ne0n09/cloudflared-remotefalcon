@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# VERSION=2026.11.16
+# VERSION=2026.11.16.2
 
 set -u
 
@@ -970,6 +970,25 @@ test_infrastructure_updates_pull_published_images() {
   assert_file_contains "$ws/mock-log/commands.log" 'pull mongo' || return 1
   assert_file_contains "$ws/mock-log/commands.log" 'pull versitygw' || return 1
   assert_file_not_contains "$ws/mock-log/commands.log" 'build (mongo|versitygw)'
+}
+
+test_ui_build_memory_uses_guest_visible_total() {
+  local ws
+  ws="$(make_workspace)"
+
+  (
+    source "$ws/shared_functions.sh"
+    RF_UI_BUILD_MEMORY_KIB_OVERRIDE=903052
+    ! check_ui_build_memory
+  ) > "$ws/low-ui-memory.out" 2>&1 || return 1
+  assert_file_contains "$ws/low-ui-memory.out" 'only 881 MiB is visible' || return 1
+  assert_file_contains "$ws/low-ui-memory.out" 'temporarily raise the VM.*minimum memory' || return 1
+
+  (
+    source "$ws/shared_functions.sh"
+    RF_UI_BUILD_MEMORY_KIB_OVERRIDE=4194304
+    check_ui_build_memory
+  ) || return 1
 }
 
 test_public_applications_deploy_as_a_coordinated_group() {
@@ -2211,10 +2230,17 @@ public_backend_images_supported() { return 0; }
 github_workflow_builds_configured() { [[ "$REPO" != username/repo && -n "$GITHUB_PAT" ]]; }
 validate_github_user() { :; }
 validate_github_repo() { :; }
+check_ui_build_memory() {
+  if [[ "${MOCK_LOW_UI_MEMORY:-false}" == true ]]; then
+    printf 'low-memory\n' >> "$MOCK_PUBLIC_MIGRATION_LOG"
+    return 1
+  fi
+}
 replace_compose_tag() { printf 'tag %s %s\n' "$1" "$2" >> "$MOCK_PUBLIC_MIGRATION_LOG"; }
 update_compose_image_path() { printf 'public-paths\n' >> "$MOCK_PUBLIC_MIGRATION_LOG"; }
 rf_compose() {
   printf 'compose %s\n' "$*" >> "$MOCK_PUBLIC_MIGRATION_LOG"
+  if [[ "${MOCK_PUBLIC_MIGRATION_INTERRUPT:-false}" == true && "$*" == "build ui" ]]; then kill -INT "$$"; return 130; fi
   if [[ "${MOCK_PUBLIC_MIGRATION_FAIL:-false}" == true && "$*" == "pull plugins-api control-panel viewer external-api" ]]; then return 1; fi
   if [[ "$*" == "ps --services --filter status=running" ]]; then printf 'nginx\n'; fi
 }
@@ -2235,6 +2261,17 @@ MOCK
   done
   chmod +x "$ws"/*.sh "$ws/gh" "$ws/jq" "$ws/docker"
   export MOCK_PUBLIC_MIGRATION_LOG="$ws/migration.log"
+
+  if PATH="$ws:$PATH" RF_MIGRATE_PUBLIC_IMAGES=true MOCK_LOW_UI_MEMORY=true \
+      RF_PLATFORM_SHA_OVERRIDE=1234567890abcdef1234567890abcdef12345678 \
+      "$ws/upgrade_installation.sh" > "$ws/low-memory.out" 2>&1; then
+    return 1
+  fi
+  assert_file_contains "$ws/migration.log" '^low-memory$' || return 1
+  assert_file_not_contains "$ws/migration.log" '^gh |compose pull|compose build|compose up' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^REPO=test-owner/test-repo$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^GITHUB_PAT=ghp_test$' || return 1
+  : > "$ws/migration.log"
 
   PATH="$ws:$PATH" RF_MIGRATE_PUBLIC_IMAGES=true \
     RF_PLATFORM_SHA_OVERRIDE=1234567890abcdef1234567890abcdef12345678 \
@@ -2270,7 +2307,20 @@ ENV
   assert_file_contains "$ws/remotefalcon/.env" '^DOCKERFILE=Dockerfile$' || return 1
   assert_file_contains "$ws/migration.log" 'gh api --method PUT repos/test-owner/test-repo/actions/workflows/build.yml/enable' || return 1
   assert_file_contains "$ws/migration-failure.out" 'Restoring the private-builder configuration' || return 1
-  [[ -e "$ws/.rf-platform-rebuild-required" ]]
+  assert_file_not_contains "$ws/migration.log" 'compose up|ghcr.io/username/repo' || return 1
+  [[ -e "$ws/.rf-platform-rebuild-required" ]] || return 1
+
+  : > "$ws/migration.log"
+  if PATH="$ws:$PATH" RF_MIGRATE_PUBLIC_IMAGES=true MOCK_PUBLIC_MIGRATION_INTERRUPT=true \
+      RF_PLATFORM_SHA_OVERRIDE=1234567890abcdef1234567890abcdef12345678 \
+      "$ws/upgrade_installation.sh" > "$ws/migration-interrupt.out" 2>&1; then
+    return 1
+  fi
+  assert_file_contains "$ws/remotefalcon/.env" '^REPO=test-owner/test-repo$' || return 1
+  assert_file_contains "$ws/remotefalcon/.env" '^GITHUB_PAT=ghp_test$' || return 1
+  assert_file_contains "$ws/migration.log" 'gh api --method PUT repos/test-owner/test-repo/actions/workflows/build.yml/enable' || return 1
+  assert_file_not_contains "$ws/migration.log" 'compose up|ghcr.io/username/repo' || return 1
+  assert_file_contains "$ws/migration-interrupt.out" 'Migration interrupted.*Restoring the private-builder configuration'
 }
 
 test_upgrade_handles_missing_docker_group_access() {
@@ -2488,6 +2538,7 @@ run_test "image upgrades check only their service and roll back on HTTP failure"
 run_test "update_containers.sh supports mocked dry-run checks" test_update_containers_dry_run
 run_test "update_containers.sh rejects a full /tmp before container checks" test_update_containers_rejects_full_tmp
 run_test "infrastructure updates pull published images without local builds" test_infrastructure_updates_pull_published_images
+run_test "local UI builds require enough guest-visible memory" test_ui_build_memory_uses_guest_visible_total
 run_test "public applications deploy as one coordinated group" test_public_applications_deploy_as_a_coordinated_group
 run_test "public images use the platform SHA before env migration" test_public_images_use_platform_sha_without_migrated_env
 run_test "setup_cloudflare.sh completes with mocked Cloudflare API" test_setup_cloudflare

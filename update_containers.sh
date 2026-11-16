@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VERSION=2026.11.5
+# VERSION=2026.11.16.2
 
 # This script will check for and display updates for containers: cloudflared, nginx, mongo, versitygw, plugins-api, control-panel, viewwer, ui, and external-api.
 # ./update_containers.sh all
@@ -287,6 +287,8 @@ perform_coordinated_public_application_update() {
   local -A previous_images=()
   local -A previous_refs=()
   local -A rollback_tags=()
+
+  check_ui_build_memory || return 1
 
   previous_compose=$(mktemp) || return 1
   cp "$COMPOSE_FILE" "$previous_compose" || { rm -f "$previous_compose"; return 1; }

@@ -8,7 +8,7 @@ You will need your own domain name and server capable of running Docker and Mong
 
 - 2 CPUs/cores, minimum.
 
-- 4 GB RAM minimum for the default AMD64 or ARM64 deployment. The four backend images are pulled from the public registry and only the UI is built locally.
+- 4 GB RAM minimum for the default AMD64 or ARM64 deployment. Linux must see at least 3584 MiB when the UI is built; a hypervisor's 4 GB ballooning maximum does not satisfy this requirement when the VM is currently ballooned down to a lower minimum. The four backend images are pulled from the public registry and only the UI is built locally.
 
     !!! warning
         Public backend images target 64-bit AMD64 and ARM64. Other architectures fall back to local JVM builds and may require substantially more memory.
